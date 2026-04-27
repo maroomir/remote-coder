@@ -1,0 +1,33 @@
+---
+description: Python 기술 스택, FastAPI 구현, 설정 관리 규칙
+globs: "**/*.py"
+alwaysApply: true
+---
+
+# 기술 스택과 FastAPI 구현 규칙
+
+## 1. 권장 기술 스택
+
+- Python 3.11 이상
+- FastAPI
+- Uvicorn
+- pytest
+- python-dotenv 또는 pydantic-settings
+- Telegram Bot API 직접 호출 또는 안정적인 Telegram 라이브러리
+- Git CLI 기반 worktree 관리
+- Claude Code CLI, Codex CLI 실행 래퍼
+
+## 2. FastAPI 규칙
+
+- Webhook 엔드포인트는 빠르게 응답해야 합니다.
+- 시간이 오래 걸리는 AI 작업은 백그라운드 Job으로 넘깁니다.
+- 라우터, 서비스, 설정, 모델을 분리합니다.
+- 요청 검증에는 Pydantic 모델을 사용합니다.
+- Webhook 요청 안에서 AI CLI를 직접 오래 실행하지 않습니다.
+
+## 3. 설정 규칙
+
+- 환경 변수는 `config.py` 또는 설정 객체에서 중앙 관리합니다.
+- 프로젝트별 설정은 YAML/JSON 파일로 분리할 수 있게 설계합니다.
+- 기본값은 안전한 값을 사용합니다.
+- 새로운 환경 변수는 `.env.example`과 README에 함께 반영합니다.

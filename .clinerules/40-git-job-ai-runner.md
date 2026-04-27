@@ -1,0 +1,27 @@
+# Git, Job, AI Runner 규칙
+
+## 1. Git/worktree 규칙
+
+- AI 작업은 기본 작업 디렉토리가 아니라 요청별 Git worktree에서 수행합니다.
+- 기본 브랜치 또는 현재 작업 브랜치를 직접 수정하지 않습니다.
+- 브랜치명은 사용자가 지정할 수 있으며, 미지정 시 안전한 slug와 timestamp로 생성합니다.
+- 변경 사항이 없으면 빈 커밋을 만들지 않습니다.
+- 커밋 전 변경 파일 목록을 수집해 Job 결과에 포함합니다.
+- worktree 삭제/보존 정책은 명시적으로 설정 가능하게 만듭니다.
+
+## 2. Job 처리 규칙
+
+- 모든 작업은 고유 Job ID를 가져야 합니다.
+- Job 상태는 최소한 `queued`, `running`, `succeeded`, `failed`, `cancelled`를 지원합니다.
+- 작업별 timeout을 적용합니다.
+- 실패 시 어느 단계에서 실패했는지 기록합니다.
+- commit hash, branch name, changed files를 Job 결과에 저장합니다.
+
+## 3. AI Runner 규칙
+
+- Claude/Codex 실행 코드는 공통 인터페이스 뒤에 둡니다.
+- Runner는 입력으로 작업 지시문, 작업 디렉토리, timeout, 환경 변수를 받습니다.
+- Runner는 stdout, stderr, exit code, 시작/종료 시각을 결과로 반환합니다.
+- CLI 실행 시 인자를 문자열 결합으로 만들지 말고 리스트 기반 subprocess 호출을 우선합니다.
+- Runner 선택은 Strategy 또는 Factory 패턴을 활용해 조건문이 서비스 전반에 퍼지지 않도록 합니다.
+- Claude/Codex CLI 호출부는 Adapter로 감싸 외부 프로세스 실행 세부사항이 도메인 로직에 새지 않게 합니다.

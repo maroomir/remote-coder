@@ -1,0 +1,72 @@
+# 아키텍처, 객체지향, GoF 디자인 패턴 규칙
+
+## 1. 기본 개발 원칙
+
+- 기능은 작고 검증 가능한 단위로 구현합니다.
+- 외부 API, 파일 시스템, 프로세스 실행, Git 조작 코드는 가능한 한 서비스 계층 또는 Adapter 계층으로 분리합니다.
+- 텔레그램 Webhook 요청 처리는 빠르게 응답하고, 장시간 작업은 백그라운드 Job으로 분리합니다.
+- 운영 자동화보다 안전한 격리와 명확한 로그를 우선합니다.
+- MVP 단계에서는 과도한 추상화보다 명확한 구조와 테스트 가능한 코드를 우선합니다.
+- 객체지향 설계를 기본 개발 패러다임으로 삼고, 역할과 책임이 분명한 클래스를 작성합니다.
+- GoF 디자인 패턴은 문제를 단순화하고 변경 가능성을 낮출 때 적극 활용하되, 패턴 적용 자체가 목적이 되지 않도록 합니다.
+
+## 2. OOP 원칙
+
+- 단일 책임 원칙을 지켜 클래스와 모듈의 변경 이유를 하나에 가깝게 유지합니다.
+- 캡슐화를 통해 외부 API, Git 조작, 프로세스 실행, Telegram 호출 같은 세부 구현을 감춥니다.
+- 인터페이스 또는 추상 클래스를 사용해 Claude/Codex Runner, Job Store, Notifier 같은 교체 가능한 구성 요소를 분리합니다.
+- 상속보다 조합을 우선합니다.
+- 도메인 개념을 명확히 표현하는 이름을 사용합니다. 예: `Job`, `JobManager`, `GitWorktreeService`, `AiRunner`, `TelegramNotifier`.
+- 함수와 메서드는 짧고 한 가지 일을 하도록 작성합니다.
+
+## 3. 권장 GoF 패턴
+
+| 패턴 | 적용 후보 |
+|---|---|
+| Strategy | Claude Runner와 Codex Runner 선택, 브랜치명 생성 정책, worktree 정리 정책 |
+| Factory Method / Abstract Factory | 설정에 따른 Runner, Store, Notifier 생성 |
+| Adapter | Telegram Bot API, Claude CLI, Codex CLI, Git CLI 래핑 |
+| Facade | Job 실행 흐름을 단순화하는 `JobManager` 또는 `JobOrchestrator` |
+| Template Method | 공통 AI 실행 흐름을 유지하면서 도구별 세부 실행만 변경 |
+| Command | 텔레그램 명령어(`/help`, `/model`, `/status`) 처리 객체화 |
+| Observer | Job 상태 변경 시 알림/로그/후처리 연결 |
+| State | Job 상태 전이를 명확히 모델링해야 할 때 |
+| Repository | Job 저장소, 프로젝트 설정 저장소 추상화 |
+
+## 4. 패턴 적용 기준
+
+- 분기문이 계속 늘어나는 경우 Strategy, Command, State 패턴을 우선 검토합니다.
+- 외부 도구나 API 호출부는 Adapter로 감싸 테스트 가능하게 만듭니다.
+- 생성 로직이 복잡해지면 Factory 계층으로 분리합니다.
+- 여러 서비스를 조합하는 긴 절차는 Facade 또는 Orchestrator로 단순화합니다.
+- 단순한 기능에 불필요하게 많은 클래스를 만들지 않습니다. 복잡도가 실제로 생겼거나 예상 변경점이 분명할 때 패턴을 적용합니다.
+
+## 5. 권장 코드 구조
+
+```text
+app/
+  main.py                 # FastAPI 앱 생성
+  config.py               # 환경 변수 및 설정
+  models.py               # 공통 데이터 모델
+  telegram/
+    webhook.py            # Webhook 라우터
+    notifier.py           # Telegram 메시지 발송
+    commands.py           # 명령어 파싱
+  jobs/
+    manager.py            # Job 생성/실행/상태 변경
+    store.py              # Job 저장소
+    schemas.py            # Job 모델
+  git/
+    service.py            # Git/worktree 조작
+  ai/
+    base.py               # Runner 인터페이스
+    claude.py             # Claude Runner
+    codex.py              # Codex Runner
+  security/
+    auth.py               # allowlist 검증
+  utils/
+    logging.py
+tests/
+configs/
+  projects.example.yaml
+```
