@@ -24,29 +24,18 @@ cp .env.example .env
 - `WORKTREE_BASE_DIR`
 - 필요 시 `TELEGRAM_WEBHOOK_SECRET`
 
-## 3) 서버 실행
+## 3) 한 번에 실행하기 (권장)
+
+미리 작성된 `run.sh` 스크립트를 사용하면 Conda 환경 활성화, ngrok 실행, Webhook 등록, 서버 실행을 모두 한 번에 처리합니다.
 
 ```bash
-uvicorn app.main:app --reload
+./run.sh
 ```
 
-헬스체크:
+- 스크립트 실행 후 텔레그램에서 바로 봇에게 말을 걸면 동작합니다.
+- 서버를 종료하려면 `Ctrl+C`를 누르면 ngrok도 함께 종료됩니다.
 
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-## 4) Telegram Webhook 등록 예시
-
-```bash
-curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
-  -d "url=<PUBLIC_HTTPS_URL>/telegram/webhook" \
-  -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
-```
-
-`<PUBLIC_HTTPS_URL>`는 ngrok 등 HTTPS 터널 주소를 사용합니다.
-
-## 5) 지원 명령어 (MVP)
+## 4) 지원 명령어 (MVP)
 
 - `/start` : 봇 사용 안내
 - `/help` : 명령어 도움말

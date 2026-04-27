@@ -73,18 +73,30 @@ KEEP_WORKTREE_ON_SUCCESS=true
 
 ---
 
-## 3. Telegram Webhook 등록 방법 (처음 하는 분용)
+## 3. 서버 실행 및 웹훅 등록 방법 (초간단 방식)
 
-이 프로젝트는 Telegram의 **Webhook 방식**으로 동작합니다.  
-즉, 내가 `/start`를 보냈을 때 Telegram이 우리 서버의 `/telegram/webhook`으로 이벤트를 전달해야 합니다.
+로컬에서 서버를 켜고 웹훅을 등록하는 복잡한 과정을 `run.sh` 스크립트 하나로 자동화해 두었습니다.
 
-핵심은 아래 3가지입니다.
+### 터미널에서 다음 명령어를 실행하세요:
+```bash
+./run.sh
+```
 
-1. FastAPI 서버가 실행 중이어야 함
-2. Telegram이 접근 가능한 HTTPS 주소가 있어야 함 (ngrok 등)
-3. `setWebhook`에 등록한 `secret_token`이 `.env`의 `TELEGRAM_WEBHOOK_SECRET`와 같아야 함
+이 스크립트는 다음 작업들을 자동으로 수행합니다:
+1. Conda 가상 환경(`remote-coder`) 활성화
+2. 백그라운드에서 `ngrok` 터널 생성 및 주소 가져오기
+3. 발급된 ngrok 주소를 `.env` 설정과 함께 텔레그램 서버에 안전하게 등록 (`setWebhook`)
+4. FastAPI 봇 서버 실행
 
-### 3.1 서버 먼저 실행
+서버를 끄고 싶을 때는 터미널에서 `Ctrl+C`를 누르면 `ngrok`과 서버가 함께 안전하게 종료됩니다.
+
+---
+
+### (참고) 수동으로 설정해야 하는 분들을 위한 기존 가이드
+
+아래는 스크립트를 사용하지 않고 단계별로 진행하고자 하는 경우를 위한 가이드입니다.
+
+### 3.1 수동 서버 실행
 
 프로젝트 루트에서:
 
@@ -117,17 +129,18 @@ ngrok http 8000
 - `<PUBLIC_HTTPS_URL>` = `https://abcd-1234.ngrok-free.app`
 - 실제 webhook URL = `https://abcd-1234.ngrok-free.app/telegram/webhook`
 
-### 3.3 setWebhook 등록
+### 3.3 setWebhook 자동 등록 스크립트 실행
 
-아래 명령의 `<TELEGRAM_BOT_TOKEN>`, `<PUBLIC_HTTPS_URL>`, `<TELEGRAM_WEBHOOK_SECRET>`를 실제 값으로 바꿔서 실행합니다.
+복잡한 `curl` 명령어 대신, 제공되는 파이썬 스크립트를 사용해 쉽게 웹훅을 등록할 수 있습니다.
+터미널에 `conda activate remote-coder`가 활성화된 상태에서, 위에서 얻은 ngrok 주소를 인자로 넘겨 스크립트를 실행합니다.
 
 ```bash
-curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
-  -d "url=<PUBLIC_HTTPS_URL>/telegram/webhook" \
-  -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
+python scripts/set_webhook.py <PUBLIC_HTTPS_URL>
+# 예시: python scripts/set_webhook.py https://abcd-1234.ngrok-free.app
 ```
 
-성공하면 보통 `{"ok":true,"result":true,...}`가 반환됩니다.
+스크립트가 `.env` 파일의 봇 토큰과 시크릿 키를 자동으로 읽어서 텔레그램에 안전하게 등록해줍니다.
+성공 시 `✅ 웹훅 등록 성공!` 메시지가 출력됩니다.
 
 ### 3.4 등록 상태 확인 (매우 중요)
 
@@ -155,14 +168,16 @@ curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
 - 서버가 꺼져 있거나 다른 포트에서 실행 중
 - 봇 토큰 오타
 
-### 3.7 webhook 초기화/재등록 방법
+### 3.7 ngrok 주소가 바뀌었을 때 (재등록 방법)
 
-등록이 꼬였을 때는 먼저 삭제 후 다시 등록하면 깔끔합니다.
-
-삭제:
+무료 ngrok을 사용하면 ngrok을 껐다 켤 때마다 주소가 바뀝니다.
+주소가 바뀌었을 때는 **바뀐 주소로 다시 스크립트만 실행**해주면 됩니다. (기존 웹훅을 덮어씁니다)
 
 ```bash
-curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/deleteWebhook"
+python scripts/set_webhook.py https://새로-발급된-주소.ngrok-free.app
 ```
 
-그 다음 `3.3 setWebhook 등록`을 다시 실행하세요.
+만약 웹훅 자체를 완전히 삭제하고 싶다면 아래 명령어를 사용하세요:
+```bash
+curl -X POST "https://api.telegram.org/bot<내_봇_토큰>/deleteWebhook"
+```
