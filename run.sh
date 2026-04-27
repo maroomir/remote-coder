@@ -47,7 +47,9 @@ fi
 echo "🔗 발급된 ngrok HTTPS 주소: $PUBLIC_URL"
 
 # 5. 웹훅 등록 스크립트 실행
-python scripts/set_webhook.py "$PUBLIC_URL"
+if ! python scripts/set_webhook.py "$PUBLIC_URL"; then
+    echo "⚠️ 웹훅 등록에 실패했습니다. 기존 웹훅이 살아있다면 동작할 수 있으니 서버를 계속 시작합니다."
+fi
 
 # 6. 서버 종료 시 ngrok도 함께 종료되도록 트랩 설정
 trap "echo -e '\n🛑 서버와 터널을 종료합니다...'; kill $NGROK_PID; exit 0" SIGINT SIGTERM

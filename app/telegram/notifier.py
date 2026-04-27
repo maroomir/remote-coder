@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import logging
+import time
+
 import httpx
 
 from app.jobs.schemas import Job
+
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramNotifier:
@@ -11,8 +17,25 @@ class TelegramNotifier:
 
     def send_text(self, chat_id: int, text: str) -> None:
         payload = {"chat_id": chat_id, "text": text}
-        response = httpx.post(self._api_url, json=payload, timeout=10.0)
-        response.raise_for_status()
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = httpx.post(
+                    self._api_url,
+                    json=payload,
+                    timeout=httpx.Timeout(10.0, connect=5.0),
+                )
+                response.raise_for_status()
+                return
+            except httpx.HTTPError as exc:
+                if attempt == max_attempts:
+                    logger.warning(
+                        "Telegram sendMessage failed after %s attempts: %s",
+                        max_attempts,
+                        type(exc).__name__,
+                    )
+                    return
+                time.sleep(attempt)
 
     def send_job_accepted(self, job: Job) -> None:
         self.send_text(

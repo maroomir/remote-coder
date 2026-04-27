@@ -1,7 +1,46 @@
 import sys
 import os
+import time
 import httpx
 from dotenv import load_dotenv
+
+
+def register_webhook(api_url: str, webhook_url: str, webhook_secret: str) -> bool:
+    max_attempts = 3
+    connect_timeout = 10.0
+    request_timeout = 30.0
+
+    for attempt in range(1, max_attempts + 1):
+        print(f"텔레그램 서버에 요청 중... ({attempt}/{max_attempts})")
+        try:
+            response = httpx.post(
+                api_url,
+                json={
+                    "url": webhook_url,
+                    "secret_token": webhook_secret,
+                    "drop_pending_updates": True,
+                },
+                timeout=httpx.Timeout(request_timeout, connect=connect_timeout),
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            if result.get("ok"):
+                print("✅ 웹훅 등록 성공!")
+                print(f"응답: {result.get('description')}")
+                return True
+
+            print("❌ 웹훅 등록 실패!")
+            print(f"에러: {result}")
+            return False
+        except httpx.HTTPError as e:
+            print(f"❌ HTTP 요청 실패: {e}")
+            if attempt < max_attempts:
+                wait_seconds = attempt * 2
+                print(f"⏳ {wait_seconds}초 후 재시도합니다...")
+                time.sleep(wait_seconds)
+
+    return False
 
 def main():
     if len(sys.argv) < 2:
@@ -31,32 +70,9 @@ def main():
     api_url = f"https://api.telegram.org/bot{bot_token}/setWebhook"
 
     print(f"웹훅 URL을 다음으로 설정합니다: {webhook_url}")
-    print("텔레그램 서버에 요청 중...")
-
     try:
-        response = httpx.post(
-            api_url,
-            json={
-                "url": webhook_url,
-                "secret_token": webhook_secret,
-                "drop_pending_updates": True,
-            },
-            timeout=30.0
-        )
-        response.raise_for_status()
-        result = response.json()
-        
-        if result.get("ok"):
-            print("✅ 웹훅 등록 성공!")
-            print(f"응답: {result.get('description')}")
-        else:
-            print("❌ 웹훅 등록 실패!")
-            print(f"에러: {result}")
+        if not register_webhook(api_url=api_url, webhook_url=webhook_url, webhook_secret=webhook_secret):
             sys.exit(1)
-            
-    except httpx.HTTPError as e:
-        print(f"❌ HTTP 요청 실패: {e}")
-        sys.exit(1)
     except Exception as e:
         print(f"❌ 알 수 없는 에러 발생: {e}")
         sys.exit(1)
