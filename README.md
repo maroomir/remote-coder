@@ -19,6 +19,7 @@ cp .env.example .env
 
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_ALLOWED_CHAT_IDS`
+- `TELEGRAM_ALLOWED_USER_IDS` (선택)
 - `PROJECT_ROOT`
 - `WORKTREE_BASE_DIR`
 - 필요 시 `TELEGRAM_WEBHOOK_SECRET`
@@ -50,14 +51,20 @@ curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
 - `/start` : 봇 사용 안내
 - `/help` : 명령어 도움말
 - `/model` : 기본 모델 확인
-- `/model claude` : Claude 관련 안내
-- `/model codex` : Codex 관련 안내
+- `/model claude` : 현재 chat의 기본 모델을 claude로 변경
+- `/model codex` : 현재 chat의 기본 모델을 codex로 변경
 - `/status <job_id>` : 작업 상태 조회
 - `/projects` : 등록 프로젝트 목록
 - 자연어 메시지: AI 작업 요청 생성
 
+참고:
+
+- `/model`로 변경한 기본 모델은 MVP에서는 인메모리 저장입니다. 서버 재시작 시 초기화됩니다.
+- 자연어 메시지에서 `model: codex`, `branch: my-branch`, `no commit` 토큰을 함께 사용할 수 있습니다.
+
 ## 6) 테스트
 
 ```bash
+conda activate remote-coder
 pytest -q
 ```

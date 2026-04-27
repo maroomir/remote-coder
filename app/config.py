@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     telegram_bot_token: SecretStr
     telegram_allowed_chat_ids: list[int]
+    telegram_allowed_user_ids: list[int] = []
     telegram_webhook_secret: SecretStr | None = None
 
     default_model: ModelName = ModelName.CLAUDE
@@ -33,6 +34,20 @@ class Settings(BaseSettings):
             parsed = [item.strip() for item in value.split(",") if item.strip()]
             return [int(v) for v in parsed]
         raise ValueError("TELEGRAM_ALLOWED_CHAT_IDS must be list, int, or comma-separated string")
+
+    @field_validator("telegram_allowed_user_ids", mode="before")
+    @classmethod
+    def parse_allowed_user_ids(cls, value: object) -> list[int]:
+        if value in (None, ""):
+            return []
+        if isinstance(value, list):
+            return [int(v) for v in value]
+        if isinstance(value, (int, float)):
+            return [int(value)]
+        if isinstance(value, str):
+            parsed = [item.strip() for item in value.split(",") if item.strip()]
+            return [int(v) for v in parsed]
+        raise ValueError("TELEGRAM_ALLOWED_USER_IDS must be list, int, or comma-separated string")
 
 
 @lru_cache

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
+from app.telegram.model_preferences import InMemoryModelPreferenceStore
 
 
 @dataclass
@@ -19,6 +20,7 @@ class CommandContext:
     job_store: InMemoryJobStore
     default_model: ModelName
     projects: list[str]
+    model_preferences: InMemoryModelPreferenceStore
 
 
 class TelegramCommand(ABC):
@@ -55,10 +57,13 @@ class ModelCommand(TelegramCommand):
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
+        current = ctx.model_preferences.get(message.chat_id)
         if len(tokens) == 1:
-            return f"현재 기본 모델: {ctx.default_model.value}"
+            return f"현재 기본 모델: {current.value}"
         if len(tokens) == 2 and tokens[1] in (ModelName.CLAUDE.value, ModelName.CODEX.value):
-            return f"요청별 모델 지정은 지원됩니다. 현재 기본 모델: {ctx.default_model.value}"
+            selected = ModelName(tokens[1])
+            ctx.model_preferences.set(message.chat_id, selected)
+            return f"기본 모델이 {selected.value}로 변경되었습니다."
         return "사용법: /model 또는 /model claude|codex"
 
 

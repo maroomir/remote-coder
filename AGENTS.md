@@ -163,6 +163,12 @@ tests/
 
 외부 API 호출, 실제 AI CLI 실행, 실제 Git 커밋은 기본 단위 테스트에서 mock 처리합니다.
 
+### 8.1 테스트 실행 환경 규칙
+
+- 테스트/서버 실행 전에는 반드시 `remote-coder` Conda 환경을 활성화합니다.
+- 에이전트는 테스트 명령 실행 전에 현재 Python 환경을 확인하고, 필요 시 `conda activate remote-coder`를 먼저 수행합니다.
+- 기본 테스트 명령은 `pytest -q`이며, 환경 활성화가 어려운 경우 `conda run -n remote-coder pytest -q`를 사용합니다.
+
 ## 9. 금지 사항
 
 - Bot Token, API Key, 개인 Chat ID를 코드에 직접 기록하지 않습니다.

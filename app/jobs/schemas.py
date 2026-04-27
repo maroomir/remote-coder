@@ -35,6 +35,7 @@ class Job(BaseModel):
     commit_hash: str | None = None
     changed_files: list[str] = Field(default_factory=list)
     error: str | None = None
+    error_stage: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None

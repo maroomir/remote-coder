@@ -31,3 +31,4 @@ alwaysApply: true
 - 프로젝트별 설정은 YAML/JSON 파일로 분리할 수 있게 설계합니다.
 - 기본값은 안전한 값을 사용합니다.
 - 새로운 환경 변수는 `.env.example`과 README에 함께 반영합니다.
+- 테스트와 앱 실행 전에는 `conda activate remote-coder`로 프로젝트 전용 환경을 활성화합니다.

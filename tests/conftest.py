@@ -10,6 +10,7 @@ def test_settings(tmp_path: Path) -> Settings:
     return Settings(
         telegram_bot_token="token",
         telegram_allowed_chat_ids=[123],
+        telegram_allowed_user_ids=[],
         default_model="claude",
         default_project="remote-coder",
         project_root=tmp_path,

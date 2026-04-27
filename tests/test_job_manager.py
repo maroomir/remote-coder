@@ -37,3 +37,33 @@ def test_job_manager_submit_and_run_success(test_settings):
 
     assert final_job.status.value == "succeeded"
     assert final_job.commit_hash == "abc123"
+    assert final_job.log_path is not None
+
+
+def test_job_manager_marks_failed_stage_on_runner_error(test_settings):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_worktree.return_value = Path("/tmp/wt")
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=1, stdout="", stderr="runner crashed", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    branch_strategy.make_branch_name.return_value = "remote-test"
+    notifier = Mock()
+
+    manager = JobManager(test_settings, store, git_service, factory, branch_strategy, notifier)
+    request = JobRequest(
+        project="proj",
+        model=ModelName.CLAUDE,
+        instruction="fix bug",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    final_job = manager.run(job.id)
+
+    assert final_job.status.value == "failed"
+    assert final_job.error_stage == "runner"

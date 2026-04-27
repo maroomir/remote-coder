@@ -18,12 +18,20 @@ from app.telegram.commands import (
 )
 from app.telegram.notifier import TelegramNotifier
 from app.telegram.parser import CommandParser
+from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.webhook import create_webhook_router
 
 settings = get_settings()
 job_store = InMemoryJobStore()
-auth_service = AllowlistAuthService(set(settings.telegram_allowed_chat_ids))
-parser = CommandParser(default_project=settings.default_project, default_model=settings.default_model)
+auth_service = AllowlistAuthService(
+    set(settings.telegram_allowed_chat_ids), set(settings.telegram_allowed_user_ids)
+)
+model_preferences = InMemoryModelPreferenceStore(default_model=settings.default_model)
+parser = CommandParser(
+    default_project=settings.default_project,
+    default_model=settings.default_model,
+    model_preferences=model_preferences,
+)
 command_registry = CommandRegistry(
     commands=[StartCommand(), HelpCommand(), ModelCommand(), StatusCommand(), ProjectsCommand()]
 )
@@ -31,6 +39,7 @@ command_context = CommandContext(
     job_store=job_store,
     default_model=settings.default_model,
     projects=[settings.default_project],
+    model_preferences=model_preferences,
 )
 git_service = GitWorktreeService(base_dir=settings.worktree_base_dir)
 runner_factory = AiRunnerFactory()
@@ -54,6 +63,7 @@ app.include_router(
         command_context=command_context,
         job_manager=job_manager,
         job_store=job_store,
+        notifier=notifier,
         webhook_secret=(
             settings.telegram_webhook_secret.get_secret_value()
             if settings.telegram_webhook_secret

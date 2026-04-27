@@ -1,7 +1,11 @@
 class AllowlistAuthService:
-    def __init__(self, allowed_chat_ids: set[int]) -> None:
+    def __init__(self, allowed_chat_ids: set[int], allowed_user_ids: set[int] | None = None) -> None:
         self._allowed_chat_ids = allowed_chat_ids
+        self._allowed_user_ids = allowed_user_ids or set()
 
     def is_allowed(self, chat_id: int, user_id: int | None = None) -> bool:
-        _ = user_id
-        return chat_id in self._allowed_chat_ids
+        if chat_id in self._allowed_chat_ids:
+            return True
+        if user_id is not None and user_id in self._allowed_user_ids:
+            return True
+        return False

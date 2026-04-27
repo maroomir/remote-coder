@@ -7,7 +7,8 @@ from app.jobs.manager import JobManager
 from app.jobs.store import InMemoryJobStore
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import CommandContext, CommandRegistry, TelegramMessage
-from app.telegram.parser import CommandParser
+from app.telegram.notifier import TelegramNotifier
+from app.telegram.parser import CommandParseError, CommandParser
 
 
 class TelegramChat(BaseModel):
@@ -39,6 +40,7 @@ def create_webhook_router(
     command_context: CommandContext,
     job_manager: JobManager,
     job_store: InMemoryJobStore,
+    notifier: TelegramNotifier,
     webhook_secret: str | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/telegram", tags=["telegram"])
@@ -62,9 +64,14 @@ def create_webhook_router(
         message = TelegramMessage(chat_id=chat_id, user_id=user_id, text=update.message.text)
         command_response = command_registry.dispatch(message, command_context)
         if command_response:
-            return {"status": "ok", "message": command_response}
+            background_tasks.add_task(notifier.send_text, chat_id, command_response)
+            return {"status": "ok"}
 
-        request = parser.parse_natural(message.text, chat_id=chat_id, user_id=user_id)
+        try:
+            request = parser.parse_natural(message.text, chat_id=chat_id, user_id=user_id)
+        except CommandParseError as exc:
+            background_tasks.add_task(notifier.send_text, chat_id, str(exc))
+            return {"status": "ignored"}
         job = job_manager.submit(request)
         background_tasks.add_task(job_manager.run, job.id)
         _ = job_store

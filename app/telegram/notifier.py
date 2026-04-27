@@ -32,10 +32,17 @@ class TelegramNotifier:
                 f"변경 파일: {changed}"
             )
         else:
+            details = []
+            if job.error_stage:
+                details.append(f"실패 단계: {job.error_stage}")
+            if job.log_path:
+                details.append(f"로그 경로: {job.log_path}")
             text = (
                 f"작업 실패\n"
                 f"Job ID: {job.id}\n"
                 f"프로젝트: {job.request.project}\n"
                 f"오류: {job.error or 'unknown error'}"
             )
+            if details:
+                text += "\n" + "\n".join(details)
         self.send_text(job.request.chat_id, text)
