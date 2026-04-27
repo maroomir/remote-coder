@@ -1,0 +1,19 @@
+from pathlib import Path
+
+import pytest
+
+from app.config import Settings
+
+
+@pytest.fixture
+def test_settings(tmp_path: Path) -> Settings:
+    return Settings(
+        telegram_bot_token="token",
+        telegram_allowed_chat_ids=[123],
+        default_model="claude",
+        default_project="remote-coder",
+        project_root=tmp_path,
+        worktree_base_dir=tmp_path / "worktrees",
+        job_timeout_seconds=10,
+        keep_worktree_on_success=True,
+    )
