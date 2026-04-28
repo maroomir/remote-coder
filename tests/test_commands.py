@@ -3,7 +3,7 @@ from unittest.mock import Mock
 from app.jobs.schemas import Job, JobRequest, JobStatus
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
-from app.projects.registry import ProjectRegistry
+from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.commands import (
     BranchCommand,
     BranchesCommand,
@@ -12,6 +12,7 @@ from app.telegram.commands import (
     CommandRegistry,
     HelpCommand,
     ModelCommand,
+    ProjectCommand,
     ProjectsCommand,
     RebaseCommand,
     StartCommand,
@@ -19,6 +20,7 @@ from app.telegram.commands import (
     TelegramMessage,
 )
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
+from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
 
 def _ctx(project_registry: ProjectRegistry) -> CommandContext:
@@ -41,6 +43,7 @@ def _ctx(project_registry: ProjectRegistry) -> CommandContext:
         default_model=ModelName.CLAUDE,
         project_registry=project_registry,
         model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_preferences=InMemoryProjectPreferenceStore(),
         git_service=git_service,
         git_remote_name="origin",
     )
@@ -54,6 +57,7 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
             ModelCommand(),
             StatusCommand(),
             ProjectsCommand(),
+            ProjectCommand(),
             BranchesCommand(),
             BranchCommand(),
             RebaseCommand(),
@@ -67,6 +71,7 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert "/branch" in text
     assert "/rebase" in text
     assert "/clear" in text
+    assert "/project" in text
 
 
 def test_status_command_dispatch(project_registry: ProjectRegistry):
@@ -93,6 +98,67 @@ def test_projects_command_lists_registry(project_registry: ProjectRegistry):
     assert text is not None
     assert "remote-coder" in text
     assert "기본 프로젝트" in text
+    assert "현재 적용 프로젝트" in text
+
+
+def test_project_command_shows_default_when_no_chat_preference(project_registry: ProjectRegistry):
+    registry = CommandRegistry([ProjectCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=5, user_id=1, text="/project"), _ctx(project_registry))
+    assert text is not None
+    assert "현재 작업 프로젝트" in text
+    assert "remote-coder" in text
+
+
+def test_project_command_switches_chat_preference(project_registry: ProjectRegistry):
+    root = project_registry.config_path.parent / "other_repo"
+    root.mkdir()
+    wt = project_registry.config_path.parent / "other_wt"
+    wt.mkdir()
+    project_registry.add_project(
+        ProjectRecord(
+            name="other",
+            root_path=root,
+            worktree_base_dir=wt,
+            default_model=ModelName.CODEX,
+            enabled=True,
+        )
+    )
+    registry = CommandRegistry([ProjectCommand(), ProjectsCommand()])
+    ctx = _ctx(project_registry)
+    text = registry.dispatch(TelegramMessage(chat_id=88, user_id=1, text="/project other"), ctx)
+    assert text is not None and "other" in text and "변경" in text
+    current = registry.dispatch(TelegramMessage(chat_id=88, user_id=1, text="/project"), ctx)
+    assert current is not None and "other" in current
+
+
+def test_project_command_unknown_project(project_registry: ProjectRegistry):
+    registry = CommandRegistry([ProjectCommand()])
+    text = registry.dispatch(
+        TelegramMessage(chat_id=1, user_id=1, text="/project nope"),
+        _ctx(project_registry),
+    )
+    assert text is not None and "알 수 없는" in text
+
+
+def test_project_command_rejects_disabled_project(project_registry: ProjectRegistry):
+    root = project_registry.config_path.parent / "off_repo"
+    root.mkdir()
+    wt = project_registry.config_path.parent / "off_wt"
+    wt.mkdir()
+    project_registry.add_project(
+        ProjectRecord(
+            name="offproj",
+            root_path=root,
+            worktree_base_dir=wt,
+            enabled=False,
+        )
+    )
+    registry = CommandRegistry([ProjectCommand()])
+    text = registry.dispatch(
+        TelegramMessage(chat_id=1, user_id=1, text="/project offproj"),
+        _ctx(project_registry),
+    )
+    assert text is not None and "비활성화" in text
 
 
 def test_branches_command_shows_local_and_remote(project_registry: ProjectRegistry):

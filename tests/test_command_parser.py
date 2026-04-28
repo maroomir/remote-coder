@@ -4,6 +4,7 @@ from app.models import ModelName
 from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.parser import CommandParseError, CommandParser
+from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
 
 def test_parse_natural_returns_job_request(project_registry: ProjectRegistry):
@@ -92,3 +93,55 @@ def test_parse_natural_no_model_preferences_uses_project_default(project_registr
     )
     req = parser.parse_natural("project: special task", chat_id=1, user_id=2)
     assert req.model == ModelName.CODEX
+
+
+def test_parse_natural_uses_project_preference(project_registry: ProjectRegistry):
+    root = project_registry.config_path.parent / "pref_repo"
+    root.mkdir()
+    wt = project_registry.config_path.parent / "pref_wt"
+    wt.mkdir()
+    project_registry.add_project(
+        ProjectRecord(
+            name="other",
+            root_path=root,
+            worktree_base_dir=wt,
+            default_model=ModelName.CODEX,
+            enabled=True,
+        )
+    )
+    pref = InMemoryProjectPreferenceStore()
+    pref.set(7, "other")
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        project_preferences=pref,
+    )
+    req = parser.parse_natural("do something", chat_id=7, user_id=2)
+    assert req.project == "other"
+    assert req.instruction == "do something"
+
+
+def test_parse_natural_project_option_overrides_chat_preference(project_registry: ProjectRegistry):
+    root = project_registry.config_path.parent / "pref2_repo"
+    root.mkdir()
+    wt = project_registry.config_path.parent / "pref2_wt"
+    wt.mkdir()
+    project_registry.add_project(
+        ProjectRecord(
+            name="other",
+            root_path=root,
+            worktree_base_dir=wt,
+            default_model=ModelName.CODEX,
+            enabled=True,
+        )
+    )
+    pref = InMemoryProjectPreferenceStore()
+    pref.set(7, "other")
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        project_preferences=pref,
+    )
+    req = parser.parse_natural("project: remote-coder fix bug", chat_id=7, user_id=2)
+    assert req.project == "remote-coder"
+    assert req.instruction == "fix bug"

@@ -14,12 +14,14 @@ from app.telegram.commands import (
     CommandRegistry,
     HelpCommand,
     ModelCommand,
+    ProjectCommand,
     ProjectsCommand,
     RebaseCommand,
     StartCommand,
     StatusCommand,
 )
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
+from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 from app.telegram.parser import CommandParser
 from app.telegram.webhook import create_webhook_router
 
@@ -64,6 +66,7 @@ def test_webhook_accepts_natural_message(project_registry):
                     ModelCommand(),
                     StatusCommand(),
                     ProjectsCommand(),
+                    ProjectCommand(),
                     BranchesCommand(),
                     BranchCommand(),
                     RebaseCommand(),
@@ -75,6 +78,7 @@ def test_webhook_accepts_natural_message(project_registry):
                 default_model=ModelName.CLAUDE,
                 project_registry=project_registry,
                 model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+                project_preferences=InMemoryProjectPreferenceStore(),
                 git_service=Mock(),
                 git_remote_name="origin",
             ),
@@ -112,6 +116,7 @@ def test_webhook_sends_command_response_to_telegram(project_registry):
                     ModelCommand(),
                     StatusCommand(),
                     ProjectsCommand(),
+                    ProjectCommand(),
                     BranchesCommand(),
                     BranchCommand(),
                     RebaseCommand(),
@@ -123,6 +128,7 @@ def test_webhook_sends_command_response_to_telegram(project_registry):
                 default_model=ModelName.CLAUDE,
                 project_registry=project_registry,
                 model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+                project_preferences=InMemoryProjectPreferenceStore(),
                 git_service=Mock(),
                 git_remote_name="origin",
             ),

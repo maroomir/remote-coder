@@ -17,6 +17,7 @@ from app.telegram.commands import (
     CommandRegistry,
     HelpCommand,
     ModelCommand,
+    ProjectCommand,
     ProjectsCommand,
     RebaseCommand,
     StartCommand,
@@ -25,6 +26,7 @@ from app.telegram.commands import (
 from app.telegram.notifier import TelegramNotifier
 from app.telegram.parser import CommandParser
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
+from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 from app.telegram.webhook import create_webhook_router
 
 settings = get_settings()
@@ -37,10 +39,12 @@ auth_service = AllowlistAuthService(
     set(settings.telegram_allowed_chat_ids), set(settings.telegram_allowed_user_ids)
 )
 model_preferences = InMemoryModelPreferenceStore(default_model=settings.default_model)
+project_preferences = InMemoryProjectPreferenceStore()
 parser = CommandParser(
     project_registry=project_registry,
     default_model=settings.default_model,
     model_preferences=model_preferences,
+    project_preferences=project_preferences,
 )
 command_registry = CommandRegistry(
     commands=[
@@ -49,6 +53,7 @@ command_registry = CommandRegistry(
         ModelCommand(),
         StatusCommand(),
         ProjectsCommand(),
+        ProjectCommand(),
         BranchesCommand(),
         BranchCommand(),
         RebaseCommand(),
@@ -61,6 +66,7 @@ command_context = CommandContext(
     default_model=settings.default_model,
     project_registry=project_registry,
     model_preferences=model_preferences,
+    project_preferences=project_preferences,
     git_service=git_service,
     git_remote_name=settings.git_remote_name,
 )

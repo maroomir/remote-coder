@@ -31,7 +31,7 @@ cp .env.example .env
 
 - URL: `http://127.0.0.1:8000/`
 - 등록된 프로젝트 목록, 추가·수정·삭제, 기본 프로젝트 지정
-- 자연어 요청에서 `project: 프로젝트이름` 으로 대상을 바꿀 수 있습니다. 생략 시 기본 프로젝트가 사용됩니다.
+- 자연어 요청에서 `project: 프로젝트이름` 으로 대상을 바꿀 수 있습니다. 생략 시에는 텔레그램 채팅에서 `/project`로 선택한 작업 프로젝트가 있으면 그것을, 없으면 레지스트리의 기본 프로젝트가 사용됩니다.
 - `PROJECTS_CONFIG_PATH`가 없으면 기본 경로 `PROJECT_ROOT/.remote-coder/projects.json`을 사용합니다.
 - 레지스트리 파일이 없으면 `.env`의 초기 시드 값(`DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`)으로 자동 생성됩니다.
 
@@ -54,7 +54,9 @@ cp .env.example .env
 - `/model claude` : 현재 chat의 기본 모델을 claude로 변경
 - `/model codex` : 현재 chat의 기본 모델을 codex로 변경
 - `/status <job_id>` : 작업 상태 조회
-- `/projects` : 등록 프로젝트 목록
+- `/projects` : 등록 프로젝트 목록 및 이 채팅의 현재 적용 프로젝트
+- `/project` : 이 채팅의 현재 작업 프로젝트(인메모리) 확인
+- `/project <이름>` : 이 채팅의 작업 프로젝트를 등록된 이름으로 전환(인메모리, 레지스트리 기본값은 변경하지 않음)
 - `/branches` : 기본 프로젝트 저장소의 로컬·원격(`GIT_REMOTE_NAME`) 브랜치 목록
 - `/branch` : 기본 프로젝트 저장소의 현재 checkout 브랜치 표시
 - `/branch <이름>` : 기본 프로젝트에서 로컬 브랜치가 있을 때만 `git switch` (없으면 오류, 원격만 있는 브랜치는 자동 생성하지 않음)
@@ -65,6 +67,7 @@ cp .env.example .env
 참고:
 
 - `/model`로 변경한 기본 모델은 MVP에서는 인메모리 저장입니다. 서버 재시작 시 초기화됩니다.
+- `/project`로 선택한 작업 프로젝트도 채팅별 인메모리이며, 서버 재시작 시 초기화됩니다. `project:` 옵션이 있으면 그 값이 우선합니다.
 - AI Job은 기본 프로젝트 **현재 `HEAD` 커밋**에서 detached worktree를 만든 뒤 실행합니다. **워킹 트리에 변경이 있을 때만** 작업 브랜치를 만들고 커밋합니다. 커밋이 있으면 `GIT_REMOTE_NAME`(기본 `origin`)으로 push합니다. 저장소 브랜치를 바꾸려면 먼저 `/branch <이름>`으로 로컬 브랜치를 전환하세요.
 - 자연어 메시지에서 `model: codex`, `branch: my-branch`, `project: 등록이름`, `no commit` 토큰을 함께 사용할 수 있습니다.
 - 작업 완료/실패 메시지에는 AI 실행 결과 요약(`stdout`/`stderr`)이 함께 포함됩니다.

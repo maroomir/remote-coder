@@ -6,6 +6,7 @@ from app.jobs.schemas import JobRequest
 from app.models import ModelName
 from app.projects.registry import ProjectRegistry
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
+from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
 
 class CommandParseError(ValueError):
@@ -18,10 +19,12 @@ class CommandParser:
         project_registry: ProjectRegistry,
         default_model: ModelName,
         model_preferences: InMemoryModelPreferenceStore | None = None,
+        project_preferences: InMemoryProjectPreferenceStore | None = None,
     ) -> None:
         self._project_registry = project_registry
         self._default_model = default_model
         self._model_preferences = model_preferences
+        self._project_preferences = project_preferences
 
     @staticmethod
     def _extract_options(
@@ -75,7 +78,10 @@ class CommandParser:
                 "등록된 기본 프로젝트가 없습니다. 브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요.",
             )
 
-        project_name = project_slug or default_name
+        chat_pref = (
+            self._project_preferences.get(chat_id) if self._project_preferences is not None else None
+        )
+        project_name = project_slug or chat_pref or default_name
         entry = self._project_registry.get(project_name)
         if not entry:
             raise CommandParseError(f"알 수 없는 프로젝트: {project_name}")

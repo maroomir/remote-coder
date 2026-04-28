@@ -8,6 +8,7 @@ from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
 from app.projects.registry import ProjectRegistry
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
+from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
 
 @dataclass
@@ -23,8 +24,18 @@ class CommandContext:
     default_model: ModelName
     project_registry: ProjectRegistry
     model_preferences: InMemoryModelPreferenceStore
+    project_preferences: InMemoryProjectPreferenceStore
     git_service: GitWorktreeService
     git_remote_name: str
+
+
+def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | None:
+    """채팅별 `/project` 선택값이 있으면 그것, 없으면 레지스트리 전역 기본 프로젝트."""
+    pref = ctx.project_preferences.get(chat_id)
+    if pref:
+        return pref
+    default = ctx.project_registry.get_default_project_name()
+    return default or None
 
 
 class TelegramCommand(ABC):
@@ -52,6 +63,7 @@ class HelpCommand(TelegramCommand):
             "사용 가능한 명령어\n"
             "/start\n/help\n/model\n/model claude\n/model codex\n"
             "/status <job_id>\n/projects\n"
+            "/project\n/project <프로젝트이름>\n"
             "/branches\n"
             "/branch 또는 /branch <브랜치이름> (현재 브랜치 조회 / git switch)\n"
             "/rebase 또는 /rebase <branch>\n"
@@ -93,13 +105,44 @@ class ProjectsCommand(TelegramCommand):
     name = "/projects"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        _ = message
         default_name = ctx.project_registry.get_default_project_name()
-        lines = [f"기본 프로젝트: {default_name or '(없음)'}", "등록된 프로젝트"]
+        effective = effective_project_name_for_chat(ctx, message.chat_id)
+        lines = [
+            f"기본 프로젝트: {default_name or '(없음)'}",
+            f"현재 적용 프로젝트(이 채팅): {effective or '(없음)'}",
+            "등록된 프로젝트",
+        ]
         for p in ctx.project_registry.list_projects():
             state = "on" if p.enabled else "off"
             lines.append(f"- {p.name} [{state}] root={p.root_path}")
         return "\n".join(lines)
+
+
+class ProjectCommand(TelegramCommand):
+    """채팅별 작업 프로젝트 조회·전환(인메모리). 레지스트리 전역 기본값은 바꾸지 않습니다."""
+
+    name = "/project"
+
+    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
+        tokens = message.text.strip().split()
+        if len(tokens) == 1:
+            eff = effective_project_name_for_chat(ctx, message.chat_id)
+            if not eff:
+                return (
+                    "등록된 기본 프로젝트가 없습니다. "
+                    "브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요."
+                )
+            return f"현재 작업 프로젝트: {eff}"
+        if len(tokens) == 2:
+            name = tokens[1]
+            entry = ctx.project_registry.get(name)
+            if not entry:
+                return f"알 수 없는 프로젝트: {name}"
+            if not entry.enabled:
+                return f"비활성화된 프로젝트: {name}"
+            ctx.project_preferences.set(message.chat_id, name)
+            return f"작업 프로젝트가 {name}로 변경되었습니다."
+        return "사용법: /project 또는 /project <프로젝트이름>"
 
 
 class BranchesCommand(TelegramCommand):
