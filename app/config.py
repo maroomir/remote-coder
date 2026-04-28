@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     job_timeout_seconds: int = 1800
     keep_worktree_on_success: bool = True
     projects_config_path: Path | None = None
+    git_remote_name: str = "origin"
 
     @field_validator("telegram_allowed_chat_ids", mode="before")
     @classmethod

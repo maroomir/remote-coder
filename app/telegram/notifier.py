@@ -48,12 +48,18 @@ class TelegramNotifier:
     def send_job_result(self, job: Job) -> None:
         if job.status.value == "succeeded":
             changed = ", ".join(job.changed_files) if job.changed_files else "변경 없음"
+            branch_line = job.branch if job.branch else "(없음 — 변경 없어 브랜치 미생성)"
+            commit_line = job.commit_hash or "-"
+            if job.changed_files and not job.request.commit:
+                commit_line = "(no commit 옵션 — 커밋·push 생략)"
+            elif job.changed_files and job.request.commit and not job.commit_hash:
+                commit_line = "(스테이징된 변경 없음 — push 생략)"
             text = (
                 f"작업 완료\n"
                 f"Job ID: {job.id}\n"
                 f"프로젝트: {job.request.project}\n"
-                f"브랜치: {job.branch}\n"
-                f"커밋: {job.commit_hash or '-'}\n"
+                f"브랜치: {branch_line}\n"
+                f"커밋: {commit_line}\n"
                 f"변경 파일: {changed}"
             )
             if job.runner_stdout_summary:

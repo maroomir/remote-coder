@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -5,11 +7,15 @@ from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import (
+    BranchCommand,
+    BranchesCommand,
+    ClearCommand,
     CommandContext,
     CommandRegistry,
     HelpCommand,
     ModelCommand,
     ProjectsCommand,
+    RebaseCommand,
     StartCommand,
     StatusCommand,
 )
@@ -52,13 +58,25 @@ def test_webhook_accepts_natural_message(project_registry):
                 default_model=ModelName.CLAUDE,
             ),
             command_registry=CommandRegistry(
-                [StartCommand(), HelpCommand(), ModelCommand(), StatusCommand(), ProjectsCommand()]
+                [
+                    StartCommand(),
+                    HelpCommand(),
+                    ModelCommand(),
+                    StatusCommand(),
+                    ProjectsCommand(),
+                    BranchesCommand(),
+                    BranchCommand(),
+                    RebaseCommand(),
+                    ClearCommand(),
+                ]
             ),
             command_context=CommandContext(
                 job_store=store,
                 default_model=ModelName.CLAUDE,
                 project_registry=project_registry,
                 model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+                git_service=Mock(),
+                git_remote_name="origin",
             ),
             job_manager=DummyJobManager(),
             job_store=store,
@@ -88,13 +106,25 @@ def test_webhook_sends_command_response_to_telegram(project_registry):
                 default_model=ModelName.CLAUDE,
             ),
             command_registry=CommandRegistry(
-                [StartCommand(), HelpCommand(), ModelCommand(), StatusCommand(), ProjectsCommand()]
+                [
+                    StartCommand(),
+                    HelpCommand(),
+                    ModelCommand(),
+                    StatusCommand(),
+                    ProjectsCommand(),
+                    BranchesCommand(),
+                    BranchCommand(),
+                    RebaseCommand(),
+                    ClearCommand(),
+                ]
             ),
             command_context=CommandContext(
                 job_store=store,
                 default_model=ModelName.CLAUDE,
                 project_registry=project_registry,
                 model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+                git_service=Mock(),
+                git_remote_name="origin",
             ),
             job_manager=DummyJobManager(),
             job_store=store,

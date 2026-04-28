@@ -15,3 +15,4 @@ def test_parse_allowed_chat_ids_from_string(tmp_path):
     assert settings.telegram_allowed_chat_ids == [1, 2, 3]
     assert settings.telegram_allowed_user_ids == [9, 10]
     assert settings.default_model == ModelName.CLAUDE
+    assert settings.git_remote_name == "origin"

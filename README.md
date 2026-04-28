@@ -21,6 +21,7 @@ cp .env.example .env
 - `TELEGRAM_ALLOWED_CHAT_IDS`
 - `TELEGRAM_ALLOWED_USER_IDS` (선택)
 - 필요 시 `TELEGRAM_WEBHOOK_SECRET`
+- 선택: `GIT_REMOTE_NAME` (기본 `origin`) — 커밋 후 push 및 `/rebase`, `/clear` 시 사용
 - 선택: `PROJECTS_CONFIG_PATH` — 여러 Git 프로젝트 등록 파일(JSON 또는 `.yaml`) 경로
 - 초기 시드(1회용): `DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`
 
@@ -54,11 +55,17 @@ cp .env.example .env
 - `/model codex` : 현재 chat의 기본 모델을 codex로 변경
 - `/status <job_id>` : 작업 상태 조회
 - `/projects` : 등록 프로젝트 목록
+- `/branches` : 기본 프로젝트 저장소의 로컬·원격(`GIT_REMOTE_NAME`) 브랜치 목록
+- `/branch` : 기본 프로젝트 저장소의 현재 checkout 브랜치 표시
+- `/branch <이름>` : 기본 프로젝트에서 로컬 브랜치가 있을 때만 `git switch` (없으면 오류, 원격만 있는 브랜치는 자동 생성하지 않음)
+- `/rebase` 또는 `/rebase <branch>` : 기본 프로젝트에서 해당 브랜치를 `main`(또는 `master`) 기준으로 rebase한 뒤 `main`에 fast-forward 병합 후 원격에 push (인자 생략 시 이 채팅의 최근 성공 Job 브랜치)
+- `/clear` : 등록된 enabled 프로젝트마다 `remote-*` 로컬·원격 브랜치 일괄 삭제
 - 자연어 메시지: AI 작업 요청 생성
 
 참고:
 
 - `/model`로 변경한 기본 모델은 MVP에서는 인메모리 저장입니다. 서버 재시작 시 초기화됩니다.
+- AI Job은 기본 프로젝트 **현재 `HEAD` 커밋**에서 detached worktree를 만든 뒤 실행합니다. **워킹 트리에 변경이 있을 때만** 작업 브랜치를 만들고 커밋합니다. 커밋이 있으면 `GIT_REMOTE_NAME`(기본 `origin`)으로 push합니다. 저장소 브랜치를 바꾸려면 먼저 `/branch <이름>`으로 로컬 브랜치를 전환하세요.
 - 자연어 메시지에서 `model: codex`, `branch: my-branch`, `project: 등록이름`, `no commit` 토큰을 함께 사용할 수 있습니다.
 - 작업 완료/실패 메시지에는 AI 실행 결과 요약(`stdout`/`stderr`)이 함께 포함됩니다.
 - 전체 출력 원문은 worktree 로그 파일(`WORKTREE_BASE_DIR/_logs/<job_id>.log`)에서 확인할 수 있습니다.

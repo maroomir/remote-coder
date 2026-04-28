@@ -10,11 +10,15 @@ from app.jobs.store import InMemoryJobStore
 from app.projects.registry import ProjectRegistry, projects_config_path_for_settings
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import (
+    BranchCommand,
+    BranchesCommand,
+    ClearCommand,
     CommandContext,
     CommandRegistry,
     HelpCommand,
     ModelCommand,
     ProjectsCommand,
+    RebaseCommand,
     StartCommand,
     StatusCommand,
 )
@@ -39,15 +43,27 @@ parser = CommandParser(
     model_preferences=model_preferences,
 )
 command_registry = CommandRegistry(
-    commands=[StartCommand(), HelpCommand(), ModelCommand(), StatusCommand(), ProjectsCommand()]
+    commands=[
+        StartCommand(),
+        HelpCommand(),
+        ModelCommand(),
+        StatusCommand(),
+        ProjectsCommand(),
+        BranchesCommand(),
+        BranchCommand(),
+        RebaseCommand(),
+        ClearCommand(),
+    ]
 )
+git_service = GitWorktreeService(base_dir=settings.worktree_base_dir)
 command_context = CommandContext(
     job_store=job_store,
     default_model=settings.default_model,
     project_registry=project_registry,
     model_preferences=model_preferences,
+    git_service=git_service,
+    git_remote_name=settings.git_remote_name,
 )
-git_service = GitWorktreeService(base_dir=settings.worktree_base_dir)
 runner_factory = AiRunnerFactory()
 branch_strategy = TimestampSlugStrategy()
 notifier = TelegramNotifier(settings.telegram_bot_token.get_secret_value())

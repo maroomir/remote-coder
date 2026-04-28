@@ -32,6 +32,27 @@ def test_notifier_send_job_result_success():
 
 
 @respx.mock
+def test_notifier_success_without_branch_shows_no_branch_message():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    job = Job(
+        id="j0",
+        request=JobRequest(
+            project="proj", model=ModelName.CLAUDE, instruction="x", chat_id=1, requested_by=1
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch=None,
+        commit_hash=None,
+        changed_files=[],
+    )
+    notifier.send_job_result(job)
+    payload = route.calls[0].request.content.decode()
+    assert "미생성" in payload or "없음" in payload
+
+
+@respx.mock
 def test_notifier_send_job_result_failure_includes_log_path():
     route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
         return_value=Response(200, json={"ok": True})

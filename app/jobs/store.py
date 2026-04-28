@@ -3,7 +3,7 @@ from __future__ import annotations
 from threading import Lock
 from typing import Protocol
 
-from app.jobs.schemas import Job
+from app.jobs.schemas import Job, JobStatus
 
 
 class JobStore(Protocol):
@@ -17,6 +17,9 @@ class JobStore(Protocol):
         ...
 
     def list_recent(self, limit: int = 20) -> list[Job]:
+        ...
+
+    def get_latest_succeeded_branch_for_chat(self, chat_id: int) -> str | None:
         ...
 
 
@@ -41,3 +44,20 @@ class InMemoryJobStore:
         with self._lock:
             values = sorted(self._jobs.values(), key=lambda job: job.created_at, reverse=True)
             return values[:limit]
+
+    def get_latest_succeeded_branch_for_chat(self, chat_id: int) -> str | None:
+        with self._lock:
+            candidates = [
+                j
+                for j in self._jobs.values()
+                if j.request.chat_id == chat_id
+                and j.status == JobStatus.SUCCEEDED
+                and j.branch
+            ]
+            if not candidates:
+                return None
+            candidates.sort(
+                key=lambda j: (j.finished_at or j.created_at, j.created_at),
+                reverse=True,
+            )
+            return candidates[0].branch

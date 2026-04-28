@@ -62,15 +62,18 @@ class JobManager:
         worktree_base = entry.worktree_base_dir
         worktree_path: Path | None = None
         failed_stage: str | None = None
+        remote = self._settings.git_remote_name
         try:
             job.mark_running()
-            job.branch = job.request.branch or self._branch_strategy.make_branch_name(job.request.instruction)
             self._job_store.update(job)
 
             failed_stage = "git_worktree"
-            worktree_path = self._git_service.prepare_worktree(
-                project_path, job.branch, job.id, worktree_base_dir=worktree_base
+            worktree_path = self._git_service.prepare_detached_worktree(
+                project_path,
+                job.id,
+                worktree_base_dir=worktree_base,
             )
+
             failed_stage = "runner"
             runner = self._runner_factory.create(job.request.model)
             runner_result = runner.run(
@@ -88,10 +91,31 @@ class JobManager:
 
             failed_stage = "git_commit"
             job.changed_files = self._git_service.collect_changes(worktree_path)
-            if job.request.commit:
-                job.commit_hash = self._git_service.commit_all(worktree_path, f"remote-coder: {job.id}")
-            job.mark_succeeded()
-            self._job_store.update(job)
+
+            if not job.changed_files:
+                job.branch = None
+                job.commit_hash = None
+                job.mark_succeeded()
+                self._job_store.update(job)
+            else:
+                job.branch = job.request.branch or self._branch_strategy.make_branch_name(job.request.instruction)
+                self._job_store.update(job)
+                self._git_service.create_branch_in_worktree(worktree_path, job.branch)
+                job.changed_files = self._git_service.collect_changes(worktree_path)
+
+                if job.request.commit:
+                    job.commit_hash = self._git_service.commit_all(
+                        worktree_path, f"remote-coder: {job.id}"
+                    )
+                else:
+                    job.commit_hash = None
+
+                if job.request.commit and job.commit_hash:
+                    failed_stage = "git_push"
+                    self._git_service.push_branch(project_path, remote, job.branch)
+
+                job.mark_succeeded()
+                self._job_store.update(job)
         except Exception as exc:  # pylint: disable=broad-except
             job.mark_failed(str(exc))
             job.error_stage = failed_stage or "unknown"
