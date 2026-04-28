@@ -20,9 +20,19 @@ cp .env.example .env
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_ALLOWED_CHAT_IDS`
 - `TELEGRAM_ALLOWED_USER_IDS` (선택)
-- `PROJECT_ROOT`
-- `WORKTREE_BASE_DIR`
 - 필요 시 `TELEGRAM_WEBHOOK_SECRET`
+- 선택: `PROJECTS_CONFIG_PATH` — 여러 Git 프로젝트 등록 파일(JSON 또는 `.yaml`) 경로
+- 초기 시드(1회용): `DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`
+
+## 2.5) 로컬 관리 UI (프로젝트 등록)
+
+서버를 띄운 뒤 **같은 머신**에서 브라우저로 접속합니다.
+
+- URL: `http://127.0.0.1:8000/`
+- 등록된 프로젝트 목록, 추가·수정·삭제, 기본 프로젝트 지정
+- 자연어 요청에서 `project: 프로젝트이름` 으로 대상을 바꿀 수 있습니다. 생략 시 기본 프로젝트가 사용됩니다.
+- `PROJECTS_CONFIG_PATH`가 없으면 기본 경로 `PROJECT_ROOT/.remote-coder/projects.json`을 사용합니다.
+- 레지스트리 파일이 없으면 `.env`의 초기 시드 값(`DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`)으로 자동 생성됩니다.
 
 ## 3) 한 번에 실행하기 (권장)
 
@@ -49,7 +59,7 @@ cp .env.example .env
 참고:
 
 - `/model`로 변경한 기본 모델은 MVP에서는 인메모리 저장입니다. 서버 재시작 시 초기화됩니다.
-- 자연어 메시지에서 `model: codex`, `branch: my-branch`, `no commit` 토큰을 함께 사용할 수 있습니다.
+- 자연어 메시지에서 `model: codex`, `branch: my-branch`, `project: 등록이름`, `no commit` 토큰을 함께 사용할 수 있습니다.
 
 ## 6) 테스트
 

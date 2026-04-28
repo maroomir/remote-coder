@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Remote AI Coder - 설정</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 52rem; margin: 1.5rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.35rem; }
+    section { margin-bottom: 2rem; border: 1px solid #ccc; border-radius: 8px; padding: 1rem; }
+    label { display: block; margin-top: 0.5rem; font-weight: 600; font-size: 0.85rem; }
+    input, select { width: 100%; max-width: 40rem; padding: 0.35rem 0.5rem; margin-top: 0.15rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; font-size: 0.9rem; }
+    th, td { border: 1px solid #ddd; padding: 0.35rem 0.5rem; text-align: left; vertical-align: top; }
+    th { background: #f5f5f5; }
+    button { margin-top: 0.5rem; margin-right: 0.35rem; padding: 0.4rem 0.75rem; cursor: pointer; }
+    .muted { color: #666; font-size: 0.85rem; }
+    .err { color: #b00; white-space: pre-wrap; }
+    .ok { color: #060; }
+  </style>
+</head>
+<body>
+  <h1>Remote AI Coder</h1>
+  <p class="muted">이 페이지는 127.0.0.1 에서만 열립니다.</p>
+
+  <section>
+    <h2>프로젝트 등록</h2>
+    <p class="muted">기본 프로젝트는 자연어 요청에서 <code>project:</code> 를 생략할 때 사용됩니다.</p>
+    <div id="proj-msg" class="err"></div>
+    <table id="proj-table">
+      <thead><tr><th>이름</th><th>활성</th><th>루트</th><th>워크트리</th><th>기본 모델</th><th>동작</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <h3 style="margin-top:1.25rem">추가 / 수정</h3>
+    <form id="proj-form">
+      <label>이름 (영문/숫자/._-)</label>
+      <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*" />
+      <label>Git 루트 경로 (절대 경로)</label>
+      <input name="root_path" required />
+      <label>워크트리 베이스 디렉터리</label>
+      <input name="worktree_base_dir" required />
+      <label>기본 모델</label>
+      <select name="default_model"><option value="claude">claude</option><option value="codex">codex</option></select>
+      <label><input type="checkbox" name="enabled" checked /> 활성</label>
+      <div>
+        <button type="submit" id="btn-add">추가</button>
+        <button type="button" id="btn-clear">폼 비우기</button>
+      </div>
+    </form>
+  </section>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const msg = $("#proj-msg");
+    function showErr(t) { msg.textContent = t || ""; msg.className = t ? "err" : "ok"; }
+    let lastProjects = [];
+    function row(p) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><code>${escapeHtml(p.name)}</code></td>
+        <td>${p.enabled ? "예" : "아니오"}</td>
+        <td><small>${escapeHtml(p.root_path)}</small></td>
+        <td><small>${escapeHtml(p.worktree_base_dir)}</small></td>
+        <td>${escapeHtml(p.default_model)}</td>
+        <td>
+          <button type="button" data-a="default" data-n="${escapeAttr(p.name)}">기본으로</button>
+          <button type="button" data-a="edit" data-n="${escapeAttr(p.name)}">편집</button>
+          <button type="button" data-a="del" data-n="${escapeAttr(p.name)}">삭제</button>
+        </td>`;
+      return tr;
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[c]));
+    }
+    function escapeAttr(s) {
+      return String(s).replace(/'/g, "&#39;");
+    }
+    async function loadProjects() {
+      showErr("");
+      const r = await fetch("/api/projects");
+      const d = await r.json();
+      const tb = $("#proj-table tbody");
+      tb.innerHTML = "";
+      lastProjects = d.projects || [];
+      lastProjects.forEach((p) => tb.appendChild(row(p)));
+      const cap = document.createElement("caption");
+      cap.className = "muted";
+      cap.textContent = "현재 기본 프로젝트: " + (d.default_project || "(없음)");
+      const tbl = $("#proj-table");
+      const old = tbl.querySelector("caption");
+      if (old) old.remove();
+      tbl.prepend(cap);
+    }
+    $("#proj-table").addEventListener("click", async (e) => {
+      const b = e.target.closest("button[data-a]");
+      if (!b) return;
+      const a = b.dataset.a;
+      const n = b.dataset.n;
+      if (a === "default") {
+        showErr("");
+        const r = await fetch("/api/projects/default", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: n }),
+        });
+        const t = await r.text();
+        if (!r.ok) { showErr(t); return; }
+        await loadProjects();
+      }
+      if (a === "del") {
+        if (!confirm("삭제할까요? " + n)) return;
+        const r = await fetch("/api/projects/" + encodeURIComponent(n), { method: "DELETE" });
+        const t = await r.text();
+        if (!r.ok) { showErr(t); return; }
+        await loadProjects();
+      }
+      if (a === "edit") {
+        const p = lastProjects.find((x) => x.name === n);
+        if (!p) return;
+        const f = $("#proj-form");
+        f.name.value = p.name;
+        f.root_path.value = p.root_path;
+        f.worktree_base_dir.value = p.worktree_base_dir;
+        f.default_model.value = p.default_model;
+        f.enabled.checked = !!p.enabled;
+        f.name.readOnly = true;
+        $("#btn-add").textContent = "이름으로 수정 (PUT)";
+      }
+    });
+    $("#btn-clear").addEventListener("click", () => {
+      $("#proj-form").reset();
+      $("#proj-form").name.readOnly = false;
+      $("#btn-add").textContent = "추가";
+    });
+    $("#proj-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      showErr("");
+      const f = e.target;
+      const body = {
+        name: f.name.value.trim(),
+        root_path: f.root_path.value.trim(),
+        worktree_base_dir: f.worktree_base_dir.value.trim(),
+        default_model: f.default_model.value,
+        enabled: f.enabled.checked,
+      };
+      const editing = f.name.readOnly;
+      const url = editing ? "/api/projects/" + encodeURIComponent(body.name) : "/api/projects";
+      const method = editing ? "PUT" : "POST";
+      const r = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const t = await r.text();
+      if (!r.ok) { showErr(t); return; }
+      f.name.readOnly = false;
+      $("#btn-add").textContent = "추가";
+      f.reset();
+      await loadProjects();
+    });
+    loadProjects();
+  </script>
+</body>
+</html>

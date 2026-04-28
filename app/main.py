@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 
+from app.admin.router import create_admin_router
 from app.ai.factory import AiRunnerFactory
 from app.config import get_settings
 from app.git.branch_naming import TimestampSlugStrategy
 from app.git.service import GitWorktreeService
 from app.jobs.manager import JobManager
 from app.jobs.store import InMemoryJobStore
+from app.projects.registry import ProjectRegistry, projects_config_path_for_settings
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import (
     CommandContext,
@@ -22,13 +24,17 @@ from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.webhook import create_webhook_router
 
 settings = get_settings()
+_projects_path = projects_config_path_for_settings(settings.project_root, settings.projects_config_path)
+project_registry = ProjectRegistry(_projects_path)
+project_registry.ensure_seeded_from_settings(settings)
+
 job_store = InMemoryJobStore()
 auth_service = AllowlistAuthService(
     set(settings.telegram_allowed_chat_ids), set(settings.telegram_allowed_user_ids)
 )
 model_preferences = InMemoryModelPreferenceStore(default_model=settings.default_model)
 parser = CommandParser(
-    default_project=settings.default_project,
+    project_registry=project_registry,
     default_model=settings.default_model,
     model_preferences=model_preferences,
 )
@@ -38,7 +44,7 @@ command_registry = CommandRegistry(
 command_context = CommandContext(
     job_store=job_store,
     default_model=settings.default_model,
-    projects=[settings.default_project],
+    project_registry=project_registry,
     model_preferences=model_preferences,
 )
 git_service = GitWorktreeService(base_dir=settings.worktree_base_dir)
@@ -52,9 +58,11 @@ job_manager = JobManager(
     runner_factory=runner_factory,
     branch_strategy=branch_strategy,
     notifier=notifier,
+    project_registry=project_registry,
 )
 
 app = FastAPI(title="Remote AI Coder")
+app.include_router(create_admin_router(settings, project_registry))
 app.include_router(
     create_webhook_router(
         auth_service=auth_service,

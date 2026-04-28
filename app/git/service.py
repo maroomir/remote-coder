@@ -19,8 +19,16 @@ class GitWorktreeService:
             shell=False,
         )
 
-    def prepare_worktree(self, project_path: Path, branch_name: str, job_id: str) -> Path:
-        worktree_path = self._base_dir / job_id
+    def prepare_worktree(
+        self,
+        project_path: Path,
+        branch_name: str,
+        job_id: str,
+        worktree_base_dir: Path | None = None,
+    ) -> Path:
+        base = worktree_base_dir if worktree_base_dir is not None else self._base_dir
+        base.mkdir(parents=True, exist_ok=True)
+        worktree_path = base / job_id
         result = self._run_git(project_path, ["worktree", "add", "-b", branch_name, str(worktree_path)])
         if result.returncode != 0:
             raise RuntimeError(f"failed to create worktree: {result.stderr.strip()}")

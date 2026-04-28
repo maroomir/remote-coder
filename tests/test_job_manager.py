@@ -8,7 +8,7 @@ from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
 
 
-def test_job_manager_submit_and_run_success(test_settings):
+def test_job_manager_submit_and_run_success(test_settings, project_registry):
     store = InMemoryJobStore()
     git_service = Mock()
     git_service.prepare_worktree.return_value = Path("/tmp/wt")
@@ -24,9 +24,17 @@ def test_job_manager_submit_and_run_success(test_settings):
     branch_strategy.make_branch_name.return_value = "remote-test"
     notifier = Mock()
 
-    manager = JobManager(test_settings, store, git_service, factory, branch_strategy, notifier)
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        notifier,
+        project_registry,
+    )
     request = JobRequest(
-        project="proj",
+        project="remote-coder",
         model=ModelName.CLAUDE,
         instruction="fix bug",
         chat_id=123,
@@ -38,9 +46,41 @@ def test_job_manager_submit_and_run_success(test_settings):
     assert final_job.status.value == "succeeded"
     assert final_job.commit_hash == "abc123"
     assert final_job.log_path is not None
+    call = git_service.prepare_worktree.call_args
+    assert call.args[0] == test_settings.project_root
+    assert call.kwargs.get("worktree_base_dir") == test_settings.worktree_base_dir
 
 
-def test_job_manager_marks_failed_stage_on_runner_error(test_settings):
+def test_job_manager_unknown_project_fails(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    factory = Mock()
+    branch_strategy = Mock()
+    notifier = Mock()
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="does-not-exist",
+        model=ModelName.CLAUDE,
+        instruction="x",
+        chat_id=1,
+        requested_by=1,
+    )
+    job = manager.submit(request)
+    final = manager.run(job.id)
+    assert final.status.value == "failed"
+    assert final.error_stage == "project_resolve"
+    git_service.prepare_worktree.assert_not_called()
+
+
+def test_job_manager_marks_failed_stage_on_runner_error(test_settings, project_registry):
     store = InMemoryJobStore()
     git_service = Mock()
     git_service.prepare_worktree.return_value = Path("/tmp/wt")
@@ -54,9 +94,17 @@ def test_job_manager_marks_failed_stage_on_runner_error(test_settings):
     branch_strategy.make_branch_name.return_value = "remote-test"
     notifier = Mock()
 
-    manager = JobManager(test_settings, store, git_service, factory, branch_strategy, notifier)
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        notifier,
+        project_registry,
+    )
     request = JobRequest(
-        project="proj",
+        project="remote-coder",
         model=ModelName.CLAUDE,
         instruction="fix bug",
         chat_id=123,

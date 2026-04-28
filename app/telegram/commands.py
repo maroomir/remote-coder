@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
+from app.projects.registry import ProjectRegistry
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 
 
@@ -19,7 +20,7 @@ class TelegramMessage:
 class CommandContext:
     job_store: InMemoryJobStore
     default_model: ModelName
-    projects: list[str]
+    project_registry: ProjectRegistry
     model_preferences: InMemoryModelPreferenceStore
 
 
@@ -48,7 +49,8 @@ class HelpCommand(TelegramCommand):
             "사용 가능한 명령어\n"
             "/start\n/help\n/model\n/model claude\n/model codex\n"
             "/status <job_id>\n/projects\n"
-            "또는 자연어 지시문을 입력하세요."
+            "또는 자연어 지시문을 입력하세요. "
+            "(옵션: model:, branch:, project:, no commit)"
         )
 
 
@@ -85,7 +87,12 @@ class ProjectsCommand(TelegramCommand):
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         _ = message
-        return "등록된 프로젝트\n" + "\n".join(f"- {project}" for project in ctx.projects)
+        default_name = ctx.project_registry.get_default_project_name()
+        lines = [f"기본 프로젝트: {default_name or '(없음)'}", "등록된 프로젝트"]
+        for p in ctx.project_registry.list_projects():
+            state = "on" if p.enabled else "off"
+            lines.append(f"- {p.name} [{state}] root={p.root_path}")
+        return "\n".join(lines)
 
 
 class CommandRegistry:

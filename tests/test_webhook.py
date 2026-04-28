@@ -40,21 +40,24 @@ class DummyNotifier:
         self.sent.append((chat_id, text))
 
 
-def test_webhook_accepts_natural_message():
+def test_webhook_accepts_natural_message(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
     app.include_router(
         create_webhook_router(
             auth_service=AllowlistAuthService({123}),
-            parser=CommandParser(default_project="proj", default_model=ModelName.CLAUDE),
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
             command_registry=CommandRegistry(
                 [StartCommand(), HelpCommand(), ModelCommand(), StatusCommand(), ProjectsCommand()]
             ),
             command_context=CommandContext(
                 job_store=store,
                 default_model=ModelName.CLAUDE,
-                projects=["proj"],
+                project_registry=project_registry,
                 model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
             ),
             job_manager=DummyJobManager(),
@@ -73,21 +76,24 @@ def test_webhook_accepts_natural_message():
     assert response.json()["status"] == "accepted"
 
 
-def test_webhook_sends_command_response_to_telegram():
+def test_webhook_sends_command_response_to_telegram(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
     app.include_router(
         create_webhook_router(
             auth_service=AllowlistAuthService({123}),
-            parser=CommandParser(default_project="proj", default_model=ModelName.CLAUDE),
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
             command_registry=CommandRegistry(
                 [StartCommand(), HelpCommand(), ModelCommand(), StatusCommand(), ProjectsCommand()]
             ),
             command_context=CommandContext(
                 job_store=store,
                 default_model=ModelName.CLAUDE,
-                projects=["proj"],
+                project_registry=project_registry,
                 model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
             ),
             job_manager=DummyJobManager(),
