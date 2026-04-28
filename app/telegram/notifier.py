@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 class TelegramNotifier:
+    _TELEGRAM_TEXT_LIMIT = 4096
+
     def __init__(self, bot_token: str) -> None:
         self._api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
 
@@ -54,6 +56,8 @@ class TelegramNotifier:
                 f"커밋: {job.commit_hash or '-'}\n"
                 f"변경 파일: {changed}"
             )
+            if job.runner_stdout_summary:
+                text += f"\n\nAI 응답:\n{job.runner_stdout_summary}"
         else:
             details = []
             if job.error_stage:
@@ -68,4 +72,14 @@ class TelegramNotifier:
             )
             if details:
                 text += "\n" + "\n".join(details)
-        self.send_text(job.request.chat_id, text)
+            failure_summary = job.runner_stderr_summary or job.runner_stdout_summary
+            if failure_summary:
+                text += f"\n\n실패 출력 요약:\n{failure_summary}"
+        self.send_text(job.request.chat_id, self._truncate_text(text))
+
+    def _truncate_text(self, text: str) -> str:
+        if len(text) <= self._TELEGRAM_TEXT_LIMIT:
+            return text
+        suffix = "\n...(truncated)"
+        allowed = self._TELEGRAM_TEXT_LIMIT - len(suffix)
+        return text[:allowed].rstrip() + suffix

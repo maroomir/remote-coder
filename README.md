@@ -60,6 +60,13 @@ cp .env.example .env
 
 - `/model`로 변경한 기본 모델은 MVP에서는 인메모리 저장입니다. 서버 재시작 시 초기화됩니다.
 - 자연어 메시지에서 `model: codex`, `branch: my-branch`, `project: 등록이름`, `no commit` 토큰을 함께 사용할 수 있습니다.
+- 작업 완료/실패 메시지에는 AI 실행 결과 요약(`stdout`/`stderr`)이 함께 포함됩니다.
+- 전체 출력 원문은 worktree 로그 파일(`WORKTREE_BASE_DIR/_logs/<job_id>.log`)에서 확인할 수 있습니다.
+
+## 5) 모델별 사용 가이드
+
+- Claude 사용자: [`docs/claude-guide.md`](docs/claude-guide.md)
+- Codex 사용자: [`docs/codex-guide.md`](docs/codex-guide.md)
 
 ## 6) 테스트
 

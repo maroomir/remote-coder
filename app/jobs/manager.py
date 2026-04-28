@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -16,6 +17,10 @@ from app.telegram.notifier import TelegramNotifier
 
 
 class JobManager:
+    _ANSI_ESCAPE_PATTERN = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+    _STDOUT_SUMMARY_LIMIT = 1200
+    _STDERR_SUMMARY_LIMIT = 800
+
     def __init__(
         self,
         settings: Settings,
@@ -121,3 +126,21 @@ class JobManager:
         )
         log_path.write_text(log_text, encoding="utf-8")
         job.log_path = log_path
+        job.runner_stdout_summary = self._make_output_summary(
+            runner_result.stdout, limit=self._STDOUT_SUMMARY_LIMIT
+        )
+        job.runner_stderr_summary = self._make_output_summary(
+            runner_result.stderr, limit=self._STDERR_SUMMARY_LIMIT
+        )
+
+    @classmethod
+    def _make_output_summary(cls, text: str, limit: int) -> str | None:
+        if not text:
+            return None
+        no_ansi = cls._ANSI_ESCAPE_PATTERN.sub("", text)
+        normalized = "\n".join(line.rstrip() for line in no_ansi.splitlines()).strip()
+        if not normalized:
+            return None
+        if len(normalized) <= limit:
+            return normalized
+        return f"{normalized[:limit].rstrip()}...(truncated)"

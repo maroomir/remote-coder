@@ -36,6 +36,8 @@ class Job(BaseModel):
     changed_files: list[str] = Field(default_factory=list)
     error: str | None = None
     error_stage: str | None = None
+    runner_stdout_summary: str | None = None
+    runner_stderr_summary: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None

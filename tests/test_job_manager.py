@@ -46,6 +46,8 @@ def test_job_manager_submit_and_run_success(test_settings, project_registry):
     assert final_job.status.value == "succeeded"
     assert final_job.commit_hash == "abc123"
     assert final_job.log_path is not None
+    assert final_job.runner_stdout_summary == "ok"
+    assert final_job.runner_stderr_summary is None
     call = git_service.prepare_worktree.call_args
     assert call.args[0] == test_settings.project_root
     assert call.kwargs.get("worktree_base_dir") == test_settings.worktree_base_dir
@@ -115,3 +117,46 @@ def test_job_manager_marks_failed_stage_on_runner_error(test_settings, project_r
 
     assert final_job.status.value == "failed"
     assert final_job.error_stage == "runner"
+    assert final_job.runner_stdout_summary is None
+    assert final_job.runner_stderr_summary == "runner crashed"
+
+
+def test_job_manager_truncates_runner_output_summary(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_worktree.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = []
+    git_service.commit_all.return_value = None
+    factory = Mock()
+    runner = Mock()
+    long_stdout = "A" * 1400
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout=long_stdout, stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    branch_strategy.make_branch_name.return_value = "remote-test"
+    notifier = Mock()
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="summarize output",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    final_job = manager.run(job.id)
+
+    assert final_job.status.value == "succeeded"
+    assert final_job.runner_stdout_summary is not None
+    assert final_job.runner_stdout_summary.endswith("...(truncated)")
