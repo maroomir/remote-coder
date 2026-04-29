@@ -25,6 +25,7 @@ cp .env.example .env
 - 선택: `PROJECTS_CONFIG_PATH` — 여러 Git 프로젝트 등록 파일(JSON 또는 `.yaml`) 경로
 - 선택: `CONVERSATION_DB_PATH` — 프로젝트+채팅별 대화 기억 SQLite 경로 (미설정 시 `PROJECT_ROOT/.remote-coder/conversations.sqlite3`)
 - 선택: `CONVERSATION_RECENT_LIMIT` — 모호한 후속 요청 시 runner에 붙이는 최근 기록 개수 (기본 `10`)
+- 선택: `CODEX_SANDBOX` — Codex `codex exec --sandbox` 값 (`read-only`, `workspace-write`, `danger-full-access`). 기본 `workspace-write`(Job worktree에서 파일 수정 가능)
 - 초기 시드(1회용): `DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`
 
 ## 2.5) 로컬 관리 UI (프로젝트 등록)
@@ -81,6 +82,7 @@ cp .env.example .env
 
 - Claude 사용자: [`docs/claude-guide.md`](docs/claude-guide.md)
 - Codex 사용자: [`docs/codex-guide.md`](docs/codex-guide.md)
+- Worktree가 read-only로 실패할 때: [`docs/read-only-workspace.md`](docs/read-only-workspace.md)
 
 ## 6) 테스트
 

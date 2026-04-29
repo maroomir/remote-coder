@@ -90,6 +90,7 @@ model: claude branch: test-branch README 정리해줘
 
 - 서버는 worktree 경로에 임시 파일을 써서 쓰기 가능 여부를 먼저 확인합니다. 실패 시 `git_worktree` 단계에서 끝납니다.
 - 종료 코드가 0이어도 출력에 `read-only` / `readonly` / `읽기 전용` / `수정 불가`가 있고 Git 변경이 없으면 **실패**로 처리됩니다. `WORKTREE_BASE_DIR` 권한과 마운트 옵션을 확인하세요.
+- 단계별 점검은 [read-only 워크스페이스 가이드](read-only-workspace.md)를 참고하세요.
 
 ### 권한 옵션 관련 주의
 

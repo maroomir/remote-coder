@@ -5,7 +5,7 @@ from typing import Self
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.models import ModelName
+from app.models import CodexSandboxMode, ModelName
 
 
 class Settings(BaseSettings):
@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # 프로젝트+채팅별 대화 기억(SQLite). 미설정 시 PROJECT_ROOT/.remote-coder/conversations.sqlite3
     conversation_db_path: Path | None = None
     conversation_recent_limit: int = 10
+
+    # Codex `codex exec` 샌드박스. 기본 workspace-write (워크트리 내 파일 수정 허용). read-only는 편집 불가.
+    codex_sandbox: CodexSandboxMode = CodexSandboxMode.WORKSPACE_WRITE
 
     @model_validator(mode="after")
     def _default_conversation_db_path(self) -> Self:

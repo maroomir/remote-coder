@@ -38,6 +38,18 @@ codex exec "print a one line greeting"
 ```
 
 - 정상 출력이 나오면 CLI 실행 준비 완료
+- 터미널 헤더에 `sandbox: read-only`만 보이면 **Codex 기본 비대화형 정책**일 수 있습니다. 실제로 파일을 수정하는 스모크는 예를 들어 아래처럼 `workspace-write`를 명시합니다.
+
+```bash
+cd /path/to/your/git/repo
+codex exec --sandbox workspace-write "README에 테스트용 한 줄만 추가하고 설명해줘"
+```
+
+## 4.5) 샌드박스와 Remote AI Coder
+
+- OpenAI Codex CLI의 `codex exec`는 기본이 **read-only 샌드박스**에 가깝게 동작해, 편집이 막힐 수 있습니다.
+- Remote AI Coder는 기본으로 **`--sandbox workspace-write`**를 붙여 Job worktree(`cwd`) 안에서 파일 수정이 되도록 합니다.
+- 환경 변수 **`CODEX_SANDBOX`**로 바꿀 수 있습니다. 값은 `read-only`, `workspace-write`, `danger-full-access` 중 하나입니다. `danger-full-access`는 샌드박스를 사실상 해제하므로 신뢰된 환경에서만 사용하세요.
 
 ## 5) Remote AI Coder에서 Codex 사용
 
@@ -86,6 +98,7 @@ model: codex README에 테스트 문구 한 줄 추가해줘 no commit
 
 - 서버는 worktree 경로에 임시 파일을 써서 쓰기 가능 여부를 먼저 확인합니다. 실패 시 `git_worktree` 단계에서 끝납니다.
 - 종료 코드가 0이어도 출력에 `read-only` / `readonly` / `읽기 전용` / `수정 불가`가 있고 Git 변경이 없으면 **실패**로 처리됩니다. `WORKTREE_BASE_DIR` 권한과 마운트 옵션을 확인하세요.
+- 단계별 점검은 [read-only 워크스페이스 가이드](read-only-workspace.md)를 참고하세요.
 
 ### 프로젝트 기본값과 실제 동작 모델이 다름
 

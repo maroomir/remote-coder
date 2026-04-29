@@ -74,7 +74,7 @@ command_context = CommandContext(
     git_service=git_service,
     git_remote_name=settings.git_remote_name,
 )
-runner_factory = AiRunnerFactory()
+runner_factory = AiRunnerFactory(codex_sandbox=settings.codex_sandbox)
 branch_strategy = TimestampSlugStrategy()
 notifier = TelegramNotifier(settings.telegram_bot_token.get_secret_value())
 job_manager = JobManager(

@@ -1,5 +1,5 @@
 from app.config import Settings
-from app.models import ModelName
+from app.models import CodexSandboxMode, ModelName
 
 
 def test_parse_allowed_chat_ids_from_string(tmp_path):
@@ -16,3 +16,18 @@ def test_parse_allowed_chat_ids_from_string(tmp_path):
     assert settings.telegram_allowed_user_ids == [9, 10]
     assert settings.default_model == ModelName.CLAUDE
     assert settings.git_remote_name == "origin"
+    assert settings.codex_sandbox == CodexSandboxMode.WORKSPACE_WRITE
+
+
+def test_codex_sandbox_from_string(tmp_path):
+    settings = Settings(
+        telegram_bot_token="token",
+        telegram_allowed_chat_ids=[1],
+        telegram_allowed_user_ids=[],
+        default_model="claude",
+        default_project="proj",
+        project_root=tmp_path,
+        worktree_base_dir=tmp_path / "wt",
+        codex_sandbox="read-only",
+    )
+    assert settings.codex_sandbox == CodexSandboxMode.READ_ONLY
