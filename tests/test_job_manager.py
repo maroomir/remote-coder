@@ -50,6 +50,7 @@ def test_job_manager_submit_and_run_success(test_settings, project_registry):
     assert final_job.runner_stdout_summary == "ok"
     assert final_job.runner_stderr_summary is None
     git_service.prepare_detached_worktree.assert_called_once()
+    git_service.ensure_worktree_writable.assert_called_once_with(Path("/tmp/wt"))
     git_service.create_branch_in_worktree.assert_called_once_with(Path("/tmp/wt"), "remote-test")
     git_service.push_branch.assert_called_once_with(
         test_settings.project_root, test_settings.git_remote_name, "remote-test"
@@ -247,3 +248,46 @@ def test_job_manager_truncates_runner_output_summary(test_settings, project_regi
     assert final_job.status.value == "succeeded"
     assert final_job.runner_stdout_summary is not None
     assert final_job.runner_stdout_summary.endswith("...(truncated)")
+
+
+def test_job_manager_fails_when_read_only_hint_and_no_changes(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = []
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0,
+        stdout="The workspace is read-only so I cannot edit files.",
+        stderr="",
+        started_at=None,
+        finished_at=None,
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier = Mock()
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="noop",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    final_job = manager.run(job.id)
+
+    assert final_job.status.value == "failed"
+    assert final_job.error_stage == "runner"
+    assert "읽기 전용" in (final_job.error or "") or "read-only" in (final_job.error or "").lower()
+    assert "read-only" in (final_job.runner_stdout_summary or "").lower()

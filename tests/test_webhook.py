@@ -20,6 +20,7 @@ from app.telegram.commands import (
     StartCommand,
     StatusCommand,
 )
+from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 from app.telegram.parser import CommandParser
@@ -33,6 +34,19 @@ class DummyJob:
 class DummyJobManager:
     def submit(self, request):
         _ = request
+        return DummyJob()
+
+    def run(self, job_id: str):
+        _ = job_id
+        return None
+
+
+class CaptureJobManager:
+    def __init__(self) -> None:
+        self.last_request = None
+
+    def submit(self, request):
+        self.last_request = request
         return DummyJob()
 
     def run(self, job_id: str):
@@ -149,3 +163,189 @@ def test_webhook_sends_command_response_to_telegram(project_registry):
     assert response.json()["status"] == "ok"
     assert notifier.sent
     assert notifier.sent[0][0] == 123
+
+
+def test_webhook_ambiguous_followup_uses_conversation_history(project_registry, tmp_path):
+    db = tmp_path / "wh_conv.sqlite3"
+    conv = SQLiteConversationStore(db)
+    conv.append(
+        project="remote-coder",
+        chat_id=123,
+        role="user",
+        text="README에 한 줄 추가해줘",
+        job_id=None,
+    )
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=conv,
+    )
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    capture = CaptureJobManager()
+    app.include_router(
+        create_webhook_router(
+            auth_service=AllowlistAuthService({123}),
+            parser=parser,
+            command_registry=CommandRegistry(
+                [
+                    StartCommand(),
+                    HelpCommand(),
+                    ModelCommand(),
+                    StatusCommand(),
+                    ProjectsCommand(),
+                    ProjectCommand(),
+                    BranchesCommand(),
+                    BranchCommand(),
+                    RebaseCommand(),
+                    ClearCommand(),
+                ]
+            ),
+            command_context=CommandContext(
+                job_store=store,
+                default_model=ModelName.CLAUDE,
+                project_registry=project_registry,
+                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+                project_preferences=InMemoryProjectPreferenceStore(),
+                git_service=Mock(),
+                git_remote_name="origin",
+            ),
+            job_manager=capture,
+            job_store=store,
+            notifier=notifier,
+            webhook_secret=None,
+            conversation_store=conv,
+        )
+    )
+    client = TestClient(app)
+    response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 2,
+            "message": {"message_id": 2, "text": "작업 시작해줘", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "accepted"
+    assert capture.last_request is not None
+    assert "README" in capture.last_request.instruction
+
+
+def test_webhook_ambiguous_without_history_sends_guidance(project_registry, tmp_path):
+    db = tmp_path / "wh_empty.sqlite3"
+    conv = SQLiteConversationStore(db)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=conv,
+    )
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    app.include_router(
+        create_webhook_router(
+            auth_service=AllowlistAuthService({123}),
+            parser=parser,
+            command_registry=CommandRegistry(
+                [
+                    StartCommand(),
+                    HelpCommand(),
+                    ModelCommand(),
+                    StatusCommand(),
+                    ProjectsCommand(),
+                    ProjectCommand(),
+                    BranchesCommand(),
+                    BranchCommand(),
+                    RebaseCommand(),
+                    ClearCommand(),
+                ]
+            ),
+            command_context=CommandContext(
+                job_store=store,
+                default_model=ModelName.CLAUDE,
+                project_registry=project_registry,
+                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+                project_preferences=InMemoryProjectPreferenceStore(),
+                git_service=Mock(),
+                git_remote_name="origin",
+            ),
+            job_manager=DummyJobManager(),
+            job_store=store,
+            notifier=notifier,
+            webhook_secret=None,
+            conversation_store=conv,
+        )
+    )
+    client = TestClient(app)
+    response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 3,
+            "message": {"message_id": 3, "text": "진행해줘", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "ignored"
+    assert notifier.sent
+    assert "맥락" in notifier.sent[0][1]
+
+
+def test_webhook_conversation_isolated_by_chat(project_registry, tmp_path):
+    db = tmp_path / "wh_iso.sqlite3"
+    conv = SQLiteConversationStore(db)
+    conv.append(project="remote-coder", chat_id=999, role="user", text="secret for 999", job_id=None)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=conv,
+    )
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    capture = CaptureJobManager()
+    app.include_router(
+        create_webhook_router(
+            auth_service=AllowlistAuthService({123, 999}),
+            parser=parser,
+            command_registry=CommandRegistry(
+                [
+                    StartCommand(),
+                    HelpCommand(),
+                    ModelCommand(),
+                    StatusCommand(),
+                    ProjectsCommand(),
+                    ProjectCommand(),
+                    BranchesCommand(),
+                    BranchCommand(),
+                    RebaseCommand(),
+                    ClearCommand(),
+                ]
+            ),
+            command_context=CommandContext(
+                job_store=store,
+                default_model=ModelName.CLAUDE,
+                project_registry=project_registry,
+                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+                project_preferences=InMemoryProjectPreferenceStore(),
+                git_service=Mock(),
+                git_remote_name="origin",
+            ),
+            job_manager=capture,
+            job_store=store,
+            notifier=notifier,
+            webhook_secret=None,
+            conversation_store=conv,
+        )
+    )
+    client = TestClient(app)
+    response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 4,
+            "message": {"message_id": 4, "text": "작업 시작해줘", "chat": {"id": 123}, "from": {"id": 1}},
+        },
+    )
+    assert response.json()["status"] == "ignored"
+    assert "맥락" in notifier.sent[-1][1]
+    assert capture.last_request is None

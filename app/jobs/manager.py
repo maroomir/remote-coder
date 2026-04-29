@@ -20,6 +20,12 @@ class JobManager:
     _ANSI_ESCAPE_PATTERN = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
     _STDOUT_SUMMARY_LIMIT = 1200
     _STDERR_SUMMARY_LIMIT = 800
+    _READ_ONLY_HINTS = (
+        "read-only",
+        "readonly",
+        "읽기 전용",
+        "수정 불가",
+    )
 
     def __init__(
         self,
@@ -73,6 +79,7 @@ class JobManager:
                 job.id,
                 worktree_base_dir=worktree_base,
             )
+            self._git_service.ensure_worktree_writable(worktree_path)
 
             failed_stage = "runner"
             runner = self._runner_factory.create(job.request.model)
@@ -93,6 +100,13 @@ class JobManager:
             job.changed_files = self._git_service.collect_changes(worktree_path)
 
             if not job.changed_files:
+                combined = f"{runner_result.stdout or ''}\n{runner_result.stderr or ''}"
+                if self._runner_output_suggests_read_only(combined):
+                    failed_stage = "runner"
+                    raise RuntimeError(
+                        "AI가 작업 공간을 읽기 전용으로 보고했고 변경된 파일이 없습니다. "
+                        "worktree 경로 권한과 CLI 설정을 확인하세요."
+                    )
                 job.branch = None
                 job.commit_hash = None
                 job.mark_succeeded()
@@ -126,7 +140,11 @@ class JobManager:
                 and job.status.value == "succeeded"
                 and not self._settings.keep_worktree_on_success
             ):
-                self._git_service.cleanup_worktree(project_path, worktree_path)
+                try:
+                    self._git_service.cleanup_worktree(project_path, worktree_path)
+                except RuntimeError:
+                    # cleanup 실패로 성공 Job 알림이 누락되지 않도록 삼킵니다.
+                    pass
             self._notifier.send_job_result(job)
         return job
 
@@ -156,6 +174,16 @@ class JobManager:
         job.runner_stderr_summary = self._make_output_summary(
             runner_result.stderr, limit=self._STDERR_SUMMARY_LIMIT
         )
+
+    @classmethod
+    def _runner_output_suggests_read_only(cls, text: str) -> bool:
+        lowered = text.lower()
+        if "read-only" in lowered or "readonly" in lowered:
+            return True
+        for hint in cls._READ_ONLY_HINTS:
+            if hint in text:
+                return True
+        return False
 
     @classmethod
     def _make_output_summary(cls, text: str, limit: int) -> str | None:

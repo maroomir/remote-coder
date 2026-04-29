@@ -86,6 +86,11 @@ model: claude branch: test-branch README 정리해줘
 - 실패 단계(`runner`, `git_commit` 등)를 먼저 확인
 - Telegram 메시지에는 요약본만 표시되며, 상세 원문(stdout/stderr)은 로그 파일에서 확인
 
+### worktree 읽기 전용·수정 불가 메시지
+
+- 서버는 worktree 경로에 임시 파일을 써서 쓰기 가능 여부를 먼저 확인합니다. 실패 시 `git_worktree` 단계에서 끝납니다.
+- 종료 코드가 0이어도 출력에 `read-only` / `readonly` / `읽기 전용` / `수정 불가`가 있고 Git 변경이 없으면 **실패**로 처리됩니다. `WORKTREE_BASE_DIR` 권한과 마운트 옵션을 확인하세요.
+
 ### 권한 옵션 관련 주의
 
 현재 Runner는 아래 커맨드로 실행됩니다.

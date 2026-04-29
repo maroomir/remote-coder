@@ -3,6 +3,7 @@ import pytest
 from app.models import ModelName
 from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
+from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.parser import CommandParseError, CommandParser
 from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
@@ -145,3 +146,43 @@ def test_parse_natural_project_option_overrides_chat_preference(project_registry
     req = parser.parse_natural("project: remote-coder fix bug", chat_id=7, user_id=2)
     assert req.project == "remote-coder"
     assert req.instruction == "fix bug"
+
+
+def test_parse_natural_rejects_invalid_branch_token(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    with pytest.raises(CommandParseError, match="브랜치"):
+        parser.parse_natural("branch: bad..name fix bug", chat_id=1, user_id=2)
+
+
+def test_parse_natural_ambiguous_followup_merges_conversation(project_registry: ProjectRegistry):
+    db = project_registry.config_path.parent / "parser_conv.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(
+        project="remote-coder",
+        chat_id=99,
+        role="user",
+        text="README에 테스트 문구 한 줄 추가해줘",
+        job_id=None,
+    )
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=store,
+        conversation_recent_limit=10,
+    )
+    req = parser.parse_natural("작업 시작해줘", chat_id=99, user_id=1)
+    assert "README" in req.instruction
+    assert "[이전 대화/작업 맥락]" in req.instruction
+    assert "작업 시작해줘" in req.instruction
+
+
+def test_parse_natural_ambiguous_without_history_raises(project_registry: ProjectRegistry):
+    db = project_registry.config_path.parent / "parser_empty.sqlite3"
+    store = SQLiteConversationStore(db)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=store,
+    )
+    with pytest.raises(CommandParseError, match="맥락"):
+        parser.parse_natural("작업 시작해줘", chat_id=42, user_id=1)

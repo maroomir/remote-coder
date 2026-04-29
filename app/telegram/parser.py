@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import re
 
+from app.git.service import GitWorktreeService
 from app.jobs.schemas import JobRequest
 from app.models import ModelName
 from app.projects.registry import ProjectRegistry
+from app.telegram.conversation import (
+    ConversationContextBuilder,
+    SQLiteConversationStore,
+    is_ambiguous_followup,
+)
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
@@ -20,11 +26,15 @@ class CommandParser:
         default_model: ModelName,
         model_preferences: InMemoryModelPreferenceStore | None = None,
         project_preferences: InMemoryProjectPreferenceStore | None = None,
+        conversation_store: SQLiteConversationStore | None = None,
+        conversation_recent_limit: int = 10,
     ) -> None:
         self._project_registry = project_registry
         self._default_model = default_model
         self._model_preferences = model_preferences
         self._project_preferences = project_preferences
+        self._conversation_store = conversation_store
+        self._conversation_recent_limit = conversation_recent_limit
 
     @staticmethod
     def _extract_options(
@@ -68,8 +78,8 @@ class CommandParser:
         return model, branch, commit, project, remaining
 
     def parse_natural(self, text: str, chat_id: int, user_id: int | None) -> JobRequest:
-        model, branch, commit, project_slug, instruction = self._extract_options(text.strip())
-        if not instruction:
+        model, branch, commit, project_slug, remaining = self._extract_options(text.strip())
+        if not remaining:
             raise CommandParseError("작업 지시문이 비어 있습니다.")
 
         default_name = self._project_registry.get_default_project_name()
@@ -95,6 +105,26 @@ class CommandParser:
             selected_model = self._model_preferences.get(chat_id)
         else:
             selected_model = entry.default_model
+
+        if branch is not None:
+            branch_err = GitWorktreeService.validate_branch_token(branch)
+            if branch_err:
+                raise CommandParseError(branch_err)
+
+        instruction_body = remaining.strip()
+        if is_ambiguous_followup(instruction_body) and self._conversation_store is not None:
+            entries = self._conversation_store.list_recent(
+                project_name,
+                chat_id,
+                self._conversation_recent_limit,
+            )
+            if not entries:
+                raise CommandParseError(
+                    "이전 작업 맥락이 없습니다. 구체적인 작업 지시를 보내주세요.",
+                )
+            instruction = ConversationContextBuilder.build(entries, instruction_body)
+        else:
+            instruction = instruction_body
 
         return JobRequest(
             project=project_name,

@@ -130,3 +130,9 @@ def test_switch_branch_runs_git_switch(mock_run, tmp_path: Path):
     service.switch_branch(tmp_path, "develop")
     assert mock_run.call_count == 2
     assert mock_run.call_args_list[1][0][0] == ["git", "switch", "develop"]
+
+
+def test_ensure_worktree_writable_succeeds_on_writable_dir(tmp_path: Path):
+    d = tmp_path / "wt_probe"
+    d.mkdir(parents=True)
+    GitWorktreeService.ensure_worktree_writable(d)

@@ -23,6 +23,8 @@ cp .env.example .env
 - 필요 시 `TELEGRAM_WEBHOOK_SECRET`
 - 선택: `GIT_REMOTE_NAME` (기본 `origin`) — 커밋 후 push 및 `/rebase`, `/clear` 시 사용
 - 선택: `PROJECTS_CONFIG_PATH` — 여러 Git 프로젝트 등록 파일(JSON 또는 `.yaml`) 경로
+- 선택: `CONVERSATION_DB_PATH` — 프로젝트+채팅별 대화 기억 SQLite 경로 (미설정 시 `PROJECT_ROOT/.remote-coder/conversations.sqlite3`)
+- 선택: `CONVERSATION_RECENT_LIMIT` — 모호한 후속 요청 시 runner에 붙이는 최근 기록 개수 (기본 `10`)
 - 초기 시드(1회용): `DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`
 
 ## 2.5) 로컬 관리 UI (프로젝트 등록)
@@ -69,7 +71,9 @@ cp .env.example .env
 - `/model`로 변경한 기본 모델은 MVP에서는 인메모리 저장입니다. 서버 재시작 시 초기화됩니다.
 - `/project`로 선택한 작업 프로젝트도 채팅별 인메모리이며, 서버 재시작 시 초기화됩니다. `project:` 옵션이 있으면 그 값이 우선합니다.
 - AI Job은 기본 프로젝트 **현재 `HEAD` 커밋**에서 detached worktree를 만든 뒤 실행합니다. **워킹 트리에 변경이 있을 때만** 작업 브랜치를 만들고 커밋합니다. 커밋이 있으면 `GIT_REMOTE_NAME`(기본 `origin`)으로 push합니다. 저장소 브랜치를 바꾸려면 먼저 `/branch <이름>`으로 로컬 브랜치를 전환하세요.
-- 자연어 메시지에서 `model: codex`, `branch: my-branch`, `project: 등록이름`, `no commit` 토큰을 함께 사용할 수 있습니다.
+- 자연어 메시지에서 `model: codex`, `branch: my-branch`, `project: 등록이름`, `no commit` 토큰을 함께 사용할 수 있습니다. (`branch:` 값은 `/branch`와 동일 규칙으로 검증됩니다.)
+- **대화 기억(SQLite)**: 같은 텔레그램 채팅·같은 작업 프로젝트 기준으로 사용자 메시지와 Job 접수/결과 요약이 SQLite에 쌓입니다. 서버를 재시작해도 유지됩니다. 이전에 구체적인 지시를 보낸 뒤 `작업 시작해줘`, `진행해줘`, `그거 해줘`, `시작해줘`처럼 짧은 후속 문장만내면, 최근 기록을 합쳐 AI 지시문으로 만듭니다. 맥락이 없으면 봇이 안내 메시지를 보냅니다.
+- worktree 생성 직후 쓰기 가능 여부를 점검합니다. AI 출력에 읽기 전용·수정 불가 등의 표현이 있고 Git 변경이 없으면 성공이 아니라 **실패**로 처리됩니다.
 - 작업 완료/실패 메시지에는 AI 실행 결과 요약(`stdout`/`stderr`)이 함께 포함됩니다.
 - 전체 출력 원문은 worktree 로그 파일(`WORKTREE_BASE_DIR/_logs/<job_id>.log`)에서 확인할 수 있습니다.
 

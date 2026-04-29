@@ -23,6 +23,7 @@ from app.telegram.commands import (
     StartCommand,
     StatusCommand,
 )
+from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.notifier import TelegramNotifier
 from app.telegram.parser import CommandParser
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
@@ -40,11 +41,14 @@ auth_service = AllowlistAuthService(
 )
 model_preferences = InMemoryModelPreferenceStore(default_model=settings.default_model)
 project_preferences = InMemoryProjectPreferenceStore()
+conversation_store = SQLiteConversationStore(settings.conversation_db_path)
 parser = CommandParser(
     project_registry=project_registry,
     default_model=settings.default_model,
     model_preferences=model_preferences,
     project_preferences=project_preferences,
+    conversation_store=conversation_store,
+    conversation_recent_limit=settings.conversation_recent_limit,
 )
 command_registry = CommandRegistry(
     commands=[
@@ -99,6 +103,7 @@ app.include_router(
             if settings.telegram_webhook_secret
             else None
         ),
+        conversation_store=conversation_store,
     )
 )
 

@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Self
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.models import ModelName
@@ -23,6 +24,16 @@ class Settings(BaseSettings):
     keep_worktree_on_success: bool = True
     projects_config_path: Path | None = None
     git_remote_name: str = "origin"
+
+    # 프로젝트+채팅별 대화 기억(SQLite). 미설정 시 PROJECT_ROOT/.remote-coder/conversations.sqlite3
+    conversation_db_path: Path | None = None
+    conversation_recent_limit: int = 10
+
+    @model_validator(mode="after")
+    def _default_conversation_db_path(self) -> Self:
+        if self.conversation_db_path is None:
+            self.conversation_db_path = (self.project_root / ".remote-coder" / "conversations.sqlite3").resolve()
+        return self
 
     @field_validator("telegram_allowed_chat_ids", mode="before")
     @classmethod

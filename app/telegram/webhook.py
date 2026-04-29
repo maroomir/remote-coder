@@ -7,6 +7,7 @@ from app.jobs.manager import JobManager
 from app.jobs.store import InMemoryJobStore
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import CommandContext, CommandRegistry, TelegramMessage
+from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.notifier import TelegramNotifier
 from app.telegram.parser import CommandParseError, CommandParser
 
@@ -42,6 +43,7 @@ def create_webhook_router(
     job_store: InMemoryJobStore,
     notifier: TelegramNotifier,
     webhook_secret: str | None = None,
+    conversation_store: SQLiteConversationStore | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/telegram", tags=["telegram"])
 
@@ -72,8 +74,48 @@ def create_webhook_router(
         except CommandParseError as exc:
             background_tasks.add_task(notifier.send_text, chat_id, str(exc))
             return {"status": "ignored"}
+
+        if conversation_store is not None:
+            conversation_store.append(
+                project=request.project,
+                chat_id=chat_id,
+                role="user",
+                text=message.text.strip(),
+            )
+
         job = job_manager.submit(request)
-        background_tasks.add_task(job_manager.run, job.id)
+
+        if conversation_store is not None:
+            conversation_store.append(
+                project=request.project,
+                chat_id=chat_id,
+                role="job_accepted",
+                text=f"Job 접수: {job.id}",
+                job_id=job.id,
+            )
+
+        if conversation_store is not None:
+
+            def run_and_record(jid: str) -> None:
+                final_job = job_manager.run(jid)
+                if final_job is None:
+                    return
+                summary = f"status={final_job.status.value}"
+                if final_job.error_stage:
+                    summary += f" stage={final_job.error_stage}"
+                if final_job.error:
+                    summary += f" err={str(final_job.error)[:300]}"
+                conversation_store.append(
+                    project=final_job.request.project,
+                    chat_id=final_job.request.chat_id,
+                    role="job_result",
+                    text=summary,
+                    job_id=final_job.id,
+                )
+
+            background_tasks.add_task(run_and_record, job.id)
+        else:
+            background_tasks.add_task(job_manager.run, job.id)
         _ = job_store
         return {"status": "accepted", "job_id": job.id}
 

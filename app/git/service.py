@@ -76,6 +76,16 @@ class GitWorktreeService:
         return worktree_path
 
     @staticmethod
+    def ensure_worktree_writable(worktree_path: Path) -> None:
+        """worktree 디렉터리에 실제 쓰기가 가능한지 확인합니다."""
+        probe = worktree_path / ".remote_coder_write_probe"
+        try:
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+        except OSError as exc:
+            raise RuntimeError(f"worktree is not writable: {worktree_path} ({exc})") from exc
+
+    @staticmethod
     def validate_branch_token(name: str) -> str | None:
         """슬래시 명령 인자용 브랜치 이름 검증. 유효하면 None, 아니면 오류 메시지."""
         if not name or len(name) > 255:
