@@ -195,34 +195,93 @@ class GitWorktreeService:
                 lines.append(line)
         return "\n".join(lines) if lines else f"({remote} 원격 브랜치 없음)"
 
+    @staticmethod
+    def _branch_name_from_git_branch_output_line(line: str) -> str:
+        """`git branch` 한 줄에서 마커 제거. `*` 현재 브랜치, `+` 다른 worktree checkout."""
+        name = line.strip()
+        while name and name[0] in "+*":
+            name = name[1:].lstrip()
+        return name
+
     def list_local_branches_matching(self, project_path: Path, prefix: str) -> list[str]:
         result = self._run_git(project_path, ["branch", "--list", f"{prefix}*"])
         if result.returncode != 0:
             raise RuntimeError(f"failed to list branches: {result.stderr.strip()}")
         branches: list[str] = []
         for line in result.stdout.splitlines():
-            line = line.strip()
-            if not line:
+            name = self._branch_name_from_git_branch_output_line(line)
+            if not name:
                 continue
-            name = line.lstrip("*").strip()
             if name.startswith(prefix):
                 branches.append(name)
         return sorted(set(branches))
 
+    @staticmethod
+    def _parse_worktree_list_porcelain(stdout: str) -> list[tuple[Path, str | None]]:
+        """`git worktree list --porcelain` 파싱. 각 항목은 (경로, 브랜치 짧은 이름 또는 detached면 None)."""
+        entries: list[tuple[Path, str | None]] = []
+        cur_path: Path | None = None
+        cur_branch: str | None = None
+        for line in stdout.splitlines():
+            if line.startswith("worktree "):
+                if cur_path is not None:
+                    entries.append((cur_path, cur_branch))
+                cur_path = Path(line[len("worktree ") :].strip())
+                cur_branch = None
+            elif line.startswith("branch "):
+                ref = line[len("branch ") :].strip()
+                if ref.startswith("refs/heads/"):
+                    cur_branch = ref[len("refs/heads/") :]
+                else:
+                    cur_branch = None
+        if cur_path is not None:
+            entries.append((cur_path, cur_branch))
+        return entries
+
+    def remove_linked_worktrees_for_branches(self, project_path: Path, branch_names: list[str]) -> None:
+        """삭제할 브랜치가 다른 linked worktree에 checkout되어 있으면 먼저 제거합니다."""
+        if not branch_names:
+            return
+        want = set(branch_names)
+        root = project_path.resolve()
+        result = self._run_git(project_path, ["worktree", "list", "--porcelain"])
+        if result.returncode != 0:
+            raise RuntimeError(f"failed to list worktrees: {result.stderr.strip()}")
+        for wt_path, branch in self._parse_worktree_list_porcelain(result.stdout):
+            if branch is None or branch not in want:
+                continue
+            if wt_path.resolve() == root:
+                continue
+            self.cleanup_worktree(project_path, wt_path)
+
     def list_remote_branches_matching(self, project_path: Path, remote: str, prefix: str) -> list[str]:
-        result = self._run_git(project_path, ["branch", "-r", "--list", f"{remote}/{prefix}*"])
+        """
+        실제 원격 저장소의 브랜치를 조회합니다.
+        `git branch -r`은 로컬 remote-tracking ref만 보여 캐시가 오래되면 누락될 수 있어,
+        `git ls-remote --heads`를 사용합니다.
+
+        ref 패턴 인자(`refs/heads/remote-*`)는 원격/Git 조합에 따라 빈 결과만 돌아오는 경우가 있어,
+        헤드 전체를 받은 뒤 접두사로 필터링합니다.
+        """
+        result = self._run_git(project_path, ["ls-remote", "--heads", remote])
         if result.returncode != 0:
             raise RuntimeError(f"failed to list remote branches: {result.stderr.strip()}")
-        prefix_with_slash = f"{remote}/"
+        heads_prefix = "refs/heads/"
         branches: list[str] = []
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if not line or "->" in line:
+        for raw in result.stdout.splitlines():
+            line = raw.strip()
+            if not line:
                 continue
-            if line.startswith(prefix_with_slash):
-                short = line[len(prefix_with_slash) :]
-                if short.startswith(prefix):
-                    branches.append(short)
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            ref = parts[1]
+            if not ref.startswith(heads_prefix):
+                continue
+            short = ref[len(heads_prefix) :]
+            if short == "HEAD" or not short.startswith(prefix):
+                continue
+            branches.append(short)
         return sorted(set(branches))
 
     def delete_local_branches(self, project_path: Path, branches: list[str]) -> None:

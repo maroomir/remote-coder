@@ -279,6 +279,7 @@ class ClearCommand(TelegramCommand):
                 if remote_branches:
                     ctx.git_service.delete_remote_branches(p.root_path, ctx.git_remote_name, remote_branches)
                 if local_branches:
+                    ctx.git_service.remove_linked_worktrees_for_branches(p.root_path, local_branches)
                     ctx.git_service.delete_local_branches(p.root_path, local_branches)
                 lines.append(
                     f"{p.name}: 원격 {len(remote_branches)}개, 로컬 {len(local_branches)}개 삭제 "

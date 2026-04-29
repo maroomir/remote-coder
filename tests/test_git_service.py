@@ -136,3 +136,78 @@ def test_ensure_worktree_writable_succeeds_on_writable_dir(tmp_path: Path):
     d = tmp_path / "wt_probe"
     d.mkdir(parents=True)
     GitWorktreeService.ensure_worktree_writable(d)
+
+
+@patch("app.git.service.subprocess.run")
+def test_list_remote_branches_matching_uses_ls_remote(mock_run, tmp_path: Path):
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stderr = ""
+    mock_run.return_value.stdout = (
+        "abc123\trefs/heads/remote-x\n"
+        "def456\trefs/heads/remote-feature/foo\n"
+        "111111\trefs/heads/main\n"
+    )
+    service = GitWorktreeService(base_dir=tmp_path)
+    out = service.list_remote_branches_matching(tmp_path, "origin", "remote-")
+    assert out == ["remote-feature/foo", "remote-x"]
+    cmd = mock_run.call_args[0][0]
+    assert cmd == ["git", "ls-remote", "--heads", "origin"]
+
+
+@patch("app.git.service.subprocess.run")
+def test_list_remote_branches_matching_empty_when_no_hits(mock_run, tmp_path: Path):
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stderr = ""
+    mock_run.return_value.stdout = ""
+    service = GitWorktreeService(base_dir=tmp_path)
+    assert service.list_remote_branches_matching(tmp_path, "origin", "remote-") == []
+
+
+@patch("app.git.service.subprocess.run")
+def test_list_local_branches_matching_strips_plus_worktree_marker(mock_run, tmp_path: Path):
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stderr = ""
+    mock_run.return_value.stdout = (
+        "* main\n"
+        "+ remote-task-20260428-151253\n"
+        "+ remote-ai-1-20260428-214810\n"
+    )
+    service = GitWorktreeService(base_dir=tmp_path)
+    out = service.list_local_branches_matching(tmp_path, "remote-")
+    assert out == ["remote-ai-1-20260428-214810", "remote-task-20260428-151253"]
+
+
+def test_parse_worktree_list_porcelain_extracts_paths_and_branches():
+    sample = (
+        "worktree /repo\n"
+        "HEAD abc\n"
+        "branch refs/heads/main\n"
+        "\n"
+        "worktree /repo/wt1\n"
+        "HEAD def\n"
+        "branch refs/heads/remote-task-20260428-151253\n"
+        "\n"
+        "worktree /repo/wt2\n"
+        "HEAD ghi\n"
+        "detached\n"
+    )
+    parsed = GitWorktreeService._parse_worktree_list_porcelain(sample)
+    assert len(parsed) == 3
+    assert parsed[0][1] == "main"
+    assert parsed[1][1] == "remote-task-20260428-151253"
+    assert parsed[2][1] is None
+
+
+@patch("app.git.service.subprocess.run")
+def test_list_remote_branches_matching_raises_on_failure(mock_run, tmp_path: Path):
+    mock_run.return_value.returncode = 1
+    mock_run.return_value.stderr = "connection refused"
+    mock_run.return_value.stdout = ""
+    service = GitWorktreeService(base_dir=tmp_path)
+    try:
+        service.list_remote_branches_matching(tmp_path, "origin", "remote-")
+    except RuntimeError as exc:
+        assert "failed to list remote branches" in str(exc)
+        assert "connection refused" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
