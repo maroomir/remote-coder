@@ -68,6 +68,7 @@ class JobManager:
         project_path = entry.root_path
         worktree_base = entry.worktree_base_dir
         worktree_path: Path | None = None
+        created_worktree_for_job = False
         failed_stage: str | None = None
         remote = self._settings.git_remote_name
         try:
@@ -75,11 +76,31 @@ class JobManager:
             self._job_store.update(job)
 
             failed_stage = "git_worktree"
-            worktree_path = self._git_service.prepare_detached_worktree(
-                project_path,
-                job.id,
-                worktree_base_dir=worktree_base,
-            )
+            worktree_on_branch = False
+            requested_branch = job.request.branch
+            if requested_branch and self._git_service.local_branch_exists(project_path, requested_branch):
+                existing_worktree = self._git_service.find_linked_worktree_for_branch(
+                    project_path,
+                    requested_branch,
+                )
+                if existing_worktree is not None:
+                    worktree_path = existing_worktree
+                else:
+                    worktree_path = self._git_service.prepare_branch_worktree(
+                        project_path,
+                        requested_branch,
+                        job.id,
+                        worktree_base_dir=worktree_base,
+                    )
+                    created_worktree_for_job = True
+                worktree_on_branch = True
+            else:
+                worktree_path = self._git_service.prepare_detached_worktree(
+                    project_path,
+                    job.id,
+                    worktree_base_dir=worktree_base,
+                )
+                created_worktree_for_job = True
             self._git_service.ensure_worktree_writable(worktree_path)
 
             failed_stage = "runner"
@@ -115,7 +136,9 @@ class JobManager:
             else:
                 job.branch = job.request.branch or self._branch_strategy.make_branch_name(job.request.instruction)
                 self._job_store.update(job)
-                self._git_service.create_branch_in_worktree(worktree_path, job.branch)
+                if not worktree_on_branch:
+                    self._git_service.create_branch_in_worktree(worktree_path, job.branch)
+                    worktree_on_branch = True
                 job.changed_files = self._git_service.collect_changes(worktree_path)
 
                 if job.request.commit:
@@ -141,6 +164,7 @@ class JobManager:
         finally:
             if (
                 worktree_path
+                and created_worktree_for_job
                 and job.status.value == "succeeded"
                 and not self._settings.keep_worktree_on_success
             ):

@@ -86,6 +86,20 @@ class SQLiteConversationStore:
                     ON conversation_entries (project, chat_id, id)
                     """
                 )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS message_branch_links (
+                        project TEXT NOT NULL,
+                        chat_id INTEGER NOT NULL,
+                        message_id INTEGER NOT NULL,
+                        branch TEXT NOT NULL,
+                        job_id TEXT,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        PRIMARY KEY (project, chat_id, message_id)
+                    )
+                    """
+                )
                 conn.commit()
             finally:
                 conn.close()
@@ -152,6 +166,50 @@ class SQLiteConversationStore:
             )
             for r in rows
         ]
+
+    def bind_message_branch(
+        self,
+        *,
+        project: str,
+        chat_id: int,
+        message_id: int,
+        branch: str,
+        job_id: str | None = None,
+    ) -> None:
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO message_branch_links (project, chat_id, message_id, branch, job_id)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(project, chat_id, message_id)
+                    DO UPDATE SET
+                        branch = excluded.branch,
+                        job_id = excluded.job_id,
+                        updated_at = datetime('now')
+                    """,
+                    (project, chat_id, message_id, branch, job_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def get_bound_branch(self, project: str, chat_id: int, message_id: int) -> str | None:
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                row = conn.execute(
+                    """
+                    SELECT branch
+                    FROM message_branch_links
+                    WHERE project = ? AND chat_id = ? AND message_id = ?
+                    """,
+                    (project, chat_id, message_id),
+                ).fetchone()
+            finally:
+                conn.close()
+        return str(row[0]) if row is not None and row[0] is not None else None
 
     def generate_report(
         self,

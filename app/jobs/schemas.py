@@ -25,6 +25,8 @@ class JobRequest(BaseModel):
     commit: bool = True
     chat_id: int
     requested_by: int | None = None
+    message_id: int | None = None
+    reply_to_message_id: int | None = None
 
 
 class Job(BaseModel):

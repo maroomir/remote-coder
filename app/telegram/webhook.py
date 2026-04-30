@@ -20,11 +20,16 @@ class TelegramUser(BaseModel):
     id: int
 
 
+class TelegramReplyMessage(BaseModel):
+    message_id: int
+
+
 class TelegramIncomingMessage(BaseModel):
     message_id: int | None = None
     text: str | None = None
     chat: TelegramChat
     from_user: TelegramUser | None = Field(default=None, alias="from")
+    reply_to_message: TelegramReplyMessage | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -70,7 +75,17 @@ def create_webhook_router(
             return {"status": "ok"}
 
         try:
-            request = parser.parse_natural(message.text, chat_id=chat_id, user_id=user_id)
+            request = parser.parse_natural(
+                message.text,
+                chat_id=chat_id,
+                user_id=user_id,
+                message_id=update.message.message_id,
+                reply_to_message_id=(
+                    update.message.reply_to_message.message_id
+                    if update.message.reply_to_message is not None
+                    else None
+                ),
+            )
         except CommandParseError as exc:
             background_tasks.add_task(notifier.send_text, chat_id, str(exc))
             return {"status": "ignored"}
@@ -84,6 +99,19 @@ def create_webhook_router(
             )
 
         job = job_manager.submit(request)
+
+        if (
+            conversation_store is not None
+            and request.message_id is not None
+            and request.branch is not None
+        ):
+            conversation_store.bind_message_branch(
+                project=request.project,
+                chat_id=chat_id,
+                message_id=request.message_id,
+                branch=request.branch,
+                job_id=job.id,
+            )
 
         if conversation_store is not None:
             conversation_store.append(
@@ -112,6 +140,14 @@ def create_webhook_router(
                     text=summary,
                     job_id=final_job.id,
                 )
+                if final_job.request.message_id is not None and final_job.branch is not None:
+                    conversation_store.bind_message_branch(
+                        project=final_job.request.project,
+                        chat_id=final_job.request.chat_id,
+                        message_id=final_job.request.message_id,
+                        branch=final_job.branch,
+                        job_id=final_job.id,
+                    )
 
             background_tasks.add_task(run_and_record, job.id)
         else:

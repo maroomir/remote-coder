@@ -77,7 +77,14 @@ class CommandParser:
 
         return model, branch, commit, project, remaining
 
-    def parse_natural(self, text: str, chat_id: int, user_id: int | None) -> JobRequest:
+    def parse_natural(
+        self,
+        text: str,
+        chat_id: int,
+        user_id: int | None,
+        message_id: int | None = None,
+        reply_to_message_id: int | None = None,
+    ) -> JobRequest:
         model, branch, commit, project_slug, remaining = self._extract_options(text.strip())
         if not remaining:
             raise CommandParseError("작업 지시문이 비어 있습니다.")
@@ -105,6 +112,17 @@ class CommandParser:
             selected_model = self._model_preferences.get(chat_id)
         else:
             selected_model = entry.default_model
+
+        if (
+            branch is None
+            and reply_to_message_id is not None
+            and self._conversation_store is not None
+        ):
+            branch = self._conversation_store.get_bound_branch(
+                project_name,
+                chat_id,
+                reply_to_message_id,
+            )
 
         if branch is not None:
             branch_err = GitWorktreeService.validate_branch_token(branch)
@@ -134,4 +152,6 @@ class CommandParser:
             commit=True if commit is None else commit,
             chat_id=chat_id,
             requested_by=user_id,
+            message_id=message_id,
+            reply_to_message_id=reply_to_message_id,
         )

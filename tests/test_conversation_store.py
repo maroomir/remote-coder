@@ -95,3 +95,18 @@ def test_generate_report_returns_none_when_no_memory(tmp_path: Path):
     db = tmp_path / "empty_report.sqlite3"
     store = SQLiteConversationStore(db)
     assert store.generate_report("p1", 10) is None
+
+
+def test_bind_message_branch_and_lookup(tmp_path: Path):
+    db = tmp_path / "branch_link.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.bind_message_branch(
+        project="p1",
+        chat_id=7,
+        message_id=10,
+        branch="remote-a",
+        job_id="job-1",
+    )
+
+    assert store.get_bound_branch("p1", 7, 10) == "remote-a"
+    assert store.get_bound_branch("p1", 7, 11) is None

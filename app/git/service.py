@@ -75,6 +75,22 @@ class GitWorktreeService:
             raise RuntimeError(f"failed to create detached worktree: {result.stderr.strip()}")
         return worktree_path
 
+    def prepare_branch_worktree(
+        self,
+        project_path: Path,
+        branch_name: str,
+        job_id: str,
+        worktree_base_dir: Path | None = None,
+    ) -> Path:
+        """기존 로컬 브랜치를 checkout한 새 worktree를 생성합니다."""
+        base = worktree_base_dir if worktree_base_dir is not None else self._base_dir
+        base.mkdir(parents=True, exist_ok=True)
+        worktree_path = base / job_id
+        result = self._run_git(project_path, ["worktree", "add", str(worktree_path), branch_name])
+        if result.returncode != 0:
+            raise RuntimeError(f"failed to create branch worktree: {result.stderr.strip()}")
+        return worktree_path
+
     @staticmethod
     def ensure_worktree_writable(worktree_path: Path) -> None:
         """worktree 디렉터리에 실제 쓰기가 가능한지 확인합니다."""
@@ -122,6 +138,20 @@ class GitWorktreeService:
         result = self._run_git(worktree_path, ["switch", "-c", branch_name])
         if result.returncode != 0:
             raise RuntimeError(f"failed to create branch in worktree: {result.stderr.strip()}")
+
+    def find_linked_worktree_for_branch(self, project_path: Path, branch_name: str) -> Path | None:
+        """같은 브랜치가 이미 linked worktree에 checkout되어 있으면 그 경로를 반환합니다."""
+        result = self._run_git(project_path, ["worktree", "list", "--porcelain"])
+        if result.returncode != 0:
+            raise RuntimeError(f"failed to list worktrees: {result.stderr.strip()}")
+        root = project_path.resolve()
+        for worktree_path, branch in self._parse_worktree_list_porcelain(result.stdout):
+            if branch != branch_name:
+                continue
+            if worktree_path.resolve() == root:
+                continue
+            return worktree_path
+        return None
 
     def collect_changes(self, worktree_path: Path) -> list[str]:
         result = self._run_git(worktree_path, ["status", "--porcelain"])

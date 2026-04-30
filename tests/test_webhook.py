@@ -431,3 +431,81 @@ def test_webhook_conversation_isolated_by_chat(project_registry, tmp_path):
     assert response.json()["status"] == "ignored"
     assert "맥락" in notifier.sent[-1][1]
     assert capture.last_request is None
+
+
+def test_webhook_reply_reuses_bound_branch(project_registry, tmp_path):
+    db = tmp_path / "wh_reply.sqlite3"
+    conv = SQLiteConversationStore(db)
+    conv.bind_message_branch(
+        project="remote-coder",
+        chat_id=123,
+        message_id=1,
+        branch="remote-a",
+        job_id="job-1",
+    )
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=conv,
+    )
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    capture = CaptureJobManager()
+    app.include_router(
+        create_webhook_router(
+            auth_service=AllowlistAuthService({123}),
+            parser=parser,
+            command_registry=CommandRegistry(
+                [
+                    StartCommand(),
+                    HelpCommand(),
+                    ModelCommand(),
+                    StatusCommand(),
+                    ProjectsCommand(),
+                    ProjectCommand(),
+                    BranchesCommand(),
+                    BranchCommand(),
+                    RebaseCommand(),
+                    ClearCommand(),
+                ]
+            ),
+            command_context=CommandContext(
+                job_store=store,
+                default_model=ModelName.CLAUDE,
+                project_registry=project_registry,
+                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+                project_preferences=InMemoryProjectPreferenceStore(),
+                git_service=Mock(),
+                git_remote_name="origin",
+                conversation_store=conv,
+                confirmation_store=InMemoryConfirmationStore(),
+            ),
+            job_manager=capture,
+            job_store=store,
+            notifier=notifier,
+            webhook_secret=None,
+            conversation_store=conv,
+        )
+    )
+    client = TestClient(app)
+    response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 5,
+            "message": {
+                "message_id": 2,
+                "text": "추가 기능도 반영해줘",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+                "reply_to_message": {"message_id": 1},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "accepted"
+    assert capture.last_request is not None
+    assert capture.last_request.branch == "remote-a"
+    assert capture.last_request.reply_to_message_id == 1
+    assert conv.get_bound_branch("remote-coder", 123, 2) == "remote-a"

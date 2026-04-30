@@ -216,6 +216,53 @@ def test_job_manager_push_failure_sets_stage(test_settings, project_registry):
     assert "push denied" in (final_job.error or "")
 
 
+def test_job_manager_reuses_existing_branch_worktree(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    existing_worktree = Path("/tmp/existing-remote-a")
+    git_service.local_branch_exists.return_value = True
+    git_service.find_linked_worktree_for_branch.return_value = existing_worktree
+    git_service.collect_changes.return_value = ["a.py"]
+    git_service.commit_all.return_value = "abc123"
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier = Mock()
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="follow up",
+        branch="remote-a",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    final_job = manager.run(job.id)
+
+    assert final_job.status.value == "succeeded"
+    assert final_job.branch == "remote-a"
+    git_service.prepare_detached_worktree.assert_not_called()
+    git_service.prepare_branch_worktree.assert_not_called()
+    git_service.create_branch_in_worktree.assert_not_called()
+    git_service.ensure_worktree_writable.assert_called_once_with(existing_worktree)
+    runner_input = factory.create.return_value.run.call_args.args[0]
+    assert runner_input.cwd == existing_worktree
+
+
 def test_job_manager_truncates_runner_output_summary(test_settings, project_registry):
     store = InMemoryJobStore()
     git_service = Mock()

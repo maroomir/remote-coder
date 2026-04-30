@@ -31,6 +31,17 @@ def test_prepare_detached_worktree(mock_run, tmp_path: Path):
 
 
 @patch("app.git.service.subprocess.run")
+def test_prepare_branch_worktree(mock_run, tmp_path: Path):
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stdout = ""
+    mock_run.return_value.stderr = ""
+    service = GitWorktreeService(base_dir=tmp_path / "wt")
+    out = service.prepare_branch_worktree(tmp_path, "remote-a", "job3", worktree_base_dir=tmp_path / "base")
+    assert out.name == "job3"
+    assert mock_run.call_args[0][0] == ["git", "worktree", "add", str(out), "remote-a"]
+
+
+@patch("app.git.service.subprocess.run")
 def test_create_branch_in_worktree(mock_run, tmp_path: Path):
     mock_run.return_value.returncode = 0
     mock_run.return_value.stderr = ""
@@ -197,6 +208,26 @@ def test_parse_worktree_list_porcelain_extracts_paths_and_branches():
     assert parsed[0][1] == "main"
     assert parsed[1][1] == "remote-task-20260428-151253"
     assert parsed[2][1] is None
+
+
+@patch("app.git.service.subprocess.run")
+def test_find_linked_worktree_for_branch_ignores_root(mock_run, tmp_path: Path):
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stderr = ""
+    root = tmp_path / "repo"
+    root.mkdir()
+    other = tmp_path / "repo-wt"
+    mock_run.return_value.stdout = (
+        f"worktree {root}\n"
+        "HEAD abc\n"
+        "branch refs/heads/remote-a\n"
+        "\n"
+        f"worktree {other}\n"
+        "HEAD def\n"
+        "branch refs/heads/remote-a\n"
+    )
+    service = GitWorktreeService(base_dir=tmp_path)
+    assert service.find_linked_worktree_for_branch(root, "remote-a") == other
 
 
 @patch("app.git.service.subprocess.run")

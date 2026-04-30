@@ -186,3 +186,32 @@ def test_parse_natural_ambiguous_without_history_raises(project_registry: Projec
     )
     with pytest.raises(CommandParseError, match="맥락"):
         parser.parse_natural("작업 시작해줘", chat_id=42, user_id=1)
+
+
+def test_parse_natural_reply_reuses_bound_branch(project_registry: ProjectRegistry):
+    db = project_registry.config_path.parent / "parser_reply.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.bind_message_branch(
+        project="remote-coder",
+        chat_id=99,
+        message_id=11,
+        branch="remote-a",
+        job_id="job-1",
+    )
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=store,
+    )
+
+    req = parser.parse_natural(
+        "추가 기능도 반영해줘",
+        chat_id=99,
+        user_id=1,
+        message_id=12,
+        reply_to_message_id=11,
+    )
+
+    assert req.branch == "remote-a"
+    assert req.message_id == 12
+    assert req.reply_to_message_id == 11
