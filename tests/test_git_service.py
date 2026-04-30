@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from app.git.service import GitWorktreeService
@@ -211,3 +212,71 @@ def test_list_remote_branches_matching_raises_on_failure(mock_run, tmp_path: Pat
         assert "connection refused" in str(exc)
     else:
         raise AssertionError("expected RuntimeError")
+
+
+@patch("app.git.service.uuid.uuid4", return_value=SimpleNamespace(hex="aaaaaaaa1234567890abcdef12345678"))
+@patch("app.git.service.subprocess.run")
+def test_rebase_branch_onto_main_removes_linked_worktree_before_add(mock_run, _mock_uuid, tmp_path: Path):
+    """대상 브랜치가 다른 worktree에 checkout되어 있으면 rebase용 worktree add 전에 제거해야 한다."""
+    project_path = tmp_path / "repo"
+    project_path.mkdir()
+    linked = tmp_path / "job_wt"
+    linked.mkdir()
+    root = project_path.resolve()
+    branch = "feature-rebase-wt"
+    porcelain = (
+        f"worktree {root}\n"
+        "HEAD abcdefabcdefabcdefabcdefabcdefabcdef\n"
+        "branch refs/heads/main\n"
+        "\n"
+        f"worktree {linked.resolve()}\n"
+        "HEAD fedcbafedcbafedcbafedcbafedcbafedcbafedc\n"
+        f"branch refs/heads/{branch}\n"
+    )
+    commands: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs):
+        commands.append(list(argv))
+        cmd = argv
+        stdout = ""
+        stderr = ""
+        rc = 0
+        if cmd[:4] == ["git", "rev-parse", "--verify", "main"]:
+            stdout = "deadbeef\n"
+        elif cmd[:2] == ["git", "fetch"]:
+            pass
+        elif cmd[:4] == ["git", "worktree", "list", "--porcelain"]:
+            stdout = porcelain
+        elif cmd[:3] == ["git", "worktree", "remove"]:
+            # linked job worktree 제거 후, finally에서 rebase 임시 worktree 제거
+            target = cmd[-1]
+            assert target == str(linked.resolve()) or "_rebase_aaaaaaaa" in target
+        elif cmd[:3] == ["git", "worktree", "add"]:
+            assert "-B" in cmd
+            assert branch in cmd
+        elif cmd[:2] == ["git", "rebase"]:
+            pass
+        elif cmd[:2] == ["git", "push"]:
+            pass
+        elif cmd[:2] == ["git", "checkout"]:
+            pass
+        elif cmd[:2] == ["git", "pull"]:
+            pass
+        elif cmd[:2] == ["git", "merge"]:
+            pass
+        else:
+            raise AssertionError(f"unexpected git argv: {cmd}")
+        return Mock(returncode=rc, stdout=stdout, stderr=stderr)
+
+    mock_run.side_effect = fake_run
+    service = GitWorktreeService(base_dir=tmp_path)
+    ops = tmp_path / "rebase_ops"
+    summary = service.rebase_branch_onto_main_and_merge(project_path, branch, "origin", ops)
+
+    assert "rebase 완료" in summary
+    idx_list = next(i for i, c in enumerate(commands) if c[1:4] == ["worktree", "list", "--porcelain"])
+    idx_remove_linked = next(
+        i for i, c in enumerate(commands) if c[1:3] == ["worktree", "remove"] and c[-1] == str(linked.resolve())
+    )
+    idx_add = next(i for i, c in enumerate(commands) if c[1:3] == ["worktree", "add"] and "-B" in c)
+    assert idx_list < idx_remove_linked < idx_add

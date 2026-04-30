@@ -317,6 +317,9 @@ class GitWorktreeService:
         if fetch_branch.returncode != 0:
             raise RuntimeError(f"git fetch {remote} {branch} failed: {fetch_branch.stderr.strip()}")
 
+        # 같은 브랜치가 Job worktree 등에 checkout되어 있으면 `worktree add -B`가 실패합니다.
+        self.remove_linked_worktrees_for_branches(project_path, [branch])
+
         worktree_ops_base.mkdir(parents=True, exist_ok=True)
         op_id = f"_rebase_{uuid.uuid4().hex[:8]}"
         op_path = worktree_ops_base / op_id
