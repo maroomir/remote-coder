@@ -9,6 +9,7 @@ from app.ai.base import RunnerInput
 from app.ai.factory import AiRunnerFactory
 from app.config import Settings
 from app.git.branch_naming import BranchNamingStrategy
+from app.git.commit_message import CommitMessageFormatter
 from app.git.service import GitWorktreeService
 from app.jobs.schemas import Job, JobRequest
 from app.jobs.store import InMemoryJobStore
@@ -118,9 +119,12 @@ class JobManager:
                 job.changed_files = self._git_service.collect_changes(worktree_path)
 
                 if job.request.commit:
-                    job.commit_hash = self._git_service.commit_all(
-                        worktree_path, f"remote-coder: {job.id}"
+                    commit_message = CommitMessageFormatter.format(
+                        job_id=job.id,
+                        instruction=job.request.instruction,
+                        changed_files=job.changed_files,
                     )
+                    job.commit_hash = self._git_service.commit_all(worktree_path, commit_message)
                 else:
                     job.commit_hash = None
 

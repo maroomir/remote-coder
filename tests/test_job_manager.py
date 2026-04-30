@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from app.ai.base import RunnerResult
+from app.git.commit_message import CommitMessageFormatter
 from app.jobs.manager import JobManager
 from app.jobs.schemas import JobRequest
 from app.jobs.store import InMemoryJobStore
@@ -52,6 +53,10 @@ def test_job_manager_submit_and_run_success(test_settings, project_registry):
     git_service.prepare_detached_worktree.assert_called_once()
     git_service.ensure_worktree_writable.assert_called_once_with(Path("/tmp/wt"))
     git_service.create_branch_in_worktree.assert_called_once_with(Path("/tmp/wt"), "remote-test")
+    git_service.commit_all.assert_called_once_with(
+        Path("/tmp/wt"),
+        CommitMessageFormatter.format(job.id, request.instruction, ["a.py"]),
+    )
     git_service.push_branch.assert_called_once_with(
         test_settings.project_root, test_settings.git_remote_name, "remote-test"
     )
