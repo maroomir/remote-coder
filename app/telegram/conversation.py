@@ -66,6 +66,13 @@ class SQLiteConversationStore:
             finally:
                 conn.close()
 
+    def reset(self) -> None:
+        """기억 DB 파일을 비우고 빈 스키마로 다시 만듭니다."""
+        with self._lock:
+            if self._db_path.exists():
+                self._db_path.unlink()
+        self.ensure_schema()
+
     def append(
         self,
         *,

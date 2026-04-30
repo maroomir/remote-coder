@@ -66,3 +66,11 @@ def test_projects_isolated_by_name(tmp_path: Path):
     store = SQLiteConversationStore(db)
     store.append(project="a", chat_id=1, role="user", text="only-a", job_id=None)
     assert store.list_recent("b", 1, 10) == []
+
+
+def test_sqlite_store_reset_clears_entries(tmp_path: Path):
+    db = tmp_path / "reset.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(project="a", chat_id=1, role="user", text="before", job_id=None)
+    store.reset()
+    assert store.list_recent("a", 1, 10) == []

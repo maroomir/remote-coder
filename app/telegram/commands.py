@@ -7,6 +7,8 @@ from app.git.service import GitWorktreeService
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
 from app.projects.registry import ProjectRegistry
+from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
+from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
@@ -27,6 +29,8 @@ class CommandContext:
     project_preferences: InMemoryProjectPreferenceStore
     git_service: GitWorktreeService
     git_remote_name: str
+    conversation_store: SQLiteConversationStore | None
+    confirmation_store: InMemoryConfirmationStore
 
 
 def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | None:
@@ -43,6 +47,17 @@ class TelegramCommand(ABC):
 
     @abstractmethod
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
+        raise NotImplementedError
+
+
+class ConfirmableCommand(TelegramCommand):
+    @abstractmethod
+    def confirm(
+        self,
+        message: TelegramMessage,
+        ctx: CommandContext,
+        pending: PendingConfirmation,
+    ) -> str:
         raise NotImplementedError
 
 
@@ -67,7 +82,8 @@ class HelpCommand(TelegramCommand):
             "/branches\n"
             "/branch 또는 /branch <브랜치이름> (현재 브랜치 조회 / git switch)\n"
             "/rebase 또는 /rebase <branch>\n"
-            "/clear\n"
+            "/clear branch\n"
+            "/clear memory\n"
             "또는 자연어 지시문을 입력하세요. "
             "(옵션: model:, branch:, project:, no commit)"
         )
@@ -257,13 +273,54 @@ class RebaseCommand(TelegramCommand):
             return f"/rebase 실패: {exc}"
 
 
-class ClearCommand(TelegramCommand):
-    """등록된 enabled 프로젝트에서 remote-* 로컬·원격 브랜치 삭제."""
+class ClearCommand(ConfirmableCommand):
+    """브랜치 정리 또는 기억 DB 초기화를 확인 후 실행."""
 
     name = "/clear"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        _ = message
+        tokens = message.text.strip().split()
+        if len(tokens) != 2 or tokens[1] not in {"branch", "memory"}:
+            return "사용법: /clear branch 또는 /clear memory"
+
+        action = tokens[1]
+        if action == "memory" and ctx.conversation_store is None:
+            return "기억 저장소가 설정되지 않았습니다."
+
+        ctx.confirmation_store.set(
+            message.chat_id,
+            PendingConfirmation(command_name=self.name, action=action),
+        )
+
+        if action == "branch":
+            summary = "remote-* 브랜치와 연결된 worktree를 삭제합니다."
+        else:
+            summary = "대화 기억 SQLite 데이터베이스를 비웁니다."
+        return (
+            f"현재 할 작업: {summary}\n"
+            "실행하려면 `y` 또는 `Y`를 입력하세요. 그 외 응답은 취소됩니다."
+        )
+
+    def confirm(
+        self,
+        message: TelegramMessage,
+        ctx: CommandContext,
+        pending: PendingConfirmation,
+    ) -> str:
+        if message.text.strip() not in {"y", "Y"}:
+            if pending.action == "branch":
+                target = "브랜치 삭제"
+            else:
+                target = "기억 삭제"
+            return f"{target}를 취소했습니다."
+
+        if pending.action == "branch":
+            return self._clear_branches(ctx)
+        if pending.action == "memory":
+            return self._clear_memory(ctx)
+        return "알 수 없는 clear 작업입니다."
+
+    def _clear_branches(self, ctx: CommandContext) -> str:
         lines: list[str] = []
         projects = [p for p in ctx.project_registry.list_projects() if p.enabled]
         if not projects:
@@ -289,12 +346,26 @@ class ClearCommand(TelegramCommand):
                 lines.append(f"{p.name}: 실패 — {exc}")
         return "\n".join(lines)
 
+    def _clear_memory(self, ctx: CommandContext) -> str:
+        if ctx.conversation_store is None:
+            return "기억 저장소가 설정되지 않았습니다."
+        ctx.conversation_store.reset()
+        return "대화 기억 SQLite 데이터베이스를 초기화했습니다."
+
 
 class CommandRegistry:
     def __init__(self, commands: list[TelegramCommand]) -> None:
         self._commands = {command.name: command for command in commands}
 
     def dispatch(self, message: TelegramMessage, ctx: CommandContext) -> str | None:
+        pending = ctx.confirmation_store.get(message.chat_id)
+        if pending is not None:
+            command = self._commands.get(pending.command_name)
+            confirmed = ctx.confirmation_store.pop(message.chat_id)
+            if isinstance(command, ConfirmableCommand) and confirmed is not None:
+                return command.confirm(message, ctx, confirmed)
+            return "확인 대기 작업을 처리할 수 없습니다."
+
         head = message.text.strip().split()[0] if message.text.strip() else ""
         if not head.startswith("/"):
             return None

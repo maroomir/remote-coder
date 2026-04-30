@@ -23,6 +23,7 @@ from app.telegram.commands import (
     StartCommand,
     StatusCommand,
 )
+from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.notifier import TelegramNotifier
 from app.telegram.parser import CommandParser
@@ -41,6 +42,7 @@ auth_service = AllowlistAuthService(
 )
 model_preferences = InMemoryModelPreferenceStore(default_model=settings.default_model)
 project_preferences = InMemoryProjectPreferenceStore()
+confirmation_store = InMemoryConfirmationStore()
 conversation_store = SQLiteConversationStore(settings.conversation_db_path)
 parser = CommandParser(
     project_registry=project_registry,
@@ -73,6 +75,8 @@ command_context = CommandContext(
     project_preferences=project_preferences,
     git_service=git_service,
     git_remote_name=settings.git_remote_name,
+    conversation_store=conversation_store,
+    confirmation_store=confirmation_store,
 )
 runner_factory = AiRunnerFactory(codex_sandbox=settings.codex_sandbox)
 branch_strategy = TimestampSlugStrategy()

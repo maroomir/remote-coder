@@ -19,11 +19,16 @@ from app.telegram.commands import (
     StatusCommand,
     TelegramMessage,
 )
+from app.telegram.confirmations import InMemoryConfirmationStore
+from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
 
-def _ctx(project_registry: ProjectRegistry) -> CommandContext:
+def _ctx(
+    project_registry: ProjectRegistry,
+    conversation_store: SQLiteConversationStore | None = None,
+) -> CommandContext:
     store = InMemoryJobStore()
     job = Job(
         id="job1",
@@ -46,6 +51,8 @@ def _ctx(project_registry: ProjectRegistry) -> CommandContext:
         project_preferences=InMemoryProjectPreferenceStore(),
         git_service=git_service,
         git_remote_name="origin",
+        conversation_store=conversation_store,
+        confirmation_store=InMemoryConfirmationStore(),
     )
 
 
@@ -70,7 +77,8 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert "/branches" in text
     assert "/branch" in text
     assert "/rebase" in text
-    assert "/clear" in text
+    assert "/clear branch" in text
+    assert "/clear memory" in text
     assert "/project" in text
 
 
@@ -256,12 +264,23 @@ def test_rebase_command_no_recent_branch(project_registry: ProjectRegistry):
     ctx.git_service.rebase_branch_onto_main_and_merge.assert_not_called()
 
 
-def test_clear_command_deletes_matching_branches(project_registry: ProjectRegistry):
+def test_clear_branch_command_requests_confirmation(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    registry = CommandRegistry([ClearCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
+    assert "현재 할 작업" in (text or "")
+    assert "remote-*" in (text or "")
+    ctx.git_service.delete_remote_branches.assert_not_called()
+    ctx.git_service.delete_local_branches.assert_not_called()
+
+
+def test_clear_branch_confirmation_executes_matching_deletes(project_registry: ProjectRegistry):
     ctx = _ctx(project_registry)
     ctx.git_service.list_remote_branches_matching.return_value = ["remote-x"]
     ctx.git_service.list_local_branches_matching.return_value = ["remote-y"]
     registry = CommandRegistry([ClearCommand()])
-    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear"), ctx)
+    registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="y"), ctx)
     assert "remote-coder" in (text or "")
     assert "원격 1개" in (text or "")
     assert "로컬 1개" in (text or "")
@@ -270,3 +289,31 @@ def test_clear_command_deletes_matching_branches(project_registry: ProjectRegist
     ctx.git_service.delete_remote_branches.assert_called_once()
     ctx.git_service.remove_linked_worktrees_for_branches.assert_called_once()
     ctx.git_service.delete_local_branches.assert_called_once()
+
+
+def test_clear_confirmation_rejects_non_yes(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    registry = CommandRegistry([ClearCommand()])
+    registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="n"), ctx)
+    assert text == "브랜치 삭제를 취소했습니다."
+    ctx.git_service.delete_remote_branches.assert_not_called()
+    ctx.git_service.delete_local_branches.assert_not_called()
+
+
+def test_clear_memory_confirmation_resets_conversation_db(
+    project_registry: ProjectRegistry,
+    tmp_path,
+):
+    db = tmp_path / "conv.sqlite3"
+    conversation_store = SQLiteConversationStore(db)
+    conversation_store.append(project="remote-coder", chat_id=1, role="user", text="hello", job_id=None)
+    ctx = _ctx(project_registry, conversation_store=conversation_store)
+    registry = CommandRegistry([ClearCommand()])
+
+    prompt = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear memory"), ctx)
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="Y"), ctx)
+
+    assert "SQLite" in (prompt or "")
+    assert text == "대화 기억 SQLite 데이터베이스를 초기화했습니다."
+    assert conversation_store.list_recent("remote-coder", 1, 10) == []

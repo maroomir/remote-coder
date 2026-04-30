@@ -20,6 +20,7 @@ from app.telegram.commands import (
     StartCommand,
     StatusCommand,
 )
+from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.project_preferences import InMemoryProjectPreferenceStore
@@ -95,6 +96,8 @@ def test_webhook_accepts_natural_message(project_registry):
                 project_preferences=InMemoryProjectPreferenceStore(),
                 git_service=Mock(),
                 git_remote_name="origin",
+                conversation_store=None,
+                confirmation_store=InMemoryConfirmationStore(),
             ),
             job_manager=DummyJobManager(),
             job_store=store,
@@ -145,6 +148,8 @@ def test_webhook_sends_command_response_to_telegram(project_registry):
                 project_preferences=InMemoryProjectPreferenceStore(),
                 git_service=Mock(),
                 git_remote_name="origin",
+                conversation_store=None,
+                confirmation_store=InMemoryConfirmationStore(),
             ),
             job_manager=DummyJobManager(),
             job_store=store,
@@ -163,6 +168,77 @@ def test_webhook_sends_command_response_to_telegram(project_registry):
     assert response.json()["status"] == "ok"
     assert notifier.sent
     assert notifier.sent[0][0] == 123
+
+
+def test_webhook_executes_pending_clear_confirmation(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.list_remote_branches_matching.return_value = ["remote-x"]
+    git_service.list_local_branches_matching.return_value = ["remote-y"]
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_preferences=InMemoryProjectPreferenceStore(),
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    app.include_router(
+        create_webhook_router(
+            auth_service=AllowlistAuthService({123}),
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=CommandRegistry(
+                [
+                    StartCommand(),
+                    HelpCommand(),
+                    ModelCommand(),
+                    StatusCommand(),
+                    ProjectsCommand(),
+                    ProjectCommand(),
+                    BranchesCommand(),
+                    BranchCommand(),
+                    RebaseCommand(),
+                    ClearCommand(),
+                ]
+            ),
+            command_context=command_context,
+            job_manager=DummyJobManager(),
+            job_store=store,
+            notifier=notifier,
+            webhook_secret=None,
+        )
+    )
+    client = TestClient(app)
+
+    prompt_response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 10,
+            "message": {"message_id": 10, "text": "/clear branch", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    confirm_response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 11,
+            "message": {"message_id": 11, "text": "Y", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+
+    assert prompt_response.status_code == 200
+    assert prompt_response.json()["status"] == "ok"
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "ok"
+    assert "현재 할 작업" in notifier.sent[0][1]
+    assert "원격 1개" in notifier.sent[1][1]
 
 
 def test_webhook_ambiguous_followup_uses_conversation_history(project_registry, tmp_path):
@@ -210,6 +286,8 @@ def test_webhook_ambiguous_followup_uses_conversation_history(project_registry, 
                 project_preferences=InMemoryProjectPreferenceStore(),
                 git_service=Mock(),
                 git_remote_name="origin",
+                conversation_store=conv,
+                confirmation_store=InMemoryConfirmationStore(),
             ),
             job_manager=capture,
             job_store=store,
@@ -269,6 +347,8 @@ def test_webhook_ambiguous_without_history_sends_guidance(project_registry, tmp_
                 project_preferences=InMemoryProjectPreferenceStore(),
                 git_service=Mock(),
                 git_remote_name="origin",
+                conversation_store=conv,
+                confirmation_store=InMemoryConfirmationStore(),
             ),
             job_manager=DummyJobManager(),
             job_store=store,
@@ -330,6 +410,8 @@ def test_webhook_conversation_isolated_by_chat(project_registry, tmp_path):
                 project_preferences=InMemoryProjectPreferenceStore(),
                 git_service=Mock(),
                 git_remote_name="origin",
+                conversation_store=conv,
+                confirmation_store=InMemoryConfirmationStore(),
             ),
             job_manager=capture,
             job_store=store,
