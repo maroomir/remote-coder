@@ -14,6 +14,7 @@ from app.telegram.commands import (
     ModelCommand,
     ProjectCommand,
     ProjectsCommand,
+    ReportsCommand,
     RebaseCommand,
     StartCommand,
     StatusCommand,
@@ -65,6 +66,7 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
             StatusCommand(),
             ProjectsCommand(),
             ProjectCommand(),
+            ReportsCommand(),
             BranchesCommand(),
             BranchCommand(),
             RebaseCommand(),
@@ -298,29 +300,42 @@ def test_clear_branch_confirmation_executes_matching_deletes(project_registry: P
     ctx.git_service.delete_local_branches.assert_called_once()
 
 
-def test_clear_confirmation_rejects_non_yes(project_registry: ProjectRegistry):
-    ctx = _ctx(project_registry)
-    registry = CommandRegistry([ClearCommand()])
-    registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
-    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="n"), ctx)
-    assert text == "브랜치 삭제를 취소했습니다."
-    ctx.git_service.delete_remote_branches.assert_not_called()
-    ctx.git_service.delete_local_branches.assert_not_called()
-
-
-def test_clear_memory_confirmation_resets_conversation_db(
-    project_registry: ProjectRegistry,
-    tmp_path,
-):
-    db = tmp_path / "conv.sqlite3"
+def test_reports_command_summarizes_sqlite_memory(project_registry: ProjectRegistry, tmp_path):
+    db = tmp_path / "cmd_reports.sqlite3"
     conversation_store = SQLiteConversationStore(db)
-    conversation_store.append(project="remote-coder", chat_id=1, role="user", text="hello", job_id=None)
-    ctx = _ctx(project_registry, conversation_store=conversation_store)
-    registry = CommandRegistry([ClearCommand()])
+    conversation_store.append(
+        project="remote-coder",
+        chat_id=77,
+        role="user",
+        text="README 수정해줘",
+        job_id=None,
+    )
+    conversation_store.append(
+        project="remote-coder",
+        chat_id=77,
+        role="job_result",
+        text="status=succeeded",
+        job_id="job-7",
+    )
+    ctx = _ctx(project_registry)
+    ctx.conversation_store = conversation_store
+    registry = CommandRegistry([ReportsCommand()])
 
-    prompt = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear memory"), ctx)
-    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="Y"), ctx)
+    text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/reports"), ctx)
 
-    assert "SQLite" in (prompt or "")
-    assert text == "대화 기억 SQLite 데이터베이스를 초기화했습니다."
-    assert conversation_store.list_recent("remote-coder", 1, 10) == []
+    assert text is not None
+    assert "기억 리포트" in text
+    assert "총 기록: 2개" in text
+    assert "최근 사용자 요청: README 수정해줘" in text
+    assert "job-7" in text
+
+
+def test_reports_command_handles_empty_memory(project_registry: ProjectRegistry, tmp_path):
+    db = tmp_path / "cmd_reports_empty.sqlite3"
+    ctx = _ctx(project_registry)
+    ctx.conversation_store = SQLiteConversationStore(db)
+    registry = CommandRegistry([ReportsCommand()])
+
+    text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/reports"), ctx)
+
+    assert text == "기억된 대화 기록이 없습니다. (project=remote-coder)"

@@ -29,8 +29,8 @@ class CommandContext:
     project_preferences: InMemoryProjectPreferenceStore
     git_service: GitWorktreeService
     git_remote_name: str
-    conversation_store: SQLiteConversationStore | None
     confirmation_store: InMemoryConfirmationStore
+    conversation_store: SQLiteConversationStore | None = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +58,8 @@ HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
             CommandHelpEntry("/model", "현재 기본 모델을 확인합니다."),
             CommandHelpEntry("/model <claude|codex>", "기본 모델을 변경합니다."),
             CommandHelpEntry("/status <job_id>", "작업 상태를 조회합니다."),
+            CommandHelpEntry("/reports", "현재 채팅/프로젝트의 기억 리포트를 확인합니다."),
+            CommandHelpEntry("/reports <recent_limit>", "최근 기억 개수(1~10)를 지정해 리포트를 확인합니다."),
         ],
     ),
     (
@@ -70,7 +72,8 @@ HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
             CommandHelpEntry("/branch", "기본 프로젝트의 현재 브랜치를 확인합니다."),
             CommandHelpEntry("/branch <브랜치이름>", "기본 프로젝트의 로컬 브랜치로 전환합니다."),
             CommandHelpEntry("/rebase [브랜치이름]", "브랜치를 main 기준으로 rebase 후 병합합니다."),
-            CommandHelpEntry("/clear", "등록 프로젝트의 remote-* 브랜치를 정리합니다."),
+            CommandHelpEntry("/clear branch", "등록 프로젝트의 remote-* 브랜치와 연결 worktree를 정리합니다."),
+            CommandHelpEntry("/clear memory", "대화 기억 SQLite 데이터베이스를 초기화합니다."),
         ],
     ),
 )
@@ -196,6 +199,77 @@ class ProjectCommand(TelegramCommand):
             ctx.project_preferences.set(message.chat_id, name)
             return f"작업 프로젝트가 {name}로 변경되었습니다."
         return format_usage("/project", "/project <프로젝트이름>")
+
+
+class ReportsCommand(TelegramCommand):
+    name = "/reports"
+
+    _DEFAULT_RECENT_LIMIT = 5
+    _MAX_RECENT_LIMIT = 10
+
+    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
+        tokens = message.text.strip().split()
+        if len(tokens) > 2:
+            return "사용법: /reports 또는 /reports <recent_limit>"
+
+        recent_limit = self._DEFAULT_RECENT_LIMIT
+        if len(tokens) == 2:
+            try:
+                recent_limit = int(tokens[1])
+            except ValueError:
+                return "사용법: /reports 또는 /reports <recent_limit>"
+            if recent_limit < 1 or recent_limit > self._MAX_RECENT_LIMIT:
+                return f"recent_limit 은 1~{self._MAX_RECENT_LIMIT} 사이의 숫자여야 합니다."
+
+        if ctx.conversation_store is None:
+            return "대화 기억 저장소가 설정되지 않았습니다."
+
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return (
+                "등록된 기본 프로젝트가 없습니다. "
+                "브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요."
+            )
+
+        entry = ctx.project_registry.get(project_name)
+        if not entry:
+            return f"알 수 없는 프로젝트: {project_name}"
+        if not entry.enabled:
+            return f"비활성화된 프로젝트: {project_name}"
+
+        report = ctx.conversation_store.generate_report(project_name, message.chat_id, recent_limit)
+        if report is None:
+            return f"기억된 대화 기록이 없습니다. (project={project_name})"
+
+        lines = [
+            "기억 리포트",
+            f"프로젝트: {project_name}",
+            f"총 기록: {report.total_entries}개",
+            f"사용자 요청: {report.count_for('user')}개",
+            f"Job 접수: {report.count_for('job_accepted')}개",
+            f"Job 결과: {report.count_for('job_result')}개",
+        ]
+        if report.latest_user_text:
+            lines.append(f"최근 사용자 요청: {self._truncate(report.latest_user_text)}")
+        if report.latest_job_result:
+            job_label = report.latest_job_id or "(job_id 없음)"
+            lines.append(f"최근 Job 결과: {job_label} {self._truncate(report.latest_job_result)}")
+        if report.recent_entries:
+            lines.append("")
+            lines.append("최근 기억")
+            for item in report.recent_entries:
+                label = item.role
+                if item.job_id:
+                    label = f"{label}:{item.job_id}"
+                lines.append(f"- [{label}] {self._truncate(item.text, limit=90)}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _truncate(text: str, limit: int = 120) -> str:
+        normalized = text.strip().replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+        if len(normalized) <= limit:
+            return normalized
+        return normalized[:limit].rstrip() + "..."
 
 
 class BranchesCommand(TelegramCommand):

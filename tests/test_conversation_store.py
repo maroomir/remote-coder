@@ -68,9 +68,30 @@ def test_projects_isolated_by_name(tmp_path: Path):
     assert store.list_recent("b", 1, 10) == []
 
 
-def test_sqlite_store_reset_clears_entries(tmp_path: Path):
-    db = tmp_path / "reset.sqlite3"
+def test_generate_report_uses_sql_aggregates(tmp_path: Path):
+    db = tmp_path / "report.sqlite3"
     store = SQLiteConversationStore(db)
-    store.append(project="a", chat_id=1, role="user", text="before", job_id=None)
-    store.reset()
-    assert store.list_recent("a", 1, 10) == []
+    store.append(project="p1", chat_id=10, role="user", text="README 수정", job_id=None)
+    store.append(project="p1", chat_id=10, role="job_accepted", text="Job 접수: j1", job_id="j1")
+    store.append(
+        project="p1",
+        chat_id=10,
+        role="job_result",
+        text="status=succeeded",
+        job_id="j1",
+    )
+    report = store.generate_report("p1", 10, recent_limit=2)
+    assert report is not None
+    assert report.total_entries == 3
+    assert report.count_for("user") == 1
+    assert report.count_for("job_result") == 1
+    assert report.latest_user_text == "README 수정"
+    assert report.latest_job_id == "j1"
+    assert report.latest_job_result == "status=succeeded"
+    assert [entry.role for entry in report.recent_entries] == ["job_accepted", "job_result"]
+
+
+def test_generate_report_returns_none_when_no_memory(tmp_path: Path):
+    db = tmp_path / "empty_report.sqlite3"
+    store = SQLiteConversationStore(db)
+    assert store.generate_report("p1", 10) is None

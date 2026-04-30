@@ -30,6 +30,30 @@ class ConversationEntry:
     job_id: str | None
 
 
+@dataclass(frozen=True)
+class ConversationRoleCount:
+    role: str
+    count: int
+
+
+@dataclass(frozen=True)
+class ConversationReport:
+    project: str
+    chat_id: int
+    total_entries: int
+    role_counts: list[ConversationRoleCount]
+    latest_user_text: str | None
+    latest_job_id: str | None
+    latest_job_result: str | None
+    recent_entries: list[ConversationEntry]
+
+    def count_for(self, role: str) -> int:
+        for item in self.role_counts:
+            if item.role == role:
+                return item.count
+        return 0
+
+
 class SQLiteConversationStore:
     """프로젝트 이름과 텔레그램 chat_id 단위로 SQLite에 대화를 저장합니다."""
 
@@ -128,6 +152,99 @@ class SQLiteConversationStore:
             )
             for r in rows
         ]
+
+    def generate_report(
+        self,
+        project: str,
+        chat_id: int,
+        recent_limit: int = 5,
+    ) -> ConversationReport | None:
+        """SQL 집계로 프로젝트+채팅별 기억 요약 리포트를 생성합니다."""
+        safe_limit = max(0, recent_limit)
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                total_entries = int(
+                    conn.execute(
+                        """
+                        SELECT COUNT(*)
+                        FROM conversation_entries
+                        WHERE project = ? AND chat_id = ?
+                        """,
+                        (project, chat_id),
+                    ).fetchone()[0]
+                )
+                if total_entries == 0:
+                    return None
+
+                role_rows = conn.execute(
+                    """
+                    SELECT role, COUNT(*)
+                    FROM conversation_entries
+                    WHERE project = ? AND chat_id = ?
+                    GROUP BY role
+                    ORDER BY role
+                    """,
+                    (project, chat_id),
+                ).fetchall()
+                latest_user_row = conn.execute(
+                    """
+                    SELECT text
+                    FROM conversation_entries
+                    WHERE project = ? AND chat_id = ? AND role = 'user'
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (project, chat_id),
+                ).fetchone()
+                latest_job_row = conn.execute(
+                    """
+                    SELECT job_id, text
+                    FROM conversation_entries
+                    WHERE project = ? AND chat_id = ? AND role = 'job_result'
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (project, chat_id),
+                ).fetchone()
+                recent_rows: list[tuple[object, ...]] = []
+                if safe_limit > 0:
+                    recent_rows = conn.execute(
+                        """
+                        SELECT id, project, chat_id, role, text, job_id
+                        FROM conversation_entries
+                        WHERE project = ? AND chat_id = ?
+                        ORDER BY id DESC
+                        LIMIT ?
+                        """,
+                        (project, chat_id, safe_limit),
+                    ).fetchall()
+            finally:
+                conn.close()
+
+        recent_rows.reverse()
+        return ConversationReport(
+            project=project,
+            chat_id=chat_id,
+            total_entries=total_entries,
+            role_counts=[
+                ConversationRoleCount(role=str(role), count=int(count)) for role, count in role_rows
+            ],
+            latest_user_text=str(latest_user_row[0]) if latest_user_row is not None else None,
+            latest_job_id=str(latest_job_row[0]) if latest_job_row and latest_job_row[0] else None,
+            latest_job_result=str(latest_job_row[1]) if latest_job_row is not None else None,
+            recent_entries=[
+                ConversationEntry(
+                    id=int(r[0]),
+                    project=str(r[1]),
+                    chat_id=int(r[2]),
+                    role=str(r[3]),
+                    text=str(r[4]),
+                    job_id=str(r[5]) if r[5] is not None else None,
+                )
+                for r in recent_rows
+            ],
+        )
 
 
 class ConversationContextBuilder:
