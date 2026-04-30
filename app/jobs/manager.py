@@ -19,7 +19,10 @@ from app.telegram.notifier import TelegramNotifier
 
 class JobManager:
     _ANSI_ESCAPE_PATTERN = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
-    _STDOUT_SUMMARY_LIMIT = 1200
+    _MD_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\([^)]+\)")
+    _HTTP_URL_PATTERN = re.compile(r"https?://[^\s\]\)>,]+", flags=re.IGNORECASE)
+    _WWW_URL_PATTERN = re.compile(r"\bwww\.[^\s\]\)>,]+", flags=re.IGNORECASE)
+    _STDOUT_SUMMARY_LIMIT = 12000
     _STDERR_SUMMARY_LIMIT = 800
     _READ_ONLY_HINTS = (
         "read-only",
@@ -197,7 +200,9 @@ class JobManager:
         log_path.write_text(log_text, encoding="utf-8")
         job.log_path = log_path
         job.runner_stdout_summary = self._make_output_summary(
-            runner_result.stdout, limit=self._STDOUT_SUMMARY_LIMIT
+            runner_result.stdout,
+            limit=self._STDOUT_SUMMARY_LIMIT,
+            strip_links=True,
         )
         job.runner_stderr_summary = self._make_output_summary(
             runner_result.stderr, limit=self._STDERR_SUMMARY_LIMIT
@@ -214,10 +219,27 @@ class JobManager:
         return False
 
     @classmethod
-    def _make_output_summary(cls, text: str, limit: int) -> str | None:
+    def _strip_links_for_stdout_summary(cls, text: str) -> str:
+        """텔레그램 요약에 넣기 전 stdout에서 URL·Markdown 링크를 제거합니다."""
+        stripped = cls._MD_LINK_PATTERN.sub(r"\1", text)
+        stripped = cls._HTTP_URL_PATTERN.sub("", stripped)
+        stripped = cls._WWW_URL_PATTERN.sub("", stripped)
+        stripped = re.sub(r"[ \t]{2,}", " ", stripped)
+        return stripped
+
+    @classmethod
+    def _make_output_summary(
+        cls,
+        text: str,
+        limit: int,
+        *,
+        strip_links: bool = False,
+    ) -> str | None:
         if not text:
             return None
         no_ansi = cls._ANSI_ESCAPE_PATTERN.sub("", text)
+        if strip_links:
+            no_ansi = cls._strip_links_for_stdout_summary(no_ansi)
         normalized = "\n".join(line.rstrip() for line in no_ansi.splitlines()).strip()
         if not normalized:
             return None

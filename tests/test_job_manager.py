@@ -270,7 +270,7 @@ def test_job_manager_truncates_runner_output_summary(test_settings, project_regi
     git_service.collect_changes.return_value = []
     factory = Mock()
     runner = Mock()
-    long_stdout = "A" * 1400
+    long_stdout = "A" * 13000
     runner.run.return_value = RunnerResult(
         exit_code=0, stdout=long_stdout, stderr="", started_at=None, finished_at=None
     )
@@ -343,3 +343,20 @@ def test_job_manager_fails_when_read_only_hint_and_no_changes(test_settings, pro
     assert final_job.error_stage == "runner"
     assert "읽기 전용" in (final_job.error or "") or "read-only" in (final_job.error or "").lower()
     assert "read-only" in (final_job.runner_stdout_summary or "").lower()
+
+
+def test_job_manager_stdout_summary_strips_links():
+    raw = "See [guide](https://a.com/b) and https://b.com/c then www.example.org/x tail"
+    out = JobManager._make_output_summary(raw, limit=500, strip_links=True)
+    assert out
+    assert "https://" not in out
+    assert "http://" not in out
+    assert "www." not in out
+    assert "guide" in out
+    assert "tail" in out
+
+
+def test_job_manager_stderr_summary_preserves_urls():
+    raw = "error at https://api.example.com/v1"
+    out = JobManager._make_output_summary(raw, limit=200, strip_links=False)
+    assert out and "https://api.example.com/v1" in out

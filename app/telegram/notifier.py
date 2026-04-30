@@ -81,11 +81,34 @@ class TelegramNotifier:
             failure_summary = job.runner_stderr_summary or job.runner_stdout_summary
             if failure_summary:
                 text += f"\n\n실패 출력 요약:\n{failure_summary}"
-        self.send_text(job.request.chat_id, self._truncate_text(text))
+        self.send_long_text(job.request.chat_id, text)
 
-    def _truncate_text(self, text: str) -> str:
-        if len(text) <= self._TELEGRAM_TEXT_LIMIT:
-            return text
-        suffix = "\n...(truncated)"
-        allowed = self._TELEGRAM_TEXT_LIMIT - len(suffix)
-        return text[:allowed].rstrip() + suffix
+    def send_long_text(self, chat_id: int, text: str) -> None:
+        """Telegram 단일 메시지 한도(4096자)를 넘으면 여러 메시지로 나눠 전송합니다."""
+        for chunk in self._chunk_text(text, self._TELEGRAM_TEXT_LIMIT):
+            self.send_text(chat_id, chunk)
+
+    @staticmethod
+    def _chunk_text(text: str, max_len: int) -> list[str]:
+        if max_len <= 0:
+            raise ValueError("max_len must be positive")
+        if len(text) <= max_len:
+            return [text]
+        chunks: list[str] = []
+        i = 0
+        n = len(text)
+        min_break = max_len // 2
+        while i < n:
+            j = min(i + max_len, n)
+            if j < n:
+                segment = text[i:j]
+                cut = segment.rfind("\n")
+                if cut >= min_break:
+                    j = i + cut + 1
+                else:
+                    cut = segment.rfind(" ")
+                    if cut >= min_break:
+                        j = i + cut + 1
+            chunks.append(text[i:j])
+            i = j
+        return chunks

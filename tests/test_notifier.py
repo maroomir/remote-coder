@@ -1,3 +1,5 @@
+import json
+
 import respx
 from httpx import Response
 from pathlib import Path
@@ -79,11 +81,12 @@ def test_notifier_send_job_result_failure_includes_log_path():
 
 
 @respx.mock
-def test_notifier_truncates_long_message():
+def test_notifier_splits_long_job_result_message():
     route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
         return_value=Response(200, json={"ok": True})
     )
     notifier = TelegramNotifier("token")
+    long_ai = "A" * 5000
     job = Job(
         id="j3",
         request=JobRequest(
@@ -93,9 +96,17 @@ def test_notifier_truncates_long_message():
         branch="b",
         commit_hash="-",
         changed_files=[],
-        runner_stdout_summary="A" * 5000,
+        runner_stdout_summary=long_ai,
     )
     notifier.send_job_result(job)
-    payload = route.calls[0].request.content.decode()
-    assert len(payload) < 4300
-    assert "truncated" in payload
+    assert len(route.calls) >= 2
+    combined = ""
+    for call in route.calls:
+        payload = json.loads(call.request.content.decode())
+        assert len(payload["text"]) <= 4096
+        combined += payload["text"]
+    marker = "\n\nAI 응답:\n"
+    assert combined.find(marker) != -1
+    assert combined.endswith(long_ai)
+    assert "작업 완료" in combined
+    assert "truncated" not in combined
