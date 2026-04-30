@@ -245,6 +245,90 @@ def test_list_remote_branches_matching_raises_on_failure(mock_run, tmp_path: Pat
         raise AssertionError("expected RuntimeError")
 
 
+@patch("app.git.service.subprocess.run")
+def test_cleanup_managed_worktrees_removes_managed_and_remote_branch_entries(mock_run, tmp_path: Path):
+    project_path = tmp_path / "repo"
+    project_path.mkdir()
+    worktree_base = tmp_path / "worktrees"
+    worktree_base.mkdir()
+    managed_detached = worktree_base / "job-1"
+    remote_branch_wt = tmp_path / "other-remote"
+    untouched = tmp_path / "manual"
+    root = project_path.resolve()
+    porcelain = (
+        f"worktree {root}\n"
+        "HEAD abc\n"
+        "branch refs/heads/main\n"
+        "\n"
+        f"worktree {managed_detached}\n"
+        "HEAD def\n"
+        "detached\n"
+        "\n"
+        f"worktree {remote_branch_wt}\n"
+        "HEAD 123\n"
+        "branch refs/heads/remote-cleanup\n"
+        "\n"
+        f"worktree {untouched}\n"
+        "HEAD 999\n"
+        "branch refs/heads/feature-keep\n"
+    )
+    commands: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs):
+        commands.append(list(argv))
+        if argv[:4] == ["git", "worktree", "list", "--porcelain"]:
+            return Mock(returncode=0, stdout=porcelain, stderr="")
+        if argv[:3] == ["git", "worktree", "remove"]:
+            return Mock(returncode=0, stdout="", stderr="")
+        if argv[:3] == ["git", "worktree", "prune"]:
+            return Mock(returncode=0, stdout="", stderr="")
+        raise AssertionError(f"unexpected git argv: {argv}")
+
+    mock_run.side_effect = fake_run
+    service = GitWorktreeService(base_dir=worktree_base)
+    removed = service.cleanup_managed_worktrees(project_path, worktree_base, branch_prefix="remote-")
+
+    assert removed == 2
+    removed_targets = [c[-1] for c in commands if c[:3] == ["git", "worktree", "remove"]]
+    assert str(managed_detached.resolve()) in removed_targets
+    assert str(remote_branch_wt.resolve()) in removed_targets
+    assert str(untouched.resolve()) not in removed_targets
+    assert any(c[:3] == ["git", "worktree", "prune"] for c in commands)
+
+
+@patch("app.git.service.subprocess.run")
+def test_cleanup_managed_worktrees_raises_when_prune_fails(mock_run, tmp_path: Path):
+    project_path = tmp_path / "repo"
+    project_path.mkdir()
+    worktree_base = tmp_path / "worktrees"
+    worktree_base.mkdir()
+    root = project_path.resolve()
+    porcelain = (
+        f"worktree {root}\n"
+        "HEAD abc\n"
+        "branch refs/heads/main\n"
+    )
+    commands: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs):
+        commands.append(list(argv))
+        if argv[:4] == ["git", "worktree", "list", "--porcelain"]:
+            return Mock(returncode=0, stdout=porcelain, stderr="")
+        if argv[:3] == ["git", "worktree", "prune"]:
+            return Mock(returncode=1, stdout="", stderr="prune failed")
+        raise AssertionError(f"unexpected git argv: {argv}")
+
+    mock_run.side_effect = fake_run
+    service = GitWorktreeService(base_dir=worktree_base)
+    try:
+        service.cleanup_managed_worktrees(project_path, worktree_base)
+    except RuntimeError as exc:
+        assert "failed to prune worktrees" in str(exc)
+        assert "prune failed" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+
 @patch("app.git.service.uuid.uuid4", return_value=SimpleNamespace(hex="aaaaaaaa1234567890abcdef12345678"))
 @patch("app.git.service.subprocess.run")
 def test_rebase_branch_onto_main_removes_linked_worktree_before_add(mock_run, _mock_uuid, tmp_path: Path):

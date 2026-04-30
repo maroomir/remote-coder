@@ -284,6 +284,56 @@ class GitWorktreeService:
                 continue
             self.cleanup_worktree(project_path, wt_path)
 
+    @staticmethod
+    def _is_within(path: Path, base: Path) -> bool:
+        try:
+            path.relative_to(base)
+        except ValueError:
+            return False
+        return True
+
+    def cleanup_managed_worktrees(
+        self,
+        project_path: Path,
+        worktree_base_dir: Path,
+        branch_prefix: str = "remote-",
+    ) -> int:
+        """
+        Remote Coder가 관리하는 worktree를 정리합니다.
+        - project 루트 worktree는 제외
+        - branch_prefix 브랜치가 checkout된 linked worktree 정리
+        - worktree_base_dir(및 _rebase_ops) 하위 worktree 정리
+        - 마지막에 stale entry prune 수행
+        """
+        root = project_path.resolve()
+        managed_base = worktree_base_dir.resolve()
+        rebase_ops_base = (worktree_base_dir / "_rebase_ops").resolve()
+
+        listed = self._run_git(project_path, ["worktree", "list", "--porcelain"])
+        if listed.returncode != 0:
+            raise RuntimeError(f"failed to list worktrees: {listed.stderr.strip()}")
+
+        cleanup_targets: list[Path] = []
+        for wt_path, branch in self._parse_worktree_list_porcelain(listed.stdout):
+            resolved = wt_path.resolve()
+            if resolved == root:
+                continue
+            branch_matches = branch is not None and branch.startswith(branch_prefix)
+            under_managed_base = self._is_within(resolved, managed_base)
+            under_rebase_ops = self._is_within(resolved, rebase_ops_base)
+            if branch_matches or under_managed_base or under_rebase_ops:
+                cleanup_targets.append(resolved)
+
+        removed = 0
+        for target in sorted(set(cleanup_targets), key=lambda p: str(p)):
+            self.cleanup_worktree(project_path, target)
+            removed += 1
+
+        pruned = self._run_git(project_path, ["worktree", "prune"])
+        if pruned.returncode != 0:
+            raise RuntimeError(f"failed to prune worktrees: {pruned.stderr.strip()}")
+        return removed
+
     def list_remote_branches_matching(self, project_path: Path, remote: str, prefix: str) -> list[str]:
         """
         실제 원격 저장소의 브랜치를 조회합니다.

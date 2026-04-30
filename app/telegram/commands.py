@@ -73,6 +73,7 @@ HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
             CommandHelpEntry("/branch <브랜치이름>", "기본 프로젝트의 로컬 브랜치로 전환합니다."),
             CommandHelpEntry("/rebase [브랜치이름]", "브랜치를 main 기준으로 rebase 후 병합합니다."),
             CommandHelpEntry("/clear branch", "등록 프로젝트의 remote-* 브랜치와 연결 worktree를 정리합니다."),
+            CommandHelpEntry("/clear worktrees", "등록 프로젝트의 관리 대상 worktree를 정리합니다."),
             CommandHelpEntry("/clear memory", "대화 기억 SQLite 데이터베이스를 초기화합니다."),
         ],
     ),
@@ -391,8 +392,8 @@ class ClearCommand(ConfirmableCommand):
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
-        if len(tokens) != 2 or tokens[1] not in {"branch", "memory"}:
-            return "사용법: /clear branch 또는 /clear memory"
+        if len(tokens) != 2 or tokens[1] not in {"branch", "memory", "worktrees"}:
+            return "사용법: /clear branch 또는 /clear worktrees 또는 /clear memory"
 
         action = tokens[1]
         if action == "memory" and ctx.conversation_store is None:
@@ -405,6 +406,8 @@ class ClearCommand(ConfirmableCommand):
 
         if action == "branch":
             summary = "remote-* 브랜치와 연결된 worktree를 삭제합니다."
+        elif action == "worktrees":
+            summary = "관리 대상 worktree를 정리하고 stale 엔트리를 prune 합니다."
         else:
             summary = "대화 기억 SQLite 데이터베이스를 비웁니다."
         return (
@@ -421,12 +424,16 @@ class ClearCommand(ConfirmableCommand):
         if message.text.strip() not in {"y", "Y"}:
             if pending.action == "branch":
                 target = "브랜치 삭제"
+            elif pending.action == "worktrees":
+                target = "worktree 정리"
             else:
                 target = "기억 삭제"
             return f"{target}를 취소했습니다."
 
         if pending.action == "branch":
             return self._clear_branches(ctx)
+        if pending.action == "worktrees":
+            return self._clear_worktrees(ctx)
         if pending.action == "memory":
             return self._clear_memory(ctx)
         return "알 수 없는 clear 작업입니다."
@@ -462,6 +469,24 @@ class ClearCommand(ConfirmableCommand):
             return "기억 저장소가 설정되지 않았습니다."
         ctx.conversation_store.reset()
         return "대화 기억 SQLite 데이터베이스를 초기화했습니다."
+
+    def _clear_worktrees(self, ctx: CommandContext) -> str:
+        lines: list[str] = []
+        projects = [p for p in ctx.project_registry.list_projects() if p.enabled]
+        if not projects:
+            return "enabled 프로젝트가 없습니다."
+
+        for p in projects:
+            try:
+                removed_count = ctx.git_service.cleanup_managed_worktrees(
+                    p.root_path,
+                    p.worktree_base_dir,
+                    branch_prefix="remote-",
+                )
+                lines.append(f"{p.name}: worktree {removed_count}개 삭제, stale prune 완료")
+            except RuntimeError as exc:
+                lines.append(f"{p.name}: 실패 — {exc}")
+        return "\n".join(lines)
 
 
 class CommandRegistry:

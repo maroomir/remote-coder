@@ -65,7 +65,9 @@ cp .env.example .env
 - `/branch` : 기본 프로젝트 저장소의 현재 checkout 브랜치 표시
 - `/branch <이름>` : 기본 프로젝트에서 로컬 브랜치가 있을 때만 `git switch` (없으면 오류, 원격만 있는 브랜치는 자동 생성하지 않음)
 - `/rebase` 또는 `/rebase <branch>` : 기본 프로젝트에서 해당 브랜치를 `main`(또는 `master`) 기준으로 rebase한 뒤 `main`에 fast-forward 병합 후 원격에 push (인자 생략 시 이 채팅의 최근 성공 Job 브랜치)
-- `/clear` : 등록된 enabled 프로젝트마다 `remote-*` 로컬·원격 브랜치 일괄 삭제
+- `/clear branch` : 등록된 enabled 프로젝트마다 `remote-*` 로컬·원격 브랜치와 연결된 linked worktree 정리
+- `/clear worktrees` : 등록된 enabled 프로젝트마다 관리 대상 worktree(`WORKTREE_BASE_DIR` 하위 및 `remote-*` checkout linked worktree) 정리 + stale entry prune
+- `/clear memory` : 대화 기억 SQLite 데이터베이스 초기화
 - 자연어 메시지: AI 작업 요청 생성
 
 참고:

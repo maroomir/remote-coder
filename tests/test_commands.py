@@ -283,6 +283,15 @@ def test_clear_branch_command_requests_confirmation(project_registry: ProjectReg
     ctx.git_service.delete_local_branches.assert_not_called()
 
 
+def test_clear_worktrees_command_requests_confirmation(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    registry = CommandRegistry([ClearCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear worktrees"), ctx)
+    assert "현재 할 작업" in (text or "")
+    assert "stale" in (text or "")
+    ctx.git_service.cleanup_managed_worktrees.assert_not_called()
+
+
 def test_clear_branch_confirmation_executes_matching_deletes(project_registry: ProjectRegistry):
     ctx = _ctx(project_registry)
     ctx.git_service.list_remote_branches_matching.return_value = ["remote-x"]
@@ -298,6 +307,18 @@ def test_clear_branch_confirmation_executes_matching_deletes(project_registry: P
     ctx.git_service.delete_remote_branches.assert_called_once()
     ctx.git_service.remove_linked_worktrees_for_branches.assert_called_once()
     ctx.git_service.delete_local_branches.assert_called_once()
+
+
+def test_clear_worktrees_confirmation_executes_cleanup(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    ctx.git_service.cleanup_managed_worktrees.return_value = 2
+    registry = CommandRegistry([ClearCommand()])
+    registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear worktrees"), ctx)
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="y"), ctx)
+    assert "remote-coder" in (text or "")
+    assert "worktree 2개 삭제" in (text or "")
+    assert "prune 완료" in (text or "")
+    ctx.git_service.cleanup_managed_worktrees.assert_called_once()
 
 
 def test_reports_command_summarizes_sqlite_memory(project_registry: ProjectRegistry, tmp_path):

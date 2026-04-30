@@ -241,6 +241,76 @@ def test_webhook_executes_pending_clear_confirmation(project_registry):
     assert "원격 1개" in notifier.sent[1][1]
 
 
+def test_webhook_executes_pending_clear_worktrees_confirmation(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.cleanup_managed_worktrees.return_value = 3
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_preferences=InMemoryProjectPreferenceStore(),
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    app.include_router(
+        create_webhook_router(
+            auth_service=AllowlistAuthService({123}),
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=CommandRegistry(
+                [
+                    StartCommand(),
+                    HelpCommand(),
+                    ModelCommand(),
+                    StatusCommand(),
+                    ProjectsCommand(),
+                    ProjectCommand(),
+                    BranchesCommand(),
+                    BranchCommand(),
+                    RebaseCommand(),
+                    ClearCommand(),
+                ]
+            ),
+            command_context=command_context,
+            job_manager=DummyJobManager(),
+            job_store=store,
+            notifier=notifier,
+            webhook_secret=None,
+        )
+    )
+    client = TestClient(app)
+
+    prompt_response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 20,
+            "message": {"message_id": 20, "text": "/clear worktrees", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    confirm_response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 21,
+            "message": {"message_id": 21, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+
+    assert prompt_response.status_code == 200
+    assert prompt_response.json()["status"] == "ok"
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "ok"
+    assert "현재 할 작업" in notifier.sent[0][1]
+    assert "worktree 3개 삭제" in notifier.sent[1][1]
+
+
 def test_webhook_ambiguous_followup_uses_conversation_history(project_registry, tmp_path):
     db = tmp_path / "wh_conv.sqlite3"
     conv = SQLiteConversationStore(db)
