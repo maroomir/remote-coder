@@ -110,3 +110,62 @@ def test_bind_message_branch_and_lookup(tmp_path: Path):
 
     assert store.get_bound_branch("p1", 7, 10) == "remote-a"
     assert store.get_bound_branch("p1", 7, 11) is None
+
+
+def test_format_reply_chain_context_and_collect_ids(tmp_path: Path):
+    db = tmp_path / "reply_ctx.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(
+        project="p1",
+        chat_id=1,
+        role="user",
+        text="msg A",
+        message_id=10,
+        reply_to_message_id=None,
+    )
+    store.bind_message_branch(
+        project="p1",
+        chat_id=1,
+        message_id=10,
+        branch="b-a",
+        job_id="ja",
+    )
+    store.append(
+        project="p1",
+        chat_id=1,
+        role="job_result",
+        text="status=succeeded",
+        job_id="ja",
+    )
+    store.append(
+        project="p1",
+        chat_id=1,
+        role="user",
+        text="msg B",
+        message_id=20,
+        reply_to_message_id=10,
+    )
+    store.bind_message_branch(
+        project="p1",
+        chat_id=1,
+        message_id=20,
+        branch="b-b",
+        job_id="jb",
+    )
+    store.append(
+        project="p1",
+        chat_id=1,
+        role="job_result",
+        text="status=failed",
+        job_id="jb",
+    )
+
+    ctx = store.format_reply_chain_context("p1", 1, reply_to_message_id=20)
+    assert "[Reply 체인 맥락]" in ctx
+    assert "message_id=10" in ctx
+    assert "message_id=20" in ctx
+    assert "msg A" in ctx and "msg B" in ctx
+    assert "status=succeeded" in ctx and "status=failed" in ctx
+
+    ids = store.collect_reply_chain_message_ids("p1", 1, 20)
+    assert ids == {10, 20}

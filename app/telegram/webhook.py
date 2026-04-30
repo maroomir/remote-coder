@@ -96,6 +96,12 @@ def create_webhook_router(
                 chat_id=chat_id,
                 role="user",
                 text=message.text.strip(),
+                message_id=update.message.message_id,
+                reply_to_message_id=(
+                    update.message.reply_to_message.message_id
+                    if update.message.reply_to_message is not None
+                    else None
+                ),
             )
 
         job = job_manager.submit(request)

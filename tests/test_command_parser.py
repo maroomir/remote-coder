@@ -215,3 +215,127 @@ def test_parse_natural_reply_reuses_bound_branch(project_registry: ProjectRegist
     assert req.branch == "remote-a"
     assert req.message_id == 12
     assert req.reply_to_message_id == 11
+
+
+def test_parse_natural_reply_chain_includes_ancestors_and_job_results(project_registry: ProjectRegistry):
+    db = project_registry.config_path.parent / "parser_reply_chain.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(
+        project="remote-coder",
+        chat_id=5,
+        role="user",
+        text="task A",
+        message_id=1,
+        reply_to_message_id=None,
+    )
+    store.bind_message_branch(
+        project="remote-coder",
+        chat_id=5,
+        message_id=1,
+        branch="remote-x",
+        job_id="j1",
+    )
+    store.append(
+        project="remote-coder",
+        chat_id=5,
+        role="job_result",
+        text="status=succeeded",
+        job_id="j1",
+    )
+    store.append(
+        project="remote-coder",
+        chat_id=5,
+        role="user",
+        text="task B",
+        message_id=2,
+        reply_to_message_id=1,
+    )
+    store.bind_message_branch(
+        project="remote-coder",
+        chat_id=5,
+        message_id=2,
+        branch="remote-y",
+        job_id="j2",
+    )
+    store.append(
+        project="remote-coder",
+        chat_id=5,
+        role="job_result",
+        text="status=failed stage=runner",
+        job_id="j2",
+    )
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=store,
+    )
+    req = parser.parse_natural(
+        "task C finish",
+        chat_id=5,
+        user_id=1,
+        message_id=3,
+        reply_to_message_id=2,
+    )
+    assert "[Reply 체인 맥락]" in req.instruction
+    assert "message_id=1" in req.instruction
+    assert "message_id=2" in req.instruction
+    assert "task A" in req.instruction
+    assert "task B" in req.instruction
+    assert "status=succeeded" in req.instruction
+    assert "status=failed" in req.instruction
+    assert "task C finish" in req.instruction
+
+
+def test_parse_natural_ambiguous_on_reply_excludes_chain_from_recent_block(project_registry: ProjectRegistry):
+    db = project_registry.config_path.parent / "parser_ambig_reply.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(
+        project="remote-coder",
+        chat_id=8,
+        role="user",
+        text="first instruction",
+        message_id=100,
+        reply_to_message_id=None,
+    )
+    store.append(
+        project="remote-coder",
+        chat_id=8,
+        role="job_accepted",
+        text="Job 접수: jx",
+        job_id="jx",
+    )
+    store.append(
+        project="remote-coder",
+        chat_id=8,
+        role="job_result",
+        text="status=succeeded",
+        job_id="jx",
+    )
+    store.append(
+        project="remote-coder",
+        chat_id=8,
+        role="user",
+        text="second instruction",
+        message_id=101,
+        reply_to_message_id=100,
+    )
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=store,
+        conversation_recent_limit=10,
+    )
+    req = parser.parse_natural(
+        "진행해줘",
+        chat_id=8,
+        user_id=1,
+        message_id=102,
+        reply_to_message_id=101,
+    )
+    assert "[Reply 체인 맥락]" in req.instruction
+    assert "first instruction" in req.instruction
+    assert "second instruction" in req.instruction
+    assert "[이전 대화/작업 맥락]" in req.instruction
+    body_after_reply = req.instruction.split("[/Reply 체인 맥락]", 1)[-1]
+    assert "user: first instruction" not in body_after_reply
+    assert "user: second instruction" not in body_after_reply

@@ -12,10 +12,22 @@ _AMBIGUOUS_FOLLOWUP = re.compile(
     re.UNICODE | re.IGNORECASE,
 )
 
+# Reply 체인에 넣을 사용자 메시지·job 요약 최대 길이
+_REPLY_SNIPPET_MAX = 800
+# reply_to 역추적 최대 깊이 (순환 방지)
+_REPLY_CHAIN_MAX_DEPTH = 32
+
 
 def is_ambiguous_followup(text: str) -> bool:
     """옵션 제거 후 남은 본문이 모호한 후속 요청인지 여부."""
     return bool(_AMBIGUOUS_FOLLOWUP.match(text.strip()))
+
+
+def _truncate_snippet(text: str, limit: int = _REPLY_SNIPPET_MAX) -> str:
+    snippet = text.strip().replace("\r\n", "\n").replace("\r", "\n")
+    if len(snippet) > limit:
+        return snippet[:limit].rstrip() + "...(truncated)"
+    return snippet
 
 
 @dataclass(frozen=True)
@@ -28,6 +40,8 @@ class ConversationEntry:
     role: str
     text: str
     job_id: str | None
+    message_id: int | None = None
+    reply_to_message_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +68,15 @@ class ConversationReport:
         return 0
 
 
+def _ensure_entry_columns(conn: sqlite3.Connection) -> None:
+    cur = conn.execute("PRAGMA table_info(conversation_entries)")
+    names = {str(row[1]) for row in cur.fetchall()}
+    if "message_id" not in names:
+        conn.execute("ALTER TABLE conversation_entries ADD COLUMN message_id INTEGER")
+    if "reply_to_message_id" not in names:
+        conn.execute("ALTER TABLE conversation_entries ADD COLUMN reply_to_message_id INTEGER")
+
+
 class SQLiteConversationStore:
     """프로젝트 이름과 텔레그램 chat_id 단위로 SQLite에 대화를 저장합니다."""
 
@@ -76,14 +99,24 @@ class SQLiteConversationStore:
                         role TEXT NOT NULL,
                         text TEXT NOT NULL,
                         job_id TEXT,
+                        message_id INTEGER,
+                        reply_to_message_id INTEGER,
                         created_at TEXT NOT NULL DEFAULT (datetime('now'))
                     )
                     """
                 )
+                _ensure_entry_columns(conn)
                 conn.execute(
                     """
                     CREATE INDEX IF NOT EXISTS idx_conversation_project_chat_id
                     ON conversation_entries (project, chat_id, id)
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_conversation_user_message_id
+                    ON conversation_entries (project, chat_id, message_id)
+                    WHERE role = 'user' AND message_id IS NOT NULL
                     """
                 )
                 conn.execute(
@@ -119,16 +152,20 @@ class SQLiteConversationStore:
         role: str,
         text: str,
         job_id: str | None = None,
+        message_id: int | None = None,
+        reply_to_message_id: int | None = None,
     ) -> None:
         with self._lock:
             conn = sqlite3.connect(self._db_path)
             try:
                 conn.execute(
                     """
-                    INSERT INTO conversation_entries (project, chat_id, role, text, job_id)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO conversation_entries (
+                        project, chat_id, role, text, job_id, message_id, reply_to_message_id
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (project, chat_id, role, text, job_id),
+                    (project, chat_id, role, text, job_id, message_id, reply_to_message_id),
                 )
                 conn.commit()
             finally:
@@ -143,7 +180,7 @@ class SQLiteConversationStore:
             try:
                 cur = conn.execute(
                     """
-                    SELECT id, project, chat_id, role, text, job_id
+                    SELECT id, project, chat_id, role, text, job_id, message_id, reply_to_message_id
                     FROM conversation_entries
                     WHERE project = ? AND chat_id = ?
                     ORDER BY id DESC
@@ -155,17 +192,119 @@ class SQLiteConversationStore:
             finally:
                 conn.close()
         rows.reverse()
-        return [
-            ConversationEntry(
-                id=int(r[0]),
-                project=str(r[1]),
-                chat_id=int(r[2]),
-                role=str(r[3]),
-                text=str(r[4]),
-                job_id=str(r[5]) if r[5] is not None else None,
-            )
-            for r in rows
-        ]
+        return [_row_to_entry(r) for r in rows]
+
+    def get_user_entry_by_message_id(
+        self, project: str, chat_id: int, message_id: int
+    ) -> ConversationEntry | None:
+        """해당 Telegram message_id의 가장 최근 user 행."""
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                row = conn.execute(
+                    """
+                    SELECT id, project, chat_id, role, text, job_id, message_id, reply_to_message_id
+                    FROM conversation_entries
+                    WHERE project = ? AND chat_id = ? AND role = 'user' AND message_id = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (project, chat_id, message_id),
+                ).fetchone()
+            finally:
+                conn.close()
+        return _row_to_entry(row) if row is not None else None
+
+    def get_latest_job_result_text_for_user_message(
+        self, project: str, chat_id: int, message_id: int
+    ) -> str | None:
+        """message_branch_links의 job_id로 가장 최근 job_result 텍스트."""
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                link = conn.execute(
+                    """
+                    SELECT job_id
+                    FROM message_branch_links
+                    WHERE project = ? AND chat_id = ? AND message_id = ?
+                    """,
+                    (project, chat_id, message_id),
+                ).fetchone()
+                if link is None or link[0] is None:
+                    return None
+                job_id = str(link[0])
+                row = conn.execute(
+                    """
+                    SELECT text
+                    FROM conversation_entries
+                    WHERE project = ? AND chat_id = ? AND role = 'job_result' AND job_id = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (project, chat_id, job_id),
+                ).fetchone()
+            finally:
+                conn.close()
+        return str(row[0]) if row is not None else None
+
+    def collect_reply_chain_message_ids(
+        self, project: str, chat_id: int, reply_to_message_id: int
+    ) -> set[int]:
+        """현재 메시지가 reply하는 조상 user message_id 집합 (순서 무관)."""
+        ids: set[int] = set()
+        cur: int | None = reply_to_message_id
+        depth = 0
+        seen: set[int] = set()
+        while cur is not None and depth < _REPLY_CHAIN_MAX_DEPTH:
+            if cur in seen:
+                break
+            seen.add(cur)
+            entry = self.get_user_entry_by_message_id(project, chat_id, cur)
+            if entry is None or entry.message_id is None:
+                break
+            ids.add(entry.message_id)
+            cur = entry.reply_to_message_id
+            depth += 1
+        return ids
+
+    def get_reply_chain_user_entries_newest_first(
+        self, project: str, chat_id: int, reply_to_message_id: int
+    ) -> list[ConversationEntry]:
+        """reply_to_message_id부터 reply_to를 따라 올라가며 user 행을 수집 (최신 조상이 먼저)."""
+        chain: list[ConversationEntry] = []
+        cur: int | None = reply_to_message_id
+        depth = 0
+        seen: set[int] = set()
+        while cur is not None and depth < _REPLY_CHAIN_MAX_DEPTH:
+            if cur in seen:
+                break
+            seen.add(cur)
+            entry = self.get_user_entry_by_message_id(project, chat_id, cur)
+            if entry is None:
+                break
+            chain.append(entry)
+            cur = entry.reply_to_message_id
+            depth += 1
+        return chain
+
+    def format_reply_chain_context(self, project: str, chat_id: int, reply_to_message_id: int) -> str:
+        """조상 user 메시지와 각 메시지의 Job 결과 요약 블록. 기록이 없으면 빈 문자열."""
+        newest_first = self.get_reply_chain_user_entries_newest_first(project, chat_id, reply_to_message_id)
+        if not newest_first:
+            return ""
+        ordered = list(reversed(newest_first))
+        lines: list[str] = ["[Reply 체인 맥락]"]
+        for e in ordered:
+            mid = e.message_id
+            lines.append(f"message_id={mid}:")
+            lines.append(f"  user: {_truncate_snippet(e.text)}")
+            job_text = self.get_latest_job_result_text_for_user_message(project, chat_id, mid) if mid else None
+            if job_text:
+                lines.append(f"  job_result: {_truncate_snippet(job_text)}")
+            else:
+                lines.append("  job_result: (없음)")
+        lines.append("[/Reply 체인 맥락]")
+        return "\n".join(lines)
 
     def bind_message_branch(
         self,
@@ -269,7 +408,7 @@ class SQLiteConversationStore:
                 if safe_limit > 0:
                     recent_rows = conn.execute(
                         """
-                        SELECT id, project, chat_id, role, text, job_id
+                        SELECT id, project, chat_id, role, text, job_id, message_id, reply_to_message_id
                         FROM conversation_entries
                         WHERE project = ? AND chat_id = ?
                         ORDER BY id DESC
@@ -291,18 +430,21 @@ class SQLiteConversationStore:
             latest_user_text=str(latest_user_row[0]) if latest_user_row is not None else None,
             latest_job_id=str(latest_job_row[0]) if latest_job_row and latest_job_row[0] else None,
             latest_job_result=str(latest_job_row[1]) if latest_job_row is not None else None,
-            recent_entries=[
-                ConversationEntry(
-                    id=int(r[0]),
-                    project=str(r[1]),
-                    chat_id=int(r[2]),
-                    role=str(r[3]),
-                    text=str(r[4]),
-                    job_id=str(r[5]) if r[5] is not None else None,
-                )
-                for r in recent_rows
-            ],
+            recent_entries=[_row_to_entry(r) for r in recent_rows],
         )
+
+
+def _row_to_entry(r: tuple[object, ...]) -> ConversationEntry:
+    return ConversationEntry(
+        id=int(r[0]),
+        project=str(r[1]),
+        chat_id=int(r[2]),
+        role=str(r[3]),
+        text=str(r[4]),
+        job_id=str(r[5]) if r[5] is not None else None,
+        message_id=int(r[6]) if len(r) > 6 and r[6] is not None else None,
+        reply_to_message_id=int(r[7]) if len(r) > 7 and r[7] is not None else None,
+    )
 
 
 class ConversationContextBuilder:
@@ -317,10 +459,7 @@ class ConversationContextBuilder:
             label = e.role
             if e.job_id:
                 label = f"{e.role} (job_id={e.job_id})"
-            # 한 줄씩 짧게 유지해 토큰 낭비를 줄입니다.
-            snippet = e.text.strip().replace("\r\n", "\n").replace("\r", "\n")
-            if len(snippet) > 800:
-                snippet = snippet[:800].rstrip() + "...(truncated)"
+            snippet = _truncate_snippet(e.text, 800)
             lines.append(f"{label}: {snippet}")
         lines.extend(
             [

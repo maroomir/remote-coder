@@ -509,3 +509,73 @@ def test_webhook_reply_reuses_bound_branch(project_registry, tmp_path):
     assert capture.last_request.branch == "remote-a"
     assert capture.last_request.reply_to_message_id == 1
     assert conv.get_bound_branch("remote-coder", 123, 2) == "remote-a"
+
+
+def test_webhook_appends_user_message_with_telegram_ids(project_registry, tmp_path):
+    db = tmp_path / "wh_msg_ids.sqlite3"
+    conv = SQLiteConversationStore(db)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=conv,
+    )
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    app.include_router(
+        create_webhook_router(
+            auth_service=AllowlistAuthService({123}),
+            parser=parser,
+            command_registry=CommandRegistry(
+                [
+                    StartCommand(),
+                    HelpCommand(),
+                    ModelCommand(),
+                    StatusCommand(),
+                    ProjectsCommand(),
+                    ProjectCommand(),
+                    BranchesCommand(),
+                    BranchCommand(),
+                    RebaseCommand(),
+                    ClearCommand(),
+                ]
+            ),
+            command_context=CommandContext(
+                job_store=store,
+                default_model=ModelName.CLAUDE,
+                project_registry=project_registry,
+                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+                project_preferences=InMemoryProjectPreferenceStore(),
+                git_service=Mock(),
+                git_remote_name="origin",
+                conversation_store=conv,
+                confirmation_store=InMemoryConfirmationStore(),
+            ),
+            job_manager=DummyJobManager(),
+            job_store=store,
+            notifier=notifier,
+            webhook_secret=None,
+            conversation_store=conv,
+        )
+    )
+    client = TestClient(app)
+    response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 50,
+            "message": {
+                "message_id": 77,
+                "text": "hello worktree",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+                "reply_to_message": {"message_id": 66},
+            },
+        },
+    )
+    assert response.status_code == 200
+    recent = conv.list_recent("remote-coder", 123, limit=5)
+    user_rows = [e for e in recent if e.role == "user"]
+    assert user_rows
+    last_user = user_rows[-1]
+    assert last_user.message_id == 77
+    assert last_user.reply_to_message_id == 66
