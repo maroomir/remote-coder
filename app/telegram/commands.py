@@ -33,6 +33,49 @@ class CommandContext:
     confirmation_store: InMemoryConfirmationStore
 
 
+@dataclass(frozen=True)
+class CommandHelpEntry:
+    usage: str
+    description: str
+
+
+def format_usage(*lines: str) -> str:
+    return "사용법:\n" + "\n".join(lines)
+
+
+def format_help_section(title: str, entries: list[CommandHelpEntry]) -> str:
+    lines = [title]
+    lines.extend(f"- {entry.usage}: {entry.description}" for entry in entries)
+    return "\n".join(lines)
+
+
+HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
+    (
+        "기본 명령",
+        [
+            CommandHelpEntry("/start", "시작 안내를 확인합니다."),
+            CommandHelpEntry("/help", "이 도움말을 확인합니다."),
+            CommandHelpEntry("/model", "현재 기본 모델을 확인합니다."),
+            CommandHelpEntry("/model <claude|codex>", "기본 모델을 변경합니다."),
+            CommandHelpEntry("/status <job_id>", "작업 상태를 조회합니다."),
+        ],
+    ),
+    (
+        "프로젝트와 Git",
+        [
+            CommandHelpEntry("/projects", "등록된 프로젝트와 현재 적용 프로젝트를 확인합니다."),
+            CommandHelpEntry("/project", "현재 작업 프로젝트를 확인합니다."),
+            CommandHelpEntry("/project <프로젝트이름>", "현재 채팅의 작업 프로젝트를 변경합니다."),
+            CommandHelpEntry("/branches", "기본 프로젝트의 로컬·원격 브랜치를 확인합니다."),
+            CommandHelpEntry("/branch", "기본 프로젝트의 현재 브랜치를 확인합니다."),
+            CommandHelpEntry("/branch <브랜치이름>", "기본 프로젝트의 로컬 브랜치로 전환합니다."),
+            CommandHelpEntry("/rebase [브랜치이름]", "브랜치를 main 기준으로 rebase 후 병합합니다."),
+            CommandHelpEntry("/clear", "등록 프로젝트의 remote-* 브랜치를 정리합니다."),
+        ],
+    ),
+)
+
+
 def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | None:
     """채팅별 `/project` 선택값이 있으면 그것, 없으면 레지스트리 전역 기본 프로젝트."""
     pref = ctx.project_preferences.get(chat_id)
@@ -74,19 +117,13 @@ class HelpCommand(TelegramCommand):
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         _ = (message, ctx)
-        return (
-            "사용 가능한 명령어\n"
-            "/start\n/help\n/model\n/model claude\n/model codex\n"
-            "/status <job_id>\n/projects\n"
-            "/project\n/project <프로젝트이름>\n"
-            "/branches\n"
-            "/branch 또는 /branch <브랜치이름> (현재 브랜치 조회 / git switch)\n"
-            "/rebase 또는 /rebase <branch>\n"
-            "/clear branch\n"
-            "/clear memory\n"
-            "또는 자연어 지시문을 입력하세요. "
-            "(옵션: model:, branch:, project:, no commit)"
+        sections = [format_help_section(title, entries) for title, entries in HELP_SECTIONS]
+        natural_language_help = (
+            "자연어 작업 요청\n"
+            "- 일반 메시지로 작업 지시를 보내면 Job이 생성됩니다.\n"
+            "- 옵션: project:, model:, branch:, no commit"
         )
+        return "\n\n".join(["도움말", *sections, natural_language_help])
 
 
 class ModelCommand(TelegramCommand):
@@ -101,7 +138,7 @@ class ModelCommand(TelegramCommand):
             selected = ModelName(tokens[1])
             ctx.model_preferences.set(message.chat_id, selected)
             return f"기본 모델이 {selected.value}로 변경되었습니다."
-        return "사용법: /model 또는 /model claude|codex"
+        return format_usage("/model", "/model <claude|codex>")
 
 
 class StatusCommand(TelegramCommand):
@@ -110,7 +147,7 @@ class StatusCommand(TelegramCommand):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
         if len(tokens) != 2:
-            return "사용법: /status <job_id>"
+            return format_usage("/status <job_id>")
         job = ctx.job_store.get(tokens[1])
         if not job:
             return "해당 Job ID를 찾을 수 없습니다."
@@ -158,7 +195,7 @@ class ProjectCommand(TelegramCommand):
                 return f"비활성화된 프로젝트: {name}"
             ctx.project_preferences.set(message.chat_id, name)
             return f"작업 프로젝트가 {name}로 변경되었습니다."
-        return "사용법: /project 또는 /project <프로젝트이름>"
+        return format_usage("/project", "/project <프로젝트이름>")
 
 
 class BranchesCommand(TelegramCommand):
@@ -171,7 +208,7 @@ class BranchesCommand(TelegramCommand):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
         if len(tokens) != 1:
-            return "사용법: /branches"
+            return format_usage("/branches")
 
         default_name = ctx.project_registry.get_default_project_name()
         if not default_name:
@@ -204,7 +241,7 @@ class BranchCommand(TelegramCommand):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
         if len(tokens) > 2:
-            return "사용법: /branch 또는 /branch <브랜치이름>"
+            return format_usage("/branch", "/branch <브랜치이름>")
 
         default_name = ctx.project_registry.get_default_project_name()
         if not default_name:
@@ -245,7 +282,7 @@ class RebaseCommand(TelegramCommand):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
         if len(tokens) > 2:
-            return "사용법: /rebase 또는 /rebase <branch>"
+            return format_usage("/rebase", "/rebase <branch>")
         if len(tokens) == 2:
             branch = tokens[1]
         else:

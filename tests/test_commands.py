@@ -72,14 +72,15 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
         ]
     )
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help"), _ctx(project_registry))
-    assert text is not None and "/status <job_id>" in text
-    assert "project:" in text
-    assert "/branches" in text
-    assert "/branch" in text
-    assert "/rebase" in text
-    assert "/clear branch" in text
-    assert "/clear memory" in text
-    assert "/project" in text
+    assert text is not None
+    assert text.startswith("도움말")
+    assert "기본 명령" in text
+    assert "프로젝트와 Git" in text
+    assert "/status <job_id>: 작업 상태를 조회합니다." in text
+    assert "/project <프로젝트이름>: 현재 채팅의 작업 프로젝트를 변경합니다." in text
+    assert "/rebase [브랜치이름]: 브랜치를 main 기준으로 rebase 후 병합합니다." in text
+    assert "자연어 작업 요청" in text
+    assert "옵션: project:, model:, branch:, no commit" in text
 
 
 def test_status_command_dispatch(project_registry: ProjectRegistry):
@@ -98,6 +99,12 @@ def test_model_command_updates_preference(project_registry: ProjectRegistry):
     assert text == "기본 모델이 codex로 변경되었습니다."
     current = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model"), ctx)
     assert current == "현재 기본 모델: codex"
+
+
+def test_model_command_returns_consistent_usage(project_registry: ProjectRegistry):
+    registry = CommandRegistry([ModelCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model nope"), _ctx(project_registry))
+    assert text == "사용법:\n/model\n/model <claude|codex>"
 
 
 def test_projects_command_lists_registry(project_registry: ProjectRegistry):
@@ -218,7 +225,7 @@ def test_branch_command_rejects_invalid_token(project_registry: ProjectRegistry)
     ctx = _ctx(project_registry)
     registry = CommandRegistry([BranchCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=5, user_id=1, text="/branch bad name"), ctx)
-    assert "사용법" in text or "허용" in text or "이름" in text
+    assert text == "사용법:\n/branch\n/branch <브랜치이름>"
 
 
 def test_rebase_command_uses_latest_succeeded_branch(project_registry: ProjectRegistry):
