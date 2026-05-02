@@ -56,6 +56,9 @@ def format_help_section(title: str, entries: list[CommandHelpEntry]) -> str:
     return "\n".join(lines)
 
 
+MODEL_USAGE = "<claude|codex|gemini>"
+
+
 HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
     (
         "기본 명령",
@@ -63,7 +66,7 @@ HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
             CommandHelpEntry("/start", "시작 안내를 확인합니다."),
             CommandHelpEntry("/help", "이 도움말을 확인합니다."),
             CommandHelpEntry("/model", "현재 기본 모델을 확인합니다."),
-            CommandHelpEntry("/model <claude|codex>", "기본 모델을 변경합니다."),
+            CommandHelpEntry(f"/model {MODEL_USAGE}", "기본 모델을 변경합니다."),
             CommandHelpEntry("/status <job_id>", "작업 상태를 조회합니다."),
             CommandHelpEntry("/reports", "현재 채팅/프로젝트의 기억 리포트를 확인합니다."),
             CommandHelpEntry("/reports <recent_limit>", "최근 기억 개수(1~10)를 지정해 리포트를 확인합니다."),
@@ -163,11 +166,11 @@ class ModelCommand(TelegramCommand):
         current = ctx.model_preferences.get(message.chat_id)
         if len(tokens) == 1:
             return f"현재 기본 모델: {current.value}"
-        if len(tokens) == 2 and tokens[1] in (ModelName.CLAUDE.value, ModelName.CODEX.value):
+        if len(tokens) == 2 and tokens[1] in {model.value for model in ModelName}:
             selected = ModelName(tokens[1])
             ctx.model_preferences.set(message.chat_id, selected)
             return f"기본 모델이 {selected.value}로 변경되었습니다."
-        return format_usage("/model", "/model <claude|codex>")
+        return format_usage("/model", f"/model {MODEL_USAGE}")
 
 
 class StatusCommand(TelegramCommand):

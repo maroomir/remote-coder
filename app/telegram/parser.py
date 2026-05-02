@@ -19,6 +19,9 @@ class CommandParseError(ValueError):
     pass
 
 
+_MODEL_OPTION_PATTERN = "|".join(model.value for model in ModelName)
+
+
 class CommandParser:
     def __init__(
         self,
@@ -60,10 +63,19 @@ class CommandParser:
                 flags=re.IGNORECASE,
             ).strip()
 
-        model_match = re.search(r"\bmodel:\s*(claude|codex)\b", remaining, flags=re.IGNORECASE)
+        model_match = re.search(
+            rf"\bmodel:\s*({_MODEL_OPTION_PATTERN})\b",
+            remaining,
+            flags=re.IGNORECASE,
+        )
         if model_match:
             model = ModelName(model_match.group(1).lower())
-            remaining = re.sub(r"\bmodel:\s*(claude|codex)\b", "", remaining, flags=re.IGNORECASE).strip()
+            remaining = re.sub(
+                rf"\bmodel:\s*({_MODEL_OPTION_PATTERN})\b",
+                "",
+                remaining,
+                flags=re.IGNORECASE,
+            ).strip()
 
         branch_match = re.search(r"\bbranch:\s*([A-Za-z0-9._/\-]+)", remaining, flags=re.IGNORECASE)
         if branch_match:

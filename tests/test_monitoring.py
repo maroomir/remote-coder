@@ -40,3 +40,8 @@ def test_format_memory_monitor_line():
 def test_format_model_monitor_codex_not_installed():
     text = format_model_monitor(ModelName.CODEX, timeout_seconds=2)
     assert "[Codex]" in text
+
+
+def test_format_model_monitor_gemini_not_installed():
+    text = format_model_monitor(ModelName.GEMINI, timeout_seconds=2)
+    assert "[Gemini]" in text

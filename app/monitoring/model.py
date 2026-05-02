@@ -1,4 +1,4 @@
-"""Claude/Codex CLI Probe — 비대화형으로 조회 가능한 정보만 표시."""
+"""Claude/Codex/Gemini CLI Probe — 비대화형으로 조회 가능한 정보만 표시."""
 
 from __future__ import annotations
 
@@ -15,7 +15,9 @@ def format_model_monitor(model: ModelName, timeout_seconds: int = _CLI_TIMEOUT_S
     """현재 선택 모델 기준 CLI 상태 요약."""
     if model == ModelName.CLAUDE:
         return _format_claude_monitor(timeout_seconds)
-    return _format_codex_monitor(timeout_seconds)
+    if model == ModelName.CODEX:
+        return _format_codex_monitor(timeout_seconds)
+    return _format_gemini_monitor(timeout_seconds)
 
 
 def _format_claude_monitor(timeout_seconds: int) -> str:
@@ -141,4 +143,43 @@ def _codex_footer() -> list[str]:
         "환경에 따라 제한적일 수 있습니다 (OpenAI 측 로드맵 이슈 참고).",
         "웹 사용량: https://chatgpt.com/codex/settings/usage",
         "세션별 토큰 이벤트는 로컬 CODEX_HOME(기본 ~/.codex) 세션 로그에 기록될 수 있습니다.",
+    ]
+
+
+def _format_gemini_monitor(timeout_seconds: int) -> str:
+    lines: list[str] = ["[Gemini]"]
+    try:
+        proc = subprocess.run(
+            ["gemini", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            shell=False,
+        )
+    except FileNotFoundError:
+        lines.append("CLI: `gemini` 명령을 찾을 수 없습니다. Gemini CLI 설치 및 PATH를 확인하세요.")
+        lines.extend(_gemini_footer())
+        return "\n".join(lines)
+    except subprocess.TimeoutExpired:
+        lines.append("`gemini --version` 시간 초과.")
+        lines.extend(_gemini_footer())
+        return "\n".join(lines)
+
+    ver = (proc.stdout or proc.stderr or "").strip()
+    if ver:
+        snippet = ver if len(ver) <= 500 else ver[:500] + "..."
+        lines.append(f"CLI 버전:\n{snippet}")
+    else:
+        lines.append(f"버전 확인 실패 (exit {proc.returncode}).")
+
+    lines.extend(_gemini_footer())
+    return "\n".join(lines)
+
+
+def _gemini_footer() -> list[str]:
+    return [
+        "",
+        "설치: npm install -g @google/gemini-cli",
+        "참고: 인증과 quota는 `gemini` 대화형 `/auth` 또는 Google/Gemini 계정 화면에서 확인하세요.",
+        "문서: https://geminicli.com/docs/get-started/installation/",
     ]

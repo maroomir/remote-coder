@@ -1,6 +1,7 @@
 from app.ai.base import AiRunner
 from app.ai.claude import ClaudeRunner
 from app.ai.codex import CodexRunner
+from app.ai.gemini import GeminiRunner
 from app.models import CodexSandboxMode, ModelName
 
 
@@ -17,4 +18,6 @@ class AiRunnerFactory:
             return ClaudeRunner()
         if model_name == ModelName.CODEX:
             return CodexRunner(sandbox=self._codex_sandbox)
+        if model_name == ModelName.GEMINI:
+            return GeminiRunner()
         raise UnknownModelError(f"Unsupported model: {model_name}")

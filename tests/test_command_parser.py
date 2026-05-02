@@ -47,6 +47,13 @@ def test_parse_natural_parses_model_branch_and_no_commit(project_registry: Proje
     assert req.instruction == "fix login bug"
 
 
+def test_parse_natural_parses_gemini_model(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    req = parser.parse_natural("model: gemini fix login bug", chat_id=1, user_id=2)
+    assert req.model == ModelName.GEMINI
+    assert req.instruction == "fix login bug"
+
+
 def test_parse_natural_project_option(project_registry: ProjectRegistry):
     root = project_registry.config_path.parent / "other_repo"
     root.mkdir()

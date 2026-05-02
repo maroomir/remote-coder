@@ -2,6 +2,7 @@ import pytest
 
 from app.ai.codex import CodexRunner
 from app.ai.factory import AiRunnerFactory, UnknownModelError
+from app.ai.gemini import GeminiRunner
 from app.models import CodexSandboxMode, ModelName
 
 
@@ -13,6 +14,11 @@ def test_ai_factory_create_claude():
 def test_ai_factory_create_codex():
     runner = AiRunnerFactory().create(ModelName.CODEX)
     assert isinstance(runner, CodexRunner)
+
+
+def test_ai_factory_create_gemini():
+    runner = AiRunnerFactory().create(ModelName.GEMINI)
+    assert isinstance(runner, GeminiRunner)
 
 
 def test_ai_factory_passes_codex_sandbox_to_runner():

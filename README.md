@@ -26,6 +26,7 @@ cp .env.example .env
 - 선택: `CONVERSATION_DB_PATH` — 프로젝트+채팅별 대화 기억 SQLite 경로 (미설정 시 `PROJECT_ROOT/.remote-coder/conversations.sqlite3`)
 - 선택: `CONVERSATION_RECENT_LIMIT` — 모호한 후속 요청 시 runner에 붙이는 최근 기록 개수 (기본 `10`)
 - 선택: `CODEX_SANDBOX` — Codex `codex exec --sandbox` 값 (`read-only`, `workspace-write`, `danger-full-access`). 기본 `workspace-write`(Job worktree에서 파일 수정 가능)
+- 선택: Gemini 사용 시 `npm install -g @google/gemini-cli`로 Gemini CLI를 설치하고 `gemini` 명령이 PATH에 잡히도록 설정
 - 초기 시드(1회용): `DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`
 
 ## 2.5) 로컬 관리 UI (프로젝트 등록)
@@ -53,7 +54,7 @@ cp .env.example .env
 | `app.security.auth` | Webhook secret 불일치, allowlist 거부 |
 | `app.jobs.lifecycle` | Job 제출·단계(`git_worktree`/`runner`/…)·성공·실패 |
 | `app.git.service` | worktree 생성·커밋·push·정리·rebase 통합 등 Git Adapter |
-| `app.ai.claude` / `app.ai.codex` | Runner 시작·종료·timeout |
+| `app.ai.claude` / `app.ai.codex` / `app.ai.gemini` | Runner 시작·종료·timeout |
 
 구조화 필드(`category`, `chat_id`, `user_id`, `project`, `job_id`)는 UI 필터·배지로 조회할 수 있습니다. 코드에서는 `app.monitoring.events.EventLogger`와 `app.monitoring.log_buffer.LOG_RECORD_CONTEXT_KEYS` 화이트리스트를 사용합니다.
 
@@ -100,6 +101,7 @@ ngrok version
 - `/model` : 기본 모델 확인
 - `/model claude` : 현재 chat의 기본 모델을 claude로 변경
 - `/model codex` : 현재 chat의 기본 모델을 codex로 변경
+- `/model gemini` : 현재 chat의 기본 모델을 gemini로 변경
 - `/status <job_id>` : 작업 상태 조회
 - `/projects` : 등록 프로젝트 목록 및 이 채팅의 현재 적용 프로젝트
 - `/project` : 이 채팅의 현재 작업 프로젝트(인메모리) 확인
@@ -112,7 +114,7 @@ ngrok version
 - `/clear branch` : 등록된 enabled 프로젝트마다 `remote-*` 로컬·원격 브랜치와 연결된 linked worktree 정리
 - `/clear worktrees` : 등록된 enabled 프로젝트마다 관리 대상 worktree(`WORKTREE_BASE_DIR` 하위 및 `remote-*` checkout linked worktree) 정리 + stale entry prune
 - `/clear memory` : 대화 기억 SQLite 데이터베이스 초기화
-- `/monitor model` : 현재 채팅 기본 모델 기준 Claude(`claude auth status`) / Codex(`codex --version`) 등 CLI Probe — 플랜·크레딧 남은량은 공급자 대시보드·안내 문구 참고
+- `/monitor model` : 현재 채팅 기본 모델 기준 Claude(`claude auth status`) / Codex(`codex --version`) / Gemini(`gemini --version`) 등 CLI Probe — 플랜·크레딧 남은량은 공급자 대시보드·안내 문구 참고
 - `/monitor memory` : 이 채팅·현재 **적용 프로젝트** 기준 SQLite 대화 기억 행 수·역할별 행 수·DB 파일 크기
 - `/monitor branch` : 적용 프로젝트 저장소의 브랜치 요약(로컬/원격 개수 및 목록)
 - `/monitor worktrees` : linked worktree 목록·detached 개수·Remote Coder managed 후보 요약
@@ -135,7 +137,7 @@ ngrok version
   committed by remote-coder:job-id
   ```
 
-- 자연어 메시지에서 `model: codex`, `branch: my-branch`, `project: 등록이름`, `no commit` 토큰을 함께 사용할 수 있습니다. (`branch:` 값은 `/branch`와 동일 규칙으로 검증됩니다.)
+- 자연어 메시지에서 `model: codex`, `model: gemini`, `branch: my-branch`, `project: 등록이름`, `no commit` 토큰을 함께 사용할 수 있습니다. (`branch:` 값은 `/branch`와 동일 규칙으로 검증됩니다.)
 - **대화 기억(SQLite)**: 같은 텔레그램 채팅·같은 작업 프로젝트 기준으로 사용자 메시지와 Job 접수/결과 요약이 SQLite에 쌓입니다. 서버를 재시작해도 유지됩니다. 이전에 구체적인 지시를 보낸 뒤 `작업 시작해줘`, `진행해줘`, `그거 해줘`, `시작해줘`처럼 짧은 후속 문장만내면, 최근 기록을 합쳐 AI 지시문으로 만듭니다. 맥락이 없으면 봇이 안내 메시지를 보냅니다.
 - **Reply 체인**: 이전 메시지에 답장(reply)으로 보낸 자연어 요청마다, SQLite에 남은 조상 메시지들의 본문과 각 메시지에 연결된 Job 결과 요약을 `[Reply 체인 맥락]` 블록으로 Codex/Claude instruction 앞에 붙입니다. (봇이 해당 메시지를 수신·저장한 경우에만 복원됩니다.)
 - `/reports 7`처럼 최근 표시 개수를 함께 줄 수 있습니다. 허용 범위는 `1~10`이며, 기본값은 `5`입니다.
@@ -147,6 +149,7 @@ ngrok version
 
 - Claude 사용자: [`docs/claude-guide.md`](docs/claude-guide.md)
 - Codex 사용자: [`docs/codex-guide.md`](docs/codex-guide.md)
+- Gemini 사용자: Gemini CLI 설치 후 `gemini` 대화형 `/auth`로 인증하고 `model: gemini` 또는 `/model gemini`를 사용하세요.
 - Worktree가 read-only로 실패할 때: [`docs/read-only-workspace.md`](docs/read-only-workspace.md)
 
 ## 6) 테스트

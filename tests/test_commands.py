@@ -110,10 +110,18 @@ def test_model_command_updates_preference(project_registry: ProjectRegistry):
     assert current == "현재 기본 모델: codex"
 
 
+def test_model_command_updates_preference_to_gemini(project_registry: ProjectRegistry):
+    registry = CommandRegistry([ModelCommand()])
+    ctx = _ctx(project_registry)
+    text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model gemini"), ctx)
+    assert text == "기본 모델이 gemini로 변경되었습니다."
+    assert ctx.model_preferences.get(77) == ModelName.GEMINI
+
+
 def test_model_command_returns_consistent_usage(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model nope"), _ctx(project_registry))
-    assert text == "사용법:\n/model\n/model <claude|codex>"
+    assert text == "사용법:\n/model\n/model <claude|codex|gemini>"
 
 
 def test_projects_command_lists_registry(project_registry: ProjectRegistry):

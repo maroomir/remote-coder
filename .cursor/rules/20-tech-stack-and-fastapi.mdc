@@ -15,7 +15,7 @@ alwaysApply: true
 - python-dotenv 또는 pydantic-settings
 - Telegram Bot API 직접 호출 또는 안정적인 Telegram 라이브러리
 - Git CLI 기반 worktree 관리
-- Claude Code CLI, Codex CLI 실행 래퍼
+- Claude Code CLI, Codex CLI, Gemini CLI 실행 래퍼
 
 ## 2. FastAPI 규칙
 
