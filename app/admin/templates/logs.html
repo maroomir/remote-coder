@@ -577,8 +577,7 @@
 
     async function pollTail() {
       try {
-        if (lastMaxId <= 0) return;
-        const d = await fetchLogs({ after_id: lastMaxId });
+        const d = await fetchLogs({ after_id: lastMaxId > 0 ? lastMaxId : undefined });
         lastMaxId = Number(d.max_id) || lastMaxId;
         $("#meta-max").textContent = "max_id: " + lastMaxId;
         if ((d.entries || []).length) {

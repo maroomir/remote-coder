@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 
 from app.admin.advanced_settings import FileAdvancedSettingsStore, advanced_settings_path_for_project_root
@@ -45,6 +47,9 @@ advanced_settings_store.load()
 
 log_buffer = InMemoryLogBuffer(max_entries=2000)
 attach_app_memory_log_handler(log_buffer)
+logging.getLogger("app").info(
+    "Remote AI Coder server (re)loaded — log buffer ready"
+)
 
 job_store = InMemoryJobStore()
 auth_service = AllowlistAuthService(

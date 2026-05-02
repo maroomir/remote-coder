@@ -245,11 +245,16 @@ def attach_app_memory_log_handler(
     *,
     app_logger_name: str = "app",
 ) -> MemoryLogHandler:
-    """`app` 패키지 로거에 메모리 핸들러를 한 번만 붙입니다."""
+    """`app` 패키지 로거에 메모리 핸들러를 붙입니다.
+
+    --reload 환경에서 앱이 리로드될 때 새로운 InMemoryLogBuffer가 생성되므로,
+    기존 핸들러가 있더라도 제거하고 새 버퍼에 연결된 핸들러로 교체합니다.
+    """
     app_logger = logging.getLogger(app_logger_name)
-    for h in app_logger.handlers:
+    for h in list(app_logger.handlers):
         if getattr(h, "_remote_coder_admin_memory", False):
-            return h  # type: ignore[return-value]
+            app_logger.removeHandler(h)
+            break
     handler = MemoryLogHandler(buffer)
     setattr(handler, "_remote_coder_admin_memory", True)
     app_logger.addHandler(handler)
