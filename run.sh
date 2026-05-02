@@ -9,10 +9,22 @@ eval "$(conda shell.bash hook 2> /dev/null || echo '')"
 conda activate remote-coder || { echo "❌ conda 환경 'remote-coder'를 찾을 수 없습니다."; exit 1; }
 echo "✅ Conda 환경(remote-coder) 활성화 완료"
 
-# 2. 기존 ngrok 종료 (충돌 방지)
+# 2. ngrok AuthToken 확인
+if ! ngrok config check 2>&1 | grep -q "Valid configuration"; then
+    # Some older ngrok versions might not support `config check` or output differently.
+    # We'll just do a soft check, if it explicitly says "no authtoken", we abort.
+    if ngrok config check 2>&1 | grep -i -q "no authtoken"; then
+        echo "❌ ngrok AuthToken이 설정되어 있지 않습니다."
+        echo "💡 https://dashboard.ngrok.com 에서 회원가입 후 AuthToken을 발급받으세요."
+        echo "💡 실행 명령어: ngrok config add-authtoken <your-token>"
+        exit 1
+    fi
+fi
+
+# 3. 기존 ngrok 종료 (충돌 방지)
 pkill ngrok || true
 
-# 3. ngrok 백그라운드 실행 (포트 8000)
+# 4. ngrok 백그라운드 실행 (포트 8000)
 echo "🌐 ngrok 터널을 시작합니다..."
 ngrok http 8000 > /dev/null 2>&1 &
 NGROK_PID=$!
@@ -20,7 +32,7 @@ NGROK_PID=$!
 # 터널이 완전히 열릴 때까지 잠시 대기
 sleep 2
 
-# 4. ngrok URL 추출 (파이썬 사용 - jq 없이 동작)
+# 5. ngrok URL 추출 (파이썬 사용 - jq 없이 동작)
 PUBLIC_URL=$(python -c "
 import urllib.request
 import json

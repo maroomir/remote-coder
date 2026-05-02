@@ -40,10 +40,28 @@ cp .env.example .env
 
 ## 3) 한 번에 실행하기 (권장)
 
-미리 작성된 `run.sh` 스크립트를 사용하면 Conda 환경 활성화, ngrok 실행, Webhook 등록, 서버 실행을 모두 한 번에 처리합니다.
+미리 작성된 실행 스크립트를 사용하면 Conda 환경 활성화, ngrok 실행, Webhook 등록, 서버 실행을 모두 한 번에 처리합니다.
 
 ```bash
 ./run.sh
+```
+
+Windows PowerShell에서는 다음 스크립트를 사용할 수 있습니다.
+
+```powershell
+.\run.ps1
+```
+
+또는 PowerShell 실행 정책을 자동 우회하는 배치 래퍼를 사용할 수 있습니다.
+
+```bat
+run.bat
+```
+
+Windows 실행 전에는 `ngrok.exe`가 설치되어 있고 PATH에서 실행 가능해야 합니다. 확인:
+
+```powershell
+ngrok version
 ```
 
 - 스크립트 실행 후 텔레그램에서 바로 봇에게 말을 걸면 동작합니다.
