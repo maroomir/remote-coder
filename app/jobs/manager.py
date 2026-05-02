@@ -26,10 +26,10 @@ class JobManager:
     _STDOUT_SUMMARY_LIMIT = 12000
     _STDERR_SUMMARY_LIMIT = 800
     _READ_ONLY_HINTS = (
-        "read-only",
-        "readonly",
-        "읽기 전용",
-        "수정 불가",
+        "sandbox: read-only",
+        "read-only file system",
+        "readonly file system",
+        "erofs: read-only file system",
     )
 
     def __init__(
@@ -230,10 +230,8 @@ class JobManager:
     @classmethod
     def _runner_output_suggests_read_only(cls, text: str) -> bool:
         lowered = text.lower()
-        if "read-only" in lowered or "readonly" in lowered:
-            return True
         for hint in cls._READ_ONLY_HINTS:
-            if hint in text:
+            if hint in lowered:
                 return True
         return False
 
