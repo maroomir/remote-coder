@@ -6,18 +6,18 @@ from app.models import ModelName
 from app.projects.registry import ProjectRecord
 
 
-def test_admin_root_returns_html(test_settings, project_registry):
+def test_admin_root_returns_html(test_settings, project_registry, advanced_settings_store):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
     client = TestClient(app)
     response = client.get("/")
     assert response.status_code == 200
     assert "Remote AI Coder" in response.text
 
 
-def test_admin_api_settings_masks_short_token(test_settings, project_registry):
+def test_admin_api_settings_masks_short_token(test_settings, project_registry, advanced_settings_store):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
     client = TestClient(app)
     response = client.get("/api/settings")
     assert response.status_code == 200
@@ -25,9 +25,9 @@ def test_admin_api_settings_masks_short_token(test_settings, project_registry):
     assert data["telegram_bot_token_masked"] == "***"
 
 
-def test_admin_api_projects_post_and_delete(test_settings, project_registry):
+def test_admin_api_projects_post_and_delete(test_settings, project_registry, advanced_settings_store):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
     client = TestClient(app)
 
     root = test_settings.project_root / "new_repo"
@@ -55,9 +55,9 @@ def test_admin_api_projects_post_and_delete(test_settings, project_registry):
     assert "extra" not in names_after
 
 
-def test_admin_api_projects_put_updates(test_settings, project_registry):
+def test_admin_api_projects_put_updates(test_settings, project_registry, advanced_settings_store):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
     client = TestClient(app)
 
     entry = project_registry.get("remote-coder")
@@ -86,3 +86,49 @@ def test_admin_api_projects_put_updates(test_settings, project_registry):
             enabled=True,
         ),
     )
+
+
+def test_admin_api_advanced_settings_get_default(test_settings, project_registry, advanced_settings_store):
+    app = FastAPI()
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    client = TestClient(app)
+    r = client.get("/api/advanced-settings")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["auto_merge_to_main_enabled"] is False
+    assert data["conversation_memory_limit_enabled"] is False
+
+
+def test_admin_api_advanced_settings_put_and_persist(test_settings, project_registry, advanced_settings_store):
+    app = FastAPI()
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    client = TestClient(app)
+    body = {
+        "auto_merge_to_main_enabled": True,
+        "conversation_memory_limit_enabled": True,
+        "conversation_memory_max_rows": 100,
+        "conversation_memory_max_bytes": None,
+    }
+    put = client.put("/api/advanced-settings", json=body)
+    assert put.status_code == 200
+    assert put.json()["auto_merge_to_main_enabled"] is True
+    get = client.get("/api/advanced-settings")
+    assert get.json()["conversation_memory_max_rows"] == 100
+
+
+def test_admin_api_advanced_settings_put_invalid_memory_returns_422(
+    test_settings, project_registry, advanced_settings_store
+):
+    app = FastAPI()
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    client = TestClient(app)
+    r = client.put(
+        "/api/advanced-settings",
+        json={
+            "auto_merge_to_main_enabled": False,
+            "conversation_memory_limit_enabled": True,
+            "conversation_memory_max_rows": None,
+            "conversation_memory_max_bytes": None,
+        },
+    )
+    assert r.status_code == 422

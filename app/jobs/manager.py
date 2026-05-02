@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from app.admin.advanced_settings import FileAdvancedSettingsStore
 from app.ai.base import RunnerInput
 from app.ai.factory import AiRunnerFactory
 from app.config import Settings
@@ -40,6 +41,7 @@ class JobManager:
         branch_strategy: BranchNamingStrategy,
         notifier: TelegramNotifier,
         project_registry: ProjectRegistry,
+        advanced_settings_store: FileAdvancedSettingsStore | None = None,
     ) -> None:
         self._settings = settings
         self._job_store = job_store
@@ -48,6 +50,7 @@ class JobManager:
         self._branch_strategy = branch_strategy
         self._notifier = notifier
         self._project_registry = project_registry
+        self._advanced_settings_store = advanced_settings_store
 
     def submit(self, request: JobRequest) -> Job:
         job = Job(id=self._make_job_id(), request=request)
@@ -157,6 +160,22 @@ class JobManager:
                 if job.request.commit and job.commit_hash:
                     failed_stage = "git_push"
                     self._git_service.push_branch(project_path, remote, job.branch)
+
+                if (
+                    self._advanced_settings_store is not None
+                    and self._advanced_settings_store.get().auto_merge_to_main_enabled
+                    and job.request.commit
+                    and job.commit_hash
+                    and job.branch
+                ):
+                    failed_stage = "git_integrate_main"
+                    ops_base = worktree_base / "_rebase_ops"
+                    self._git_service.rebase_branch_onto_main_and_merge(
+                        project_path,
+                        job.branch,
+                        remote,
+                        ops_base,
+                    )
 
                 job.mark_succeeded()
                 self._job_store.update(job)

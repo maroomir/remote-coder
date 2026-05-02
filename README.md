@@ -38,6 +38,13 @@ cp .env.example .env
 - `PROJECTS_CONFIG_PATH`가 없으면 기본 경로 `PROJECT_ROOT/.remote-coder/projects.json`을 사용합니다.
 - 레지스트리 파일이 없으면 `.env`의 초기 시드 값(`DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`)으로 자동 생성됩니다.
 
+### 고급 설정 (위험 옵션)
+
+기본 화면에서 **고급 설정**으로 들어가면, 전역 설정 파일 `PROJECT_ROOT/.remote-coder/advanced_settings.json`을 읽고 저장할 수 있습니다. 기본값은 모두 꺼져 있으며, 켜지 않으면 기존 동작과 동일합니다.
+
+- **요청 결과를 즉시 main/master에 반영 후 push**: Job이 변경을 커밋·브랜치 push까지 성공하면, `/rebase`와 유사하게 해당 브랜치를 통합 브랜치(`main` 또는 `master`)에 fast-forward 병합한 뒤 원격에 push합니다. 충돌·non-ff 등으로 통합에 실패하면 Job은 실패로 기록됩니다.
+- **SQLite 대화 기억 저장량 제한**: 켜면 `conversation_entries` 테이블 전체를 대상으로, 오래된 행부터 삭제합니다. **최대 행 수**와 **최대 DB 용량(bytes)** 중 하나 이상을 양수로 지정해야 하며, 둘 다 지정하면 행 수 제한을 먼저 맞춘 뒤 용량 제한을 맞추기 위해 삭제·`VACUUM`을 반복합니다. `message_branch_links`는 고아 링크를 정리합니다.
+
 ## 3) 한 번에 실행하기 (권장)
 
 미리 작성된 실행 스크립트를 사용하면 Conda 환경 활성화, ngrok 실행, Webhook 등록, 서버 실행을 모두 한 번에 처리합니다.

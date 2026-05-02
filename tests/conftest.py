@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from app.admin.advanced_settings import FileAdvancedSettingsStore, advanced_settings_path_for_project_root
 from app.config import Settings
 from app.projects.registry import ProjectRegistry
 
@@ -27,3 +28,11 @@ def project_registry(test_settings: Settings) -> ProjectRegistry:
     reg = ProjectRegistry(path)
     reg.ensure_seeded_from_settings(test_settings)
     return reg
+
+
+@pytest.fixture
+def advanced_settings_store(test_settings: Settings) -> FileAdvancedSettingsStore:
+    path = advanced_settings_path_for_project_root(test_settings.project_root)
+    store = FileAdvancedSettingsStore(path)
+    store.load()
+    return store

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
+from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsStore
 from app.config import Settings
 from app.models import ModelName
 from app.projects.registry import ProjectRecord, ProjectRegistry
@@ -55,7 +56,11 @@ def _load_admin_html() -> str:
     return template_path.read_text(encoding="utf-8")
 
 
-def create_admin_router(settings: Settings, registry: ProjectRegistry) -> APIRouter:
+def create_admin_router(
+    settings: Settings,
+    registry: ProjectRegistry,
+    advanced_settings_store: FileAdvancedSettingsStore,
+) -> APIRouter:
     router = APIRouter(tags=["admin"])
 
     @router.get("/", response_class=HTMLResponse)
@@ -125,5 +130,13 @@ def create_admin_router(settings: Settings, registry: ProjectRegistry) -> APIRou
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse(registry.to_public_dict())
+
+    @router.get("/api/advanced-settings")
+    def api_advanced_settings_get(_: LocalhostOnly) -> dict:
+        return advanced_settings_store.get().model_dump(mode="json")
+
+    @router.put("/api/advanced-settings")
+    def api_advanced_settings_put(body: AdvancedSettings, _: LocalhostOnly) -> dict:
+        return advanced_settings_store.save(body).model_dump(mode="json")
 
     return router

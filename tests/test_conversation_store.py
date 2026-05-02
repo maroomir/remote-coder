@@ -2,6 +2,11 @@ from pathlib import Path
 
 import pytest
 
+from app.admin.advanced_settings import (
+    AdvancedSettings,
+    FileAdvancedSettingsStore,
+    advanced_settings_path_for_project_root,
+)
 from app.telegram.conversation import (
     ConversationContextBuilder,
     ConversationEntry,
@@ -123,6 +128,42 @@ def test_bind_message_branch_and_lookup(tmp_path: Path):
 
     assert store.get_bound_branch("p1", 7, 10) == "remote-a"
     assert store.get_bound_branch("p1", 7, 11) is None
+
+
+def test_sqlite_memory_limit_prunes_oldest_rows_globally(tmp_path: Path):
+    adv = FileAdvancedSettingsStore(advanced_settings_path_for_project_root(tmp_path))
+    adv.save(
+        AdvancedSettings(
+            conversation_memory_limit_enabled=True,
+            conversation_memory_max_rows=4,
+            conversation_memory_max_bytes=None,
+        )
+    )
+    db = tmp_path / "mem_rows.sqlite3"
+    store = SQLiteConversationStore(db, advanced_settings_store=adv)
+    for i in range(6):
+        store.append(project="p", chat_id=1, role="user", text=f"x{i}", job_id=None)
+    recent = store.list_recent("p", 1, 10)
+    assert len(recent) == 4
+    assert recent[0].text == "x2"
+
+
+def test_sqlite_memory_limit_cleans_orphan_branch_links(tmp_path: Path):
+    adv = FileAdvancedSettingsStore(advanced_settings_path_for_project_root(tmp_path))
+    adv.save(
+        AdvancedSettings(
+            conversation_memory_limit_enabled=True,
+            conversation_memory_max_rows=3,
+            conversation_memory_max_bytes=None,
+        )
+    )
+    db = tmp_path / "mem_links.sqlite3"
+    store = SQLiteConversationStore(db, advanced_settings_store=adv)
+    store.append(project="p", chat_id=1, role="user", text="keep me", message_id=100, job_id=None)
+    store.bind_message_branch(project="p", chat_id=1, message_id=100, branch="b1", job_id="j1")
+    for i in range(5):
+        store.append(project="p", chat_id=2, role="user", text=f"other{i}", job_id=None)
+    assert store.get_bound_branch("p", 1, 100) is None
 
 
 def test_format_reply_chain_context_and_collect_ids(tmp_path: Path):

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
+from app.admin.advanced_settings import FileAdvancedSettingsStore
+
 
 _AMBIGUOUS_FOLLOWUP = re.compile(
     r"^\s*(작업\s*시작해줘|진행해줘|그거\s*해줘|시작해줘)\s*$",
@@ -91,9 +93,14 @@ def _ensure_entry_columns(conn: sqlite3.Connection) -> None:
 class SQLiteConversationStore:
     """프로젝트 이름과 텔레그램 chat_id 단위로 SQLite에 대화를 저장합니다."""
 
-    def __init__(self, db_path: Path) -> None:
+    def __init__(
+        self,
+        db_path: Path,
+        advanced_settings_store: FileAdvancedSettingsStore | None = None,
+    ) -> None:
         self._db_path = db_path.resolve()
         self._lock = Lock()
+        self._advanced_settings_store = advanced_settings_store
         self.ensure_schema()
 
     @property
@@ -160,6 +167,68 @@ class SQLiteConversationStore:
                 self._db_path.unlink()
         self.ensure_schema()
 
+    @staticmethod
+    def _delete_oldest_entries(conn: sqlite3.Connection, limit: int) -> None:
+        if limit <= 0:
+            return
+        conn.execute(
+            """
+            DELETE FROM conversation_entries
+            WHERE id IN (
+                SELECT id FROM conversation_entries ORDER BY id ASC LIMIT ?
+            )
+            """,
+            (limit,),
+        )
+
+    @staticmethod
+    def _cleanup_orphan_branch_links(conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            DELETE FROM message_branch_links
+            WHERE message_id IS NOT NULL
+            AND message_id NOT IN (
+                SELECT message_id FROM conversation_entries
+                WHERE message_id IS NOT NULL
+            )
+            """
+        )
+
+    def _apply_memory_limits(self, conn: sqlite3.Connection) -> None:
+        """고급 설정이 켜져 있으면 전역 기준으로 오래된 행을 삭제하고 필요 시 VACUUM 합니다."""
+        if self._advanced_settings_store is None:
+            return
+        cfg = self._advanced_settings_store.get()
+        if not cfg.conversation_memory_limit_enabled:
+            return
+        max_rows = cfg.conversation_memory_max_rows
+        max_bytes = cfg.conversation_memory_max_bytes
+
+        for _ in range(500):
+            total = int(conn.execute("SELECT COUNT(*) FROM conversation_entries").fetchone()[0])
+            if max_rows is None or total <= max_rows:
+                break
+            to_delete = total - max_rows
+            self._delete_oldest_entries(conn, to_delete)
+            self._cleanup_orphan_branch_links(conn)
+            conn.commit()
+
+        for _ in range(500):
+            if max_bytes is None:
+                break
+            conn.commit()
+            size = self._db_path.stat().st_size if self._db_path.exists() else 0
+            if size <= max_bytes:
+                break
+            total = int(conn.execute("SELECT COUNT(*) FROM conversation_entries").fetchone()[0])
+            if total == 0:
+                break
+            batch = min(100, max(1, total // 5))
+            self._delete_oldest_entries(conn, batch)
+            self._cleanup_orphan_branch_links(conn)
+            conn.commit()
+            conn.execute("VACUUM")
+
     def append(
         self,
         *,
@@ -184,6 +253,7 @@ class SQLiteConversationStore:
                     (project, chat_id, role, text, job_id, message_id, reply_to_message_id),
                 )
                 conn.commit()
+                self._apply_memory_limits(conn)
             finally:
                 conn.close()
 

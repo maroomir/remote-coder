@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.admin.advanced_settings import FileAdvancedSettingsStore, advanced_settings_path_for_project_root
 from app.admin.router import create_admin_router
 from app.ai.factory import AiRunnerFactory
 from app.config import get_settings
@@ -37,6 +38,9 @@ settings = get_settings()
 _projects_path = projects_config_path_for_settings(settings.project_root, settings.projects_config_path)
 project_registry = ProjectRegistry(_projects_path)
 project_registry.ensure_seeded_from_settings(settings)
+_advanced_settings_path = advanced_settings_path_for_project_root(settings.project_root)
+advanced_settings_store = FileAdvancedSettingsStore(_advanced_settings_path)
+advanced_settings_store.load()
 
 job_store = InMemoryJobStore()
 auth_service = AllowlistAuthService(
@@ -45,7 +49,10 @@ auth_service = AllowlistAuthService(
 model_preferences = InMemoryModelPreferenceStore(default_model=settings.default_model)
 project_preferences = InMemoryProjectPreferenceStore()
 confirmation_store = InMemoryConfirmationStore()
-conversation_store = SQLiteConversationStore(settings.conversation_db_path)
+conversation_store = SQLiteConversationStore(
+    settings.conversation_db_path,
+    advanced_settings_store=advanced_settings_store,
+)
 parser = CommandParser(
     project_registry=project_registry,
     default_model=settings.default_model,
@@ -93,10 +100,11 @@ job_manager = JobManager(
     branch_strategy=branch_strategy,
     notifier=notifier,
     project_registry=project_registry,
+    advanced_settings_store=advanced_settings_store,
 )
 
 app = FastAPI(title="Remote AI Coder")
-app.include_router(create_admin_router(settings, project_registry))
+app.include_router(create_admin_router(settings, project_registry, advanced_settings_store))
 app.include_router(
     create_webhook_router(
         auth_service=auth_service,

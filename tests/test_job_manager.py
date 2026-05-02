@@ -1,6 +1,7 @@
 from pathlib import Path
 from unittest.mock import Mock
 
+from app.admin.advanced_settings import AdvancedSettings
 from app.ai.base import RunnerResult
 from app.git.commit_message import CommitMessageFormatter
 from app.jobs.manager import JobManager
@@ -360,3 +361,95 @@ def test_job_manager_stderr_summary_preserves_urls():
     raw = "error at https://api.example.com/v1"
     out = JobManager._make_output_summary(raw, limit=200, strip_links=False)
     assert out and "https://api.example.com/v1" in out
+
+
+def test_job_manager_auto_merge_to_main_calls_rebase_after_push(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = ["a.py"]
+    git_service.commit_all.return_value = "abc123"
+    git_service.rebase_branch_onto_main_and_merge.return_value = "rebase ok"
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    branch_strategy.make_branch_name.return_value = "remote-test"
+    notifier = Mock()
+    adv_store = Mock()
+    adv_store.get.return_value = AdvancedSettings(auto_merge_to_main_enabled=True)
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        notifier,
+        project_registry,
+        advanced_settings_store=adv_store,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="fix bug",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    final_job = manager.run(job.id)
+
+    assert final_job.status.value == "succeeded"
+    git_service.rebase_branch_onto_main_and_merge.assert_called_once()
+    args, kwargs = git_service.rebase_branch_onto_main_and_merge.call_args
+    assert args[0] == test_settings.project_root
+    assert args[1] == "remote-test"
+    assert args[2] == test_settings.git_remote_name
+    assert args[3] == test_settings.worktree_base_dir / "_rebase_ops"
+
+
+def test_job_manager_auto_merge_failure_sets_integrate_stage(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = ["a.py"]
+    git_service.commit_all.return_value = "abc123"
+    git_service.rebase_branch_onto_main_and_merge.side_effect = RuntimeError("non-ff")
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    branch_strategy.make_branch_name.return_value = "remote-test"
+    notifier = Mock()
+    adv_store = Mock()
+    adv_store.get.return_value = AdvancedSettings(auto_merge_to_main_enabled=True)
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        notifier,
+        project_registry,
+        advanced_settings_store=adv_store,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="fix bug",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    final_job = manager.run(job.id)
+
+    assert final_job.status.value == "failed"
+    assert final_job.error_stage == "git_integrate_main"
+    assert "non-ff" in (final_job.error or "")
