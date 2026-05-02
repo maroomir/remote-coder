@@ -4,6 +4,7 @@ import pytest
 
 from app.admin.advanced_settings import FileAdvancedSettingsStore, advanced_settings_path_for_project_root
 from app.config import Settings
+from app.monitoring.log_buffer import InMemoryLogBuffer
 from app.projects.registry import ProjectRegistry
 
 
@@ -36,3 +37,8 @@ def advanced_settings_store(test_settings: Settings) -> FileAdvancedSettingsStor
     store = FileAdvancedSettingsStore(path)
     store.load()
     return store
+
+
+@pytest.fixture
+def log_buffer() -> InMemoryLogBuffer:
+    return InMemoryLogBuffer(max_entries=500)

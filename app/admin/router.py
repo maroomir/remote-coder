@@ -4,13 +4,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsStore
 from app.config import Settings
 from app.models import ModelName
+from app.monitoring.log_buffer import InMemoryLogBuffer
 from app.projects.registry import ProjectRecord, ProjectRegistry
 
 
@@ -50,7 +51,7 @@ class DefaultProjectBody(BaseModel):
     name: str = Field(min_length=1)
 
 
-_ADMIN_ICON_NAMES = frozenset({"home.svg", "projects.svg", "advanced.svg"})
+_ADMIN_ICON_NAMES = frozenset({"home.svg", "projects.svg", "advanced.svg", "logs.svg"})
 
 
 @lru_cache(maxsize=8)
@@ -63,6 +64,7 @@ def create_admin_router(
     settings: Settings,
     registry: ProjectRegistry,
     advanced_settings_store: FileAdvancedSettingsStore,
+    log_buffer: InMemoryLogBuffer,
 ) -> APIRouter:
     router = APIRouter(tags=["admin"])
 
@@ -77,6 +79,44 @@ def create_admin_router(
     @router.get("/advanced", response_class=HTMLResponse)
     def admin_advanced(_: LocalhostOnly) -> str:
         return _load_template_html("advanced.html")
+
+    @router.get("/logs", response_class=HTMLResponse)
+    def admin_logs(_: LocalhostOnly) -> str:
+        return _load_template_html("logs.html")
+
+    @router.get("/api/logs")
+    def api_logs(
+        _: LocalhostOnly,
+        limit: int = Query(200, ge=1, le=1000),
+        after_id: int | None = Query(None, ge=1),
+        level: str | None = Query(None, description="최소 로그 레벨 (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
+        q: str | None = Query(None, max_length=500),
+        logger: str | None = Query(None, max_length=200),
+    ) -> dict[str, object]:
+        q_clean = q.strip() if q else None
+        if q_clean == "":
+            q_clean = None
+        logger_clean = logger.strip() if logger else None
+        if logger_clean == "":
+            logger_clean = None
+        level_clean = level.strip() if level else None
+        if level_clean == "":
+            level_clean = None
+        try:
+            entries, max_seen = log_buffer.query(
+                limit=limit,
+                after_id=after_id,
+                min_level=level_clean,
+                q=q_clean,
+                logger_sub=logger_clean,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "entries": entries,
+            "max_id": max_seen,
+            "max_entries": log_buffer.max_entries,
+        }
 
     @router.get("/api/settings")
     def api_settings(_: LocalhostOnly) -> dict:

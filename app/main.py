@@ -8,6 +8,7 @@ from app.git.branch_naming import TimestampSlugStrategy
 from app.git.service import GitWorktreeService
 from app.jobs.manager import JobManager
 from app.jobs.store import InMemoryJobStore
+from app.monitoring.log_buffer import InMemoryLogBuffer, attach_app_memory_log_handler
 from app.projects.registry import ProjectRegistry, projects_config_path_for_settings
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import (
@@ -41,6 +42,9 @@ project_registry.ensure_seeded_from_settings(settings)
 _advanced_settings_path = advanced_settings_path_for_project_root(settings.project_root)
 advanced_settings_store = FileAdvancedSettingsStore(_advanced_settings_path)
 advanced_settings_store.load()
+
+log_buffer = InMemoryLogBuffer(max_entries=2000)
+attach_app_memory_log_handler(log_buffer)
 
 job_store = InMemoryJobStore()
 auth_service = AllowlistAuthService(
@@ -104,7 +108,7 @@ job_manager = JobManager(
 )
 
 app = FastAPI(title="Remote AI Coder")
-app.include_router(create_admin_router(settings, project_registry, advanced_settings_store))
+app.include_router(create_admin_router(settings, project_registry, advanced_settings_store, log_buffer))
 app.include_router(
     create_webhook_router(
         auth_service=auth_service,

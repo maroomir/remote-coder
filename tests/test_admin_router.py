@@ -6,15 +6,16 @@ from app.models import ModelName
 from app.projects.registry import ProjectRecord
 
 
-def test_admin_root_returns_html(test_settings, project_registry, advanced_settings_store):
+def test_admin_root_returns_html(test_settings, project_registry, advanced_settings_store, log_buffer):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
     client = TestClient(app)
     response = client.get("/")
     assert response.status_code == 200
     assert "Remote AI Coder" in response.text
     assert 'href="/projects"' in response.text
     assert 'href="/advanced"' in response.text
+    assert 'href="/logs"' in response.text
     assert "프로젝트 등록" in response.text
     assert "고급 설정" in response.text
     assert 'id="proj-form"' not in response.text
@@ -23,9 +24,9 @@ def test_admin_root_returns_html(test_settings, project_registry, advanced_setti
     assert "활성 프로젝트" in response.text
 
 
-def test_admin_projects_page_returns_html(test_settings, project_registry, advanced_settings_store):
+def test_admin_projects_page_returns_html(test_settings, project_registry, advanced_settings_store, log_buffer):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
     client = TestClient(app)
     response = client.get("/projects")
     assert response.status_code == 200
@@ -35,9 +36,9 @@ def test_admin_projects_page_returns_html(test_settings, project_registry, advan
     assert 'href="/advanced"' in response.text
 
 
-def test_admin_advanced_page_returns_html(test_settings, project_registry, advanced_settings_store):
+def test_admin_advanced_page_returns_html(test_settings, project_registry, advanced_settings_store, log_buffer):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
     client = TestClient(app)
     response = client.get("/advanced")
     assert response.status_code == 200
@@ -47,9 +48,9 @@ def test_admin_advanced_page_returns_html(test_settings, project_registry, advan
     assert 'href="/projects"' in response.text
 
 
-def test_admin_icon_svg_served_for_localhost(test_settings, project_registry, advanced_settings_store):
+def test_admin_icon_svg_served_for_localhost(test_settings, project_registry, advanced_settings_store, log_buffer):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
     client = TestClient(app)
     r = client.get("/admin-static/icons/projects.svg")
     assert r.status_code == 200
@@ -60,9 +61,9 @@ def test_admin_icon_svg_served_for_localhost(test_settings, project_registry, ad
     assert bad.status_code == 404
 
 
-def test_admin_api_settings_masks_short_token(test_settings, project_registry, advanced_settings_store):
+def test_admin_api_settings_masks_short_token(test_settings, project_registry, advanced_settings_store, log_buffer):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
     client = TestClient(app)
     response = client.get("/api/settings")
     assert response.status_code == 200
@@ -70,9 +71,9 @@ def test_admin_api_settings_masks_short_token(test_settings, project_registry, a
     assert data["telegram_bot_token_masked"] == "***"
 
 
-def test_admin_api_projects_post_and_delete(test_settings, project_registry, advanced_settings_store):
+def test_admin_api_projects_post_and_delete(test_settings, project_registry, advanced_settings_store, log_buffer):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
     client = TestClient(app)
 
     root = test_settings.project_root / "new_repo"
@@ -100,9 +101,9 @@ def test_admin_api_projects_post_and_delete(test_settings, project_registry, adv
     assert "extra" not in names_after
 
 
-def test_admin_api_projects_put_updates(test_settings, project_registry, advanced_settings_store):
+def test_admin_api_projects_put_updates(test_settings, project_registry, advanced_settings_store, log_buffer):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
     client = TestClient(app)
 
     entry = project_registry.get("remote-coder")
@@ -133,9 +134,9 @@ def test_admin_api_projects_put_updates(test_settings, project_registry, advance
     )
 
 
-def test_admin_api_advanced_settings_get_default(test_settings, project_registry, advanced_settings_store):
+def test_admin_api_advanced_settings_get_default(test_settings, project_registry, advanced_settings_store, log_buffer):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
     client = TestClient(app)
     r = client.get("/api/advanced-settings")
     assert r.status_code == 200
@@ -144,9 +145,9 @@ def test_admin_api_advanced_settings_get_default(test_settings, project_registry
     assert data["conversation_memory_limit_enabled"] is False
 
 
-def test_admin_api_advanced_settings_put_and_persist(test_settings, project_registry, advanced_settings_store):
+def test_admin_api_advanced_settings_put_and_persist(test_settings, project_registry, advanced_settings_store, log_buffer):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
     client = TestClient(app)
     body = {
         "auto_merge_to_main_enabled": True,
@@ -162,10 +163,10 @@ def test_admin_api_advanced_settings_put_and_persist(test_settings, project_regi
 
 
 def test_admin_api_advanced_settings_put_invalid_memory_returns_422(
-    test_settings, project_registry, advanced_settings_store
+    test_settings, project_registry, advanced_settings_store, log_buffer
 ):
     app = FastAPI()
-    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
     client = TestClient(app)
     r = client.put(
         "/api/advanced-settings",
@@ -177,3 +178,59 @@ def test_admin_api_advanced_settings_put_invalid_memory_returns_422(
         },
     )
     assert r.status_code == 422
+
+
+def test_admin_logs_page_returns_html(test_settings, project_registry, advanced_settings_store, log_buffer):
+    app = FastAPI()
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
+    client = TestClient(app)
+    response = client.get("/logs")
+    assert response.status_code == 200
+    assert "서버 로그" in response.text
+    assert 'id="console"' in response.text
+
+
+def test_admin_api_logs_returns_json(test_settings, project_registry, advanced_settings_store, log_buffer):
+    log_buffer.push(level="INFO", logger_name="app.test", message="hello", exception=None)
+    app = FastAPI()
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
+    client = TestClient(app)
+    r = client.get("/api/logs")
+    assert r.status_code == 200
+    data = r.json()
+    assert "entries" in data
+    assert "max_id" in data
+    assert data["max_entries"] == 500
+    assert len(data["entries"]) >= 1
+    assert data["entries"][-1]["message"] == "hello"
+
+
+def test_admin_api_logs_unknown_level_returns_422(test_settings, project_registry, advanced_settings_store, log_buffer):
+    app = FastAPI()
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
+    client = TestClient(app)
+    r = client.get("/api/logs?level=VERBOSE")
+    assert r.status_code == 422
+
+
+def test_admin_logs_icon_served(test_settings, project_registry, advanced_settings_store, log_buffer):
+    app = FastAPI()
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
+    client = TestClient(app)
+    r = client.get("/admin-static/icons/logs.svg")
+    assert r.status_code == 200
+    assert b"<svg" in r.content
+
+
+def test_admin_api_logs_after_id(test_settings, project_registry, advanced_settings_store, log_buffer):
+    log_buffer.push(level="DEBUG", logger_name="a", message="one", exception=None)
+    log_buffer.push(level="INFO", logger_name="b", message="two", exception=None)
+    app = FastAPI()
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store, log_buffer))
+    client = TestClient(app)
+    first = client.get("/api/logs?limit=10")
+    mid = first.json()["entries"][0]["id"]
+    tail = client.get(f"/api/logs?after_id={mid}&limit=10")
+    assert tail.status_code == 200
+    ids = [e["id"] for e in tail.json()["entries"]]
+    assert all(i > mid for i in ids)

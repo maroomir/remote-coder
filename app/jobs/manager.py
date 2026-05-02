@@ -230,6 +230,8 @@ class JobManager:
     @classmethod
     def _runner_output_suggests_read_only(cls, text: str) -> bool:
         lowered = text.lower()
+        if "read-only" in lowered or "readonly" in lowered:
+            return True
         for hint in cls._READ_ONLY_HINTS:
             if hint in lowered:
                 return True
