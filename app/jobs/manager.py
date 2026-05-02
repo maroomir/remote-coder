@@ -28,12 +28,6 @@ class JobManager:
     _WWW_URL_PATTERN = re.compile(r"\bwww\.[^\s\]\)>,]+", flags=re.IGNORECASE)
     _STDOUT_SUMMARY_LIMIT = 12000
     _STDERR_SUMMARY_LIMIT = 800
-    _READ_ONLY_HINTS = (
-        "sandbox: read-only",
-        "read-only file system",
-        "readonly file system",
-        "erofs: read-only file system",
-    )
 
     def __init__(
         self,
@@ -191,13 +185,6 @@ class JobManager:
             )
 
             if not job.changed_files:
-                combined = f"{runner_result.stdout or ''}\n{runner_result.stderr or ''}"
-                if self._runner_output_suggests_read_only(combined):
-                    failed_stage = "runner"
-                    raise RuntimeError(
-                        "AI가 작업 공간을 읽기 전용으로 보고했고 변경된 파일이 없습니다. "
-                        "worktree 경로 권한과 CLI 설정을 확인하세요."
-                    )
                 job.branch = None
                 job.commit_hash = None
                 job.mark_succeeded()
@@ -330,16 +317,6 @@ class JobManager:
         job.runner_stderr_summary = self._make_output_summary(
             runner_result.stderr, limit=self._STDERR_SUMMARY_LIMIT
         )
-
-    @classmethod
-    def _runner_output_suggests_read_only(cls, text: str) -> bool:
-        lowered = text.lower()
-        if "read-only" in lowered or "readonly" in lowered:
-            return True
-        for hint in cls._READ_ONLY_HINTS:
-            if hint in lowered:
-                return True
-        return False
 
     @classmethod
     def _strip_links_for_stdout_summary(cls, text: str) -> str:
