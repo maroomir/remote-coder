@@ -149,7 +149,7 @@ ngrok version
 
 - Claude 사용자: [`docs/claude-guide.md`](docs/claude-guide.md)
 - Codex 사용자: [`docs/codex-guide.md`](docs/codex-guide.md)
-- Gemini 사용자: Gemini CLI 설치 후 `gemini` 대화형 `/auth`로 인증하고 `model: gemini` 또는 `/model gemini`를 사용하세요.
+- Gemini 사용자: [`docs/gemini-guide.md`](docs/gemini-guide.md)
 - Worktree가 read-only로 실패할 때: [`docs/read-only-workspace.md`](docs/read-only-workspace.md)
 
 ## 6) 테스트
