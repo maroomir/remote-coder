@@ -300,6 +300,27 @@
     .log-line .lvl-ERROR, .log-line .lvl-CRITICAL { color: #ff8a80; }
     .log-line .name { color: #9ad59a; }
     .log-line .msg { color: #e8edf4; }
+    .log-tags {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      align-items: center;
+      margin-left: 0.25rem;
+      vertical-align: middle;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 0.12rem 0.4rem;
+      border-radius: 4px;
+      border: 1px solid rgba(61, 156, 245, 0.35);
+      background: var(--accent-dim);
+      color: var(--accent);
+      cursor: pointer;
+      user-select: none;
+    }
+    .tag:hover { filter: brightness(1.12); }
     .log-exc {
       margin: 0.15rem 0 0.35rem 1rem;
       padding: 0.35rem 0.5rem;
@@ -347,7 +368,7 @@
 
     <section class="card" aria-labelledby="logs-heading">
       <h2 id="logs-heading">콘솔</h2>
-      <p class="lead">레벨은 <strong>최소</strong> 기준입니다. 검색어는 메시지·예외 텍스트에 부분 일치합니다.</p>
+      <p class="lead">레벨은 <strong>최소</strong> 기준입니다. 검색어는 메시지·예외 텍스트에 부분 일치합니다. 배지를 클릭하면 해당 필터가 채워집니다.</p>
 
       <div class="toolbar">
         <div class="field-inline narrow">
@@ -360,6 +381,35 @@
             <option value="ERROR">ERROR</option>
             <option value="CRITICAL">CRITICAL</option>
           </select>
+        </div>
+        <div class="field-inline narrow">
+          <label for="f-category">카테고리</label>
+          <select id="f-category" aria-label="이벤트 카테고리">
+            <option value="">전체</option>
+            <option value="telegram.inbound">telegram.inbound</option>
+            <option value="telegram.outbound">telegram.outbound</option>
+            <option value="telegram.command">telegram.command</option>
+            <option value="auth.reject">auth.reject</option>
+            <option value="job.lifecycle">job.lifecycle</option>
+            <option value="git.operation">git.operation</option>
+            <option value="ai.runner">ai.runner</option>
+          </select>
+        </div>
+        <div class="field-inline narrow">
+          <label for="f-chat-id">chat_id</label>
+          <input id="f-chat-id" type="text" inputmode="numeric" placeholder="예: 123" autocomplete="off" />
+        </div>
+        <div class="field-inline narrow">
+          <label for="f-user-id">user_id</label>
+          <input id="f-user-id" type="text" inputmode="numeric" placeholder="예: 456" autocomplete="off" />
+        </div>
+        <div class="field-inline wide">
+          <label for="f-job-id">job_id</label>
+          <input id="f-job-id" type="text" placeholder="예: job_…" autocomplete="off" />
+        </div>
+        <div class="field-inline wide">
+          <label for="f-project">project</label>
+          <input id="f-project" type="text" placeholder="프로젝트 이름" autocomplete="off" />
         </div>
         <div class="field-inline wide">
           <label for="f-logger">로거 (부분 일치)</label>
@@ -424,9 +474,19 @@
     function buildQuery(extra) {
       const params = new URLSearchParams();
       const level = $("#f-level").value;
+      const category = $("#f-category").value.trim();
+      const chatId = $("#f-chat-id").value.trim();
+      const userId = $("#f-user-id").value.trim();
+      const jobId = $("#f-job-id").value.trim();
+      const project = $("#f-project").value.trim();
       const logger = $("#f-logger").value.trim();
       const q = $("#f-q").value.trim();
       if (level) params.set("level", level);
+      if (category) params.set("category", category);
+      if (chatId) params.set("chat_id", chatId);
+      if (userId) params.set("user_id", userId);
+      if (jobId) params.set("job_id", jobId);
+      if (project) params.set("project", project);
       if (logger) params.set("logger", logger);
       if (q) params.set("q", q);
       params.set("limit", "400");
@@ -436,14 +496,34 @@
       return params.toString();
     }
 
+    function tagSpan(filter, value, label) {
+      const v = String(value);
+      return (
+        '<span class="tag" role="button" tabindex="0" data-filter="' +
+        escapeHtml(filter) +
+        '" data-value="' +
+        escapeHtml(v) +
+        '">' +
+        escapeHtml(label) +
+        "</span>"
+      );
+    }
+
     function formatLine(e) {
       const lvl = escapeHtml(e.level || "");
       const ts = escapeHtml(e.created_at || "");
       const name = escapeHtml(e.logger || "");
       const msg = escapeHtml(e.message || "");
+      let badges = "";
+      if (e.category) badges += tagSpan("category", e.category, e.category);
+      if (e.chat_id != null && e.chat_id !== "") badges += tagSpan("chat_id", e.chat_id, "chat:" + e.chat_id);
+      if (e.user_id != null && e.user_id !== "") badges += tagSpan("user_id", e.user_id, "user:" + e.user_id);
+      if (e.job_id) badges += tagSpan("job_id", e.job_id, "job:" + e.job_id);
+      if (e.project) badges += tagSpan("project", e.project, "proj:" + e.project);
       let html = '<div class="log-line" data-id="' + escapeHtml(String(e.id)) + '">';
       html += '<span class="ts">' + ts + "</span>";
       html += '<span class="lvl lvl-' + lvl + '">' + lvl + "</span>";
+      if (badges) html += '<span class="log-tags">' + badges + "</span>";
       html += '<span class="name">' + name + "</span>";
       html += '<span class="msg"> — ' + msg + "</span></div>";
       if (e.exception) {
@@ -521,13 +601,30 @@
       }
     }
 
-    $("#btn-apply").addEventListener("click", async () => {
+    async function applyFiltersFromUi() {
       try {
         await loadFull();
         restartPoll();
       } catch (e) {
         setGlobalMsg("err", String(e));
       }
+    }
+
+    $("#btn-apply").addEventListener("click", () => {
+      applyFiltersFromUi();
+    });
+
+    consoleEl.addEventListener("click", (ev) => {
+      const t = ev.target.closest(".tag[data-filter]");
+      if (!t) return;
+      const kind = t.getAttribute("data-filter");
+      const val = t.getAttribute("data-value") || "";
+      if (kind === "category") $("#f-category").value = val;
+      else if (kind === "chat_id") $("#f-chat-id").value = val;
+      else if (kind === "user_id") $("#f-user-id").value = val;
+      else if (kind === "job_id") $("#f-job-id").value = val;
+      else if (kind === "project") $("#f-project").value = val;
+      applyFiltersFromUi();
     });
 
     $("#btn-clear-view").addEventListener("click", () => {
@@ -541,12 +638,7 @@
     $("#f-interval").addEventListener("change", restartPoll);
 
     (async function init() {
-      try {
-        await loadFull();
-        restartPoll();
-      } catch (e) {
-        setGlobalMsg("err", String(e));
-      }
+      await applyFiltersFromUi();
     })();
   </script>
 </body>

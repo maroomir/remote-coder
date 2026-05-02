@@ -14,8 +14,11 @@ from app.git.commit_message import CommitMessageFormatter
 from app.git.service import GitWorktreeService
 from app.jobs.schemas import Job, JobRequest
 from app.jobs.store import InMemoryJobStore
+from app.monitoring.events import EventLogger
 from app.projects.registry import ProjectRegistry
 from app.telegram.notifier import TelegramNotifier
+
+_joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
 
 
 class JobManager:
@@ -55,6 +58,14 @@ class JobManager:
     def submit(self, request: JobRequest) -> Job:
         job = Job(id=self._make_job_id(), request=request)
         self._job_store.create(job)
+        _joblog.info(
+            "submitted model=%s",
+            request.model.value,
+            chat_id=request.chat_id,
+            user_id=request.requested_by,
+            project=request.project,
+            job_id=job.id,
+        )
         self._notifier.send_job_accepted(job)
         return job
 
@@ -65,6 +76,13 @@ class JobManager:
 
         entry = self._project_registry.get(job.request.project)
         if not entry or not entry.enabled:
+            _joblog.warning(
+                "unknown/disabled project",
+                chat_id=job.request.chat_id,
+                user_id=job.request.requested_by,
+                project=job.request.project,
+                job_id=job.id,
+            )
             job.mark_failed("unknown or disabled project")
             job.error_stage = "project_resolve"
             self._job_store.update(job)
@@ -80,8 +98,22 @@ class JobManager:
         try:
             job.mark_running()
             self._job_store.update(job)
+            _joblog.info(
+                "running",
+                chat_id=job.request.chat_id,
+                user_id=job.request.requested_by,
+                project=job.request.project,
+                job_id=job.id,
+            )
 
             failed_stage = "git_worktree"
+            _joblog.info(
+                "stage=git_worktree",
+                chat_id=job.request.chat_id,
+                user_id=job.request.requested_by,
+                project=job.request.project,
+                job_id=job.id,
+            )
             worktree_on_branch = False
             requested_branch = job.request.branch
             if requested_branch and self._git_service.local_branch_exists(project_path, requested_branch):
@@ -110,6 +142,14 @@ class JobManager:
             self._git_service.ensure_worktree_writable(worktree_path)
 
             failed_stage = "runner"
+            _joblog.info(
+                "stage=runner model=%s",
+                job.request.model.value,
+                chat_id=job.request.chat_id,
+                user_id=job.request.requested_by,
+                project=job.request.project,
+                job_id=job.id,
+            )
             runner = self._runner_factory.create(job.request.model)
             runner_result = runner.run(
                 RunnerInput(
@@ -120,12 +160,35 @@ class JobManager:
                 )
             )
             self._save_runner_log(job, runner_result, worktree_base)
+            _joblog.info(
+                "runner exit=%d",
+                runner_result.exit_code,
+                chat_id=job.request.chat_id,
+                user_id=job.request.requested_by,
+                project=job.request.project,
+                job_id=job.id,
+            )
 
             if runner_result.exit_code != 0:
                 raise RuntimeError(runner_result.stderr.strip() or "runner failed")
 
             failed_stage = "git_commit"
+            _joblog.info(
+                "stage=git_commit",
+                chat_id=job.request.chat_id,
+                user_id=job.request.requested_by,
+                project=job.request.project,
+                job_id=job.id,
+            )
             job.changed_files = self._git_service.collect_changes(worktree_path)
+            _joblog.info(
+                "changes=%d",
+                len(job.changed_files),
+                chat_id=job.request.chat_id,
+                user_id=job.request.requested_by,
+                project=job.request.project,
+                job_id=job.id,
+            )
 
             if not job.changed_files:
                 combined = f"{runner_result.stdout or ''}\n{runner_result.stderr or ''}"
@@ -139,6 +202,15 @@ class JobManager:
                 job.commit_hash = None
                 job.mark_succeeded()
                 self._job_store.update(job)
+                _joblog.info(
+                    "succeeded branch=%s commit=%s",
+                    "-",
+                    "-",
+                    chat_id=job.request.chat_id,
+                    user_id=job.request.requested_by,
+                    project=job.request.project,
+                    job_id=job.id,
+                )
             else:
                 job.branch = job.request.branch or self._branch_strategy.make_branch_name(job.request.instruction)
                 self._job_store.update(job)
@@ -159,6 +231,13 @@ class JobManager:
 
                 if job.request.commit and job.commit_hash:
                     failed_stage = "git_push"
+                    _joblog.info(
+                        "stage=git_push",
+                        chat_id=job.request.chat_id,
+                        user_id=job.request.requested_by,
+                        project=job.request.project,
+                        job_id=job.id,
+                    )
                     self._git_service.push_branch(project_path, remote, job.branch)
 
                 if (
@@ -169,6 +248,13 @@ class JobManager:
                     and job.branch
                 ):
                     failed_stage = "git_integrate_main"
+                    _joblog.info(
+                        "stage=git_integrate_main",
+                        chat_id=job.request.chat_id,
+                        user_id=job.request.requested_by,
+                        project=job.request.project,
+                        job_id=job.id,
+                    )
                     ops_base = worktree_base / "_rebase_ops"
                     self._git_service.rebase_branch_onto_main_and_merge(
                         project_path,
@@ -179,7 +265,25 @@ class JobManager:
 
                 job.mark_succeeded()
                 self._job_store.update(job)
+                _joblog.info(
+                    "succeeded branch=%s commit=%s",
+                    job.branch or "-",
+                    job.commit_hash or "-",
+                    chat_id=job.request.chat_id,
+                    user_id=job.request.requested_by,
+                    project=job.request.project,
+                    job_id=job.id,
+                )
         except Exception as exc:  # pylint: disable=broad-except
+            _joblog.exception(
+                "failed stage=%s: %s",
+                failed_stage or "unknown",
+                exc,
+                chat_id=job.request.chat_id,
+                user_id=job.request.requested_by,
+                project=job.request.project,
+                job_id=job.id,
+            )
             job.mark_failed(str(exc))
             job.error_stage = failed_stage or "unknown"
             self._job_store.update(job)

@@ -5,7 +5,11 @@ import subprocess
 import uuid
 from pathlib import Path
 
+from app.monitoring.events import EventLogger
+
 _SAFE_BRANCH_TOKEN = re.compile(r"^[A-Za-z0-9/._-]+$")
+
+_gitlog = EventLogger("app.git.service", "git.operation")
 
 
 class GitWorktreeService:
@@ -73,6 +77,7 @@ class GitWorktreeService:
         )
         if result.returncode != 0:
             raise RuntimeError(f"failed to create detached worktree: {result.stderr.strip()}")
+        _gitlog.info("prepare_detached_worktree ok job_id=%s ref=%s", job_id, ref)
         return worktree_path
 
     def prepare_branch_worktree(
@@ -89,6 +94,7 @@ class GitWorktreeService:
         result = self._run_git(project_path, ["worktree", "add", str(worktree_path), branch_name])
         if result.returncode != 0:
             raise RuntimeError(f"failed to create branch worktree: {result.stderr.strip()}")
+        _gitlog.info("prepare_branch_worktree ok job_id=%s branch=%s", job_id, branch_name)
         return worktree_path
 
     @staticmethod
@@ -138,6 +144,7 @@ class GitWorktreeService:
         result = self._run_git(worktree_path, ["switch", "-c", branch_name])
         if result.returncode != 0:
             raise RuntimeError(f"failed to create branch in worktree: {result.stderr.strip()}")
+        _gitlog.info("create_branch_in_worktree ok branch=%s", branch_name)
 
     def find_linked_worktree_for_branch(self, project_path: Path, branch_name: str) -> Path | None:
         """같은 브랜치가 이미 linked worktree에 checkout되어 있으면 그 경로를 반환합니다."""
@@ -178,18 +185,22 @@ class GitWorktreeService:
         hash_result = self._run_git(worktree_path, ["rev-parse", "--short", "HEAD"])
         if hash_result.returncode != 0:
             raise RuntimeError(f"failed to resolve commit hash: {hash_result.stderr.strip()}")
-        return hash_result.stdout.strip()
+        short_hash = hash_result.stdout.strip()
+        _gitlog.info("commit_all ok hash=%s", short_hash)
+        return short_hash
 
     def push_branch(self, project_path: Path, remote: str, branch: str) -> None:
         """원격에 브랜치 push (-u 설정)."""
         result = self._run_git(project_path, ["push", "-u", remote, branch])
         if result.returncode != 0:
             raise RuntimeError(f"git push failed: {result.stderr.strip()}")
+        _gitlog.info("push_branch ok remote=%s branch=%s", remote, branch)
 
     def cleanup_worktree(self, project_path: Path, worktree_path: Path) -> None:
         result = self._run_git(project_path, ["worktree", "remove", "--force", str(worktree_path)])
         if result.returncode != 0:
             raise RuntimeError(f"failed to cleanup worktree: {result.stderr.strip()}")
+        _gitlog.info("cleanup_worktree ok")
 
     def checkout_integrate_branch(self, project_path: Path) -> str:
         """main/master 중 존재하는 브랜치로 checkout."""
@@ -420,6 +431,7 @@ class GitWorktreeService:
         로컬 main을 fast-forward merge하고 origin에 push합니다.
         반환: 요약 메시지(사용자 알림용).
         """
+        _gitlog.info("rebase_branch_onto_main_and_merge start branch=%s", branch)
         main_branch = self.resolve_integrate_branch(project_path)
         fetch_main = self._run_git(project_path, ["fetch", remote, main_branch])
         if fetch_main.returncode != 0:
@@ -485,7 +497,9 @@ class GitWorktreeService:
             if rm.returncode != 0:
                 raise RuntimeError(f"failed to remove rebase worktree: {rm.stderr.strip()}")
 
-        return (
+        summary = (
             f"rebase 완료: 브랜치 `{branch}`를 `{remote}/{main_branch}` 기준으로 rebase 후 "
             f"`{main_branch}`에 fast-forward 병합하고 `{remote}`에 push했습니다."
         )
+        _gitlog.info("rebase_branch_onto_main_and_merge done branch=%s", branch)
+        return summary

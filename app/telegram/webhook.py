@@ -5,11 +5,24 @@ from pydantic import BaseModel, Field
 
 from app.jobs.manager import JobManager
 from app.jobs.store import InMemoryJobStore
+from app.monitoring.events import EventLogger
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import CommandContext, CommandRegistry, TelegramMessage
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.notifier import TelegramNotifier
 from app.telegram.parser import CommandParseError, CommandParser
+
+_inbound = EventLogger("app.telegram.inbound", "telegram.inbound")
+_cmdlog = EventLogger("app.telegram.command", "telegram.command")
+_authlog = EventLogger("app.security.auth", "auth.reject")
+
+
+def _telegram_text_preview(text: str, max_len: int = 80) -> str:
+    stripped = text.strip()
+    if not stripped:
+        return ""
+    first = stripped.splitlines()[0]
+    return first[:max_len]
 
 
 class TelegramChat(BaseModel):
@@ -59,18 +72,31 @@ def create_webhook_router(
         x_telegram_bot_api_secret_token: str | None = Header(default=None),
     ) -> dict[str, str]:
         if webhook_secret and x_telegram_bot_api_secret_token != webhook_secret:
+            _authlog.warning("webhook secret mismatch")
             return {"status": "ignored"}
-        if not update.message or not update.message.text:
+        if not update.message:
+            _inbound.info("update without message skipped")
+            return {"status": "ignored"}
+        if not update.message.text:
+            chat_only = update.message.chat.id
+            user_only = update.message.from_user.id if update.message.from_user else None
+            _inbound.info("empty text skipped", chat_id=chat_only, user_id=user_only)
             return {"status": "ignored"}
 
         chat_id = update.message.chat.id
         user_id = update.message.from_user.id if update.message.from_user else None
+        preview = _telegram_text_preview(update.message.text)
+        _inbound.info("received: %s", preview or "(empty)", chat_id=chat_id, user_id=user_id)
         if not auth_service.is_allowed(chat_id=chat_id, user_id=user_id):
+            _authlog.warning("unauthorized chat/user", chat_id=chat_id, user_id=user_id)
             return {"status": "ignored"}
 
         message = TelegramMessage(chat_id=chat_id, user_id=user_id, text=update.message.text)
         command_response = command_registry.dispatch(message, command_context)
         if command_response:
+            raw_cmd = message.text.strip()
+            cmd_token = raw_cmd.split(maxsplit=1)[0] if raw_cmd else ""
+            _cmdlog.info("command handled: %s", cmd_token, chat_id=chat_id, user_id=user_id)
             background_tasks.add_task(notifier.send_text, chat_id, command_response)
             return {"status": "ok"}
 
@@ -87,6 +113,7 @@ def create_webhook_router(
                 ),
             )
         except CommandParseError as exc:
+            _cmdlog.warning("parse error: %s", str(exc)[:120], chat_id=chat_id, user_id=user_id)
             background_tasks.add_task(notifier.send_text, chat_id, str(exc))
             return {"status": "ignored"}
 
@@ -105,6 +132,13 @@ def create_webhook_router(
             )
 
         job = job_manager.submit(request)
+        _cmdlog.info(
+            "job accepted",
+            chat_id=chat_id,
+            user_id=user_id,
+            project=request.project,
+            job_id=job.id,
+        )
 
         if (
             conversation_store is not None

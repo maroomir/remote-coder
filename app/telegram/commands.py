@@ -7,6 +7,7 @@ from app.git.service import GitWorktreeService
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
 from app.monitoring.code import count_project_code, format_code_monitor
+from app.monitoring.events import EventLogger
 from app.monitoring.git import format_branch_monitor, format_worktree_monitor
 from app.monitoring.memory import format_memory_monitor
 from app.monitoring.model import format_model_monitor
@@ -15,6 +16,8 @@ from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirm
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.project_preferences import InMemoryProjectPreferenceStore
+
+_cmd_evt = EventLogger("app.telegram.command", "telegram.command")
 
 
 @dataclass
@@ -218,6 +221,7 @@ class ProjectCommand(TelegramCommand):
             if not entry.enabled:
                 return f"비활성화된 프로젝트: {name}"
             ctx.project_preferences.set(message.chat_id, name)
+            _cmd_evt.info("project switched to=%s", name, chat_id=message.chat_id, project=name)
             return f"작업 프로젝트가 {name}로 변경되었습니다."
         return format_usage("/project", "/project <프로젝트이름>")
 
@@ -236,6 +240,7 @@ class InitCommand(TelegramCommand):
         ctx.project_preferences.clear(chat_id)
         ctx.model_preferences.clear(chat_id)
         ctx.confirmation_store.pop(chat_id)
+        _cmd_evt.info("init reset", chat_id=chat_id)
 
         default_name = ctx.project_registry.get_default_project_name()
         if not default_name:
@@ -529,6 +534,7 @@ class ClearCommand(ConfirmableCommand):
                 target = "기억 삭제"
             return f"{target}를 취소했습니다."
 
+        _cmd_evt.info("clear confirmed action=%s", pending.action, chat_id=message.chat_id)
         if pending.action == "branch":
             return self._clear_branches(ctx)
         if pending.action == "worktrees":

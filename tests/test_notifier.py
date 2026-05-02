@@ -1,4 +1,5 @@
 import json
+import logging
 
 import respx
 from httpx import Response
@@ -110,3 +111,28 @@ def test_notifier_splits_long_job_result_message():
     assert combined.endswith(long_ai)
     assert "작업 완료" in combined
     assert "truncated" not in combined
+
+
+@respx.mock
+def test_notifier_send_text_logs_outbound_success(caplog):
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    with caplog.at_level(logging.INFO, logger="app.telegram.outbound"):
+        notifier = TelegramNotifier("token")
+        notifier.send_text(42, "hi")
+    assert route.called
+    assert any(r.name == "app.telegram.outbound" and "sent text" in r.getMessage() for r in caplog.records)
+    assert any(getattr(r, "chat_id", None) == 42 for r in caplog.records)
+
+
+@respx.mock
+def test_notifier_send_text_logs_outbound_warning_on_failure(caplog):
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(500, json={"ok": False})
+    )
+    with caplog.at_level(logging.WARNING, logger="app.telegram.outbound"):
+        notifier = TelegramNotifier("token")
+        notifier.send_text(7, "x")
+    assert route.call_count >= 1
+    assert any("sendMessage failed" in r.getMessage() for r in caplog.records)

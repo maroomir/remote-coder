@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -18,16 +19,18 @@ def test_git_service_prepare_worktree(mock_run, tmp_path: Path):
 
 
 @patch("app.git.service.subprocess.run")
-def test_prepare_detached_worktree(mock_run, tmp_path: Path):
+def test_prepare_detached_worktree(mock_run, tmp_path: Path, caplog):
     mock_run.return_value.returncode = 0
     mock_run.return_value.stdout = ""
     mock_run.return_value.stderr = ""
-    service = GitWorktreeService(base_dir=tmp_path / "wt")
-    out = service.prepare_detached_worktree(tmp_path, "job2", worktree_base_dir=tmp_path / "base")
+    with caplog.at_level(logging.INFO, logger="app.git.service"):
+        service = GitWorktreeService(base_dir=tmp_path / "wt")
+        out = service.prepare_detached_worktree(tmp_path, "job2", worktree_base_dir=tmp_path / "base")
     assert out.name == "job2"
     cmd = mock_run.call_args[0][0]
     assert "worktree" in cmd and "add" in cmd and "--detach" in cmd
     assert cmd[-1] == "HEAD"
+    assert any(r.name == "app.git.service" for r in caplog.records)
 
 
 @patch("app.git.service.subprocess.run")

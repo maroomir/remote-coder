@@ -189,6 +189,11 @@ def create_admin_router(
         level: str | None = Query(None, description="최소 로그 레벨 (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
         q: str | None = Query(None, max_length=500),
         logger: str | None = Query(None, max_length=200),
+        chat_id: int | None = Query(None),
+        user_id: int | None = Query(None),
+        job_id: str | None = Query(None, max_length=200),
+        project: str | None = Query(None, max_length=200),
+        category: str | None = Query(None, max_length=64),
     ) -> dict[str, object]:
         q_clean = q.strip() if q else None
         if q_clean == "":
@@ -199,6 +204,15 @@ def create_admin_router(
         level_clean = level.strip() if level else None
         if level_clean == "":
             level_clean = None
+        job_id_clean = job_id.strip() if job_id else None
+        if job_id_clean == "":
+            job_id_clean = None
+        project_clean = project.strip() if project else None
+        if project_clean == "":
+            project_clean = None
+        category_clean = category.strip() if category else None
+        if category_clean == "":
+            category_clean = None
         try:
             entries, max_seen = log_buffer.query(
                 limit=limit,
@@ -206,6 +220,11 @@ def create_admin_router(
                 min_level=level_clean,
                 q=q_clean,
                 logger_sub=logger_clean,
+                chat_id=chat_id,
+                user_id=user_id,
+                job_id=job_id_clean,
+                project=project_clean,
+                category=category_clean,
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc

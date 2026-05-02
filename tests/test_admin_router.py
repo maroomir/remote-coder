@@ -211,6 +211,8 @@ def test_admin_logs_page_returns_html(test_settings, project_registry, advanced_
     assert response.status_code == 200
     assert "서버 로그" in response.text
     assert 'id="console"' in response.text
+    assert 'id="f-category"' in response.text
+    assert 'id="f-job-id"' in response.text
 
 
 def test_admin_api_logs_returns_json(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):
@@ -228,6 +230,50 @@ def test_admin_api_logs_returns_json(test_settings, project_registry, advanced_s
     assert data["max_entries"] == 500
     assert len(data["entries"]) >= 1
     assert data["entries"][-1]["message"] == "hello"
+    entry = data["entries"][-1]
+    assert "category" in entry
+    assert "chat_id" in entry
+    assert "job_id" in entry
+    assert "project" in entry
+    assert "user_id" in entry
+
+
+def test_admin_api_logs_filters_by_chat_job_category(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    log_buffer.push(
+        level="INFO",
+        logger_name="app.jobs",
+        message="a",
+        exception=None,
+        context={"chat_id": 123, "job_id": "job_x", "category": "job.lifecycle", "project": "p1"},
+    )
+    log_buffer.push(
+        level="INFO",
+        logger_name="app.jobs",
+        message="b",
+        exception=None,
+        context={"chat_id": 999, "job_id": "other", "category": "job.lifecycle"},
+    )
+    app = FastAPI()
+    app.include_router(
+        create_admin_router(
+            test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+        )
+    )
+    client = TestClient(app)
+    r1 = client.get("/api/logs?chat_id=123")
+    assert r1.status_code == 200
+    assert len(r1.json()["entries"]) == 1
+    assert r1.json()["entries"][0]["message"] == "a"
+
+    r2 = client.get("/api/logs?job_id=job_x")
+    assert r2.status_code == 200
+    assert len(r2.json()["entries"]) == 1
+
+    r3 = client.get("/api/logs?category=job.lifecycle")
+    assert r3.status_code == 200
+    assert len(r3.json()["entries"]) == 2
 
 
 def test_admin_api_logs_unknown_level_returns_422(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):

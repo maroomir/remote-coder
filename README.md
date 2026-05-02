@@ -35,9 +35,27 @@ cp .env.example .env
 - 관리 허브: `http://127.0.0.1:8000/` (요약·다른 페이지로 이동)
 - 프로젝트 등록: `http://127.0.0.1:8000/projects` (목록, 추가·수정·삭제, 폴백 기본값 지정)
 - 고급 설정: `http://127.0.0.1:8000/advanced`
+- 서버 로그: `http://127.0.0.1:8000/logs` (`app` 로거 기준 인메모리 링 버퍼, 자동 새로고침·카테고리·`chat_id`/`job_id` 필터)
+- 데이터 조회: `http://127.0.0.1:8000/database` (대화 기억 SQLite 테이블 조회·CSV보내기)
 - 자연어 요청에서 `project: 프로젝트이름` 으로 대상을 바꿀 수 있습니다. 생략 시에는 이 채팅에서 `/project`로 선택한 작업 프로젝트가 있으면 그것을, 없으면 등록 파일에 저장된 기본값(폴백)이 사용됩니다.
 - `PROJECTS_CONFIG_PATH`가 없으면 기본 경로 `PROJECT_ROOT/.remote-coder/projects.json`을 사용합니다.
 - 레지스트리 파일이 없으면 `.env`의 초기 시드 값(`DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`)으로 자동 생성됩니다.
+
+### 서버 로그(이벤트) 로거 네임 규약
+
+관리 UI `/logs`와 API `GET /api/logs`에 쌓이는 항목은 `app` 패키지 로거로 기록됩니다. 주요 로거 이름과 용도는 다음과 같습니다.
+
+| 로거 이름 | 용도 |
+|-----------|------|
+| `app.telegram.inbound` | Webhook 수신·빈 메시지 스킵 |
+| `app.telegram.outbound` | `sendMessage` 성공/실패, Job 접수·결과 알림 발송 |
+| `app.telegram.command` | 슬래시 명령 처리, 자연어 Job 접수, `/init`·`/clear` 확인 등 상태 변경 |
+| `app.security.auth` | Webhook secret 불일치, allowlist 거부 |
+| `app.jobs.lifecycle` | Job 제출·단계(`git_worktree`/`runner`/…)·성공·실패 |
+| `app.git.service` | worktree 생성·커밋·push·정리·rebase 통합 등 Git Adapter |
+| `app.ai.claude` / `app.ai.codex` | Runner 시작·종료·timeout |
+
+구조화 필드(`category`, `chat_id`, `user_id`, `project`, `job_id`)는 UI 필터·배지로 조회할 수 있습니다. 코드에서는 `app.monitoring.events.EventLogger`와 `app.monitoring.log_buffer.LOG_RECORD_CONTEXT_KEYS` 화이트리스트를 사용합니다.
 
 ### 고급 설정 (위험 옵션)
 

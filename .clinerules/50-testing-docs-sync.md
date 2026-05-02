@@ -7,6 +7,7 @@
 - 위험한 파일 삭제, 실제 커밋 생성, 외부 네트워크 호출은 기본 테스트에서 수행하지 않습니다.
 - 외부 의존성은 인터페이스/Adapter 뒤에 두어 mock 테스트가 가능하도록 설계합니다.
 - 디자인 패턴을 적용한 경우, 각 전략/명령/상태 객체를 독립적으로 테스트할 수 있어야 합니다.
+- 도메인 이벤트 로그는 `app.monitoring.events.EventLogger`를 사용하고, `app.monitoring.log_buffer.LOG_RECORD_CONTEXT_KEYS`에 정의된 키만 `extra`로 전달합니다. 새 컨텍스트 키가 필요하면 버퍼·API·UI를 함께 확장하고 README 로거 표를 갱신합니다.
 
 ## 2. 문서화 규칙
 

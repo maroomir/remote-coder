@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -453,3 +454,79 @@ def test_job_manager_auto_merge_failure_sets_integrate_stage(test_settings, proj
     assert final_job.status.value == "failed"
     assert final_job.error_stage == "git_integrate_main"
     assert "non-ff" in (final_job.error or "")
+
+
+def test_job_manager_logs_lifecycle_on_success(test_settings, project_registry, caplog):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = ["a.py"]
+    git_service.commit_all.return_value = "abc123"
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    branch_strategy.make_branch_name.return_value = "remote-test"
+    notifier = Mock()
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="fix bug",
+        chat_id=123,
+        requested_by=123,
+    )
+    with caplog.at_level(logging.INFO, logger="app.jobs.lifecycle"):
+        job = manager.submit(request)
+        manager.run(job.id)
+    joined = " ".join(r.getMessage() for r in caplog.records)
+    assert "submitted" in joined
+    assert "running" in joined
+    assert "stage=runner" in joined
+    assert "runner exit=0" in joined
+    assert "succeeded" in joined
+
+
+def test_job_manager_logs_exception_on_runner_failure(test_settings, project_registry, caplog):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=1, stdout="", stderr="runner crashed", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier = Mock()
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="fix bug",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    with caplog.at_level(logging.ERROR, logger="app.jobs.lifecycle"):
+        manager.run(job.id)
+    assert any("failed" in r.getMessage() for r in caplog.records)

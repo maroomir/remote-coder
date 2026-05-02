@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import Mock
 
 from fastapi import FastAPI
@@ -639,3 +640,106 @@ def test_webhook_appends_user_message_with_telegram_ids(project_registry, tmp_pa
     last_user = user_rows[-1]
     assert last_user.message_id == 77
     assert last_user.reply_to_message_id == 66
+
+
+def _make_webhook_app(project_registry, *, allowed_chats: set[int] | None = None, **kwargs):
+    allowed = allowed_chats if allowed_chats is not None else {123}
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    defaults = dict(
+        auth_service=AllowlistAuthService(allowed),
+        parser=CommandParser(
+            project_registry=project_registry,
+            default_model=ModelName.CLAUDE,
+        ),
+        command_registry=CommandRegistry(
+            [
+                StartCommand(),
+                HelpCommand(),
+                ModelCommand(),
+                StatusCommand(),
+                ProjectsCommand(),
+                ProjectCommand(),
+                BranchCommand(),
+                RebaseCommand(),
+                ClearCommand(),
+            ]
+        ),
+        command_context=CommandContext(
+            job_store=store,
+            default_model=ModelName.CLAUDE,
+            project_registry=project_registry,
+            model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+            project_preferences=InMemoryProjectPreferenceStore(),
+            git_service=Mock(),
+            git_remote_name="origin",
+            conversation_store=None,
+            confirmation_store=InMemoryConfirmationStore(),
+        ),
+        job_manager=kwargs.get("job_manager", DummyJobManager()),
+        job_store=store,
+        notifier=notifier,
+        webhook_secret=kwargs.get("webhook_secret"),
+        conversation_store=kwargs.get("conversation_store"),
+    )
+    app = FastAPI()
+    app.include_router(create_webhook_router(**defaults))
+    return TestClient(app)
+
+
+def test_webhook_logs_inbound_and_job_accepted(caplog, project_registry):
+    with caplog.at_level(logging.INFO):
+        client = _make_webhook_app(project_registry)
+        client.post(
+            "/telegram/webhook",
+            json={
+                "update_id": 1,
+                "message": {"message_id": 1, "text": "fix tests", "chat": {"id": 123}, "from": {"id": 999}},
+            },
+        )
+    names = [r.name for r in caplog.records]
+    assert "app.telegram.inbound" in names
+    assert "app.telegram.command" in names
+    assert any("received" in r.getMessage() for r in caplog.records)
+    assert any("job accepted" in r.getMessage() for r in caplog.records)
+
+
+def test_webhook_logs_auth_reject(caplog, project_registry):
+    with caplog.at_level(logging.WARNING):
+        client = _make_webhook_app(project_registry, allowed_chats={123})
+        client.post(
+            "/telegram/webhook",
+            json={
+                "update_id": 2,
+                "message": {"message_id": 1, "text": "x", "chat": {"id": 999}, "from": {"id": 1}},
+            },
+        )
+    assert any(r.name == "app.security.auth" for r in caplog.records)
+    assert any("unauthorized" in r.getMessage() for r in caplog.records)
+
+
+def test_webhook_logs_parse_error(caplog, project_registry):
+    with caplog.at_level(logging.WARNING):
+        client = _make_webhook_app(project_registry)
+        client.post(
+            "/telegram/webhook",
+            json={
+                "update_id": 3,
+                "message": {"message_id": 1, "text": "   ", "chat": {"id": 123}, "from": {"id": 999}},
+            },
+        )
+    assert any("parse error" in r.getMessage() for r in caplog.records)
+
+
+def test_webhook_logs_secret_mismatch(caplog, project_registry):
+    with caplog.at_level(logging.WARNING):
+        client = _make_webhook_app(project_registry, webhook_secret="expected")
+        client.post(
+            "/telegram/webhook",
+            json={
+                "update_id": 4,
+                "message": {"message_id": 1, "text": "hi", "chat": {"id": 123}, "from": {"id": 999}},
+            },
+            headers={"X-Telegram-Bot-Api-Secret-Token": "wrong"},
+        )
+    assert any("secret mismatch" in r.getMessage() for r in caplog.records)

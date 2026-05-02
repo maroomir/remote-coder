@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import logging
 import time
 
 import httpx
 
 from app.jobs.schemas import Job
+from app.monitoring.events import EventLogger
 
-
-logger = logging.getLogger(__name__)
+_outbound = EventLogger("app.telegram.outbound", "telegram.outbound")
 
 
 class TelegramNotifier:
@@ -28,24 +27,45 @@ class TelegramNotifier:
                     timeout=httpx.Timeout(10.0, connect=5.0),
                 )
                 response.raise_for_status()
+                _outbound.info(
+                    "sent text len=%d attempt=%d",
+                    len(text),
+                    attempt,
+                    chat_id=chat_id,
+                )
                 return
             except httpx.HTTPError as exc:
                 if attempt == max_attempts:
-                    logger.warning(
-                        "Telegram sendMessage failed after %s attempts: %s",
+                    _outbound.warning(
+                        "sendMessage failed after %s attempts: %s",
                         max_attempts,
                         type(exc).__name__,
+                        chat_id=chat_id,
                     )
                     return
                 time.sleep(attempt)
 
     def send_job_accepted(self, job: Job) -> None:
+        _outbound.info(
+            "notify job accepted",
+            chat_id=job.request.chat_id,
+            job_id=job.id,
+            project=job.request.project,
+        )
         self.send_text(
             job.request.chat_id,
             f"작업 접수 완료\nJob ID: {job.id}\n프로젝트: {job.request.project}\n모델: {job.request.model.value}",
         )
 
     def send_job_result(self, job: Job) -> None:
+        _outbound.info(
+            "notify job result status=%s changed_files=%d",
+            job.status.value,
+            len(job.changed_files),
+            chat_id=job.request.chat_id,
+            job_id=job.id,
+            project=job.request.project,
+        )
         if job.status.value == "succeeded":
             changed = ", ".join(job.changed_files) if job.changed_files else "변경 없음"
             branch_line = job.branch if job.branch else "(없음 — 변경 없어 브랜치 미생성)"
