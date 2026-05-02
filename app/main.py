@@ -108,7 +108,15 @@ job_manager = JobManager(
 )
 
 app = FastAPI(title="Remote AI Coder")
-app.include_router(create_admin_router(settings, project_registry, advanced_settings_store, log_buffer))
+app.include_router(
+    create_admin_router(
+        settings,
+        project_registry,
+        advanced_settings_store,
+        log_buffer,
+        conversation_store,
+    )
+)
 app.include_router(
     create_webhook_router(
         auth_service=auth_service,

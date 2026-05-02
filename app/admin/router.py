@@ -5,14 +5,16 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsStore
+from app.admin.database_browser import ConversationDatabaseBrowser
 from app.config import Settings
 from app.models import ModelName
 from app.monitoring.log_buffer import InMemoryLogBuffer
 from app.projects.registry import ProjectRecord, ProjectRegistry
+from app.telegram.conversation import SQLiteConversationStore
 
 
 def _client_host(request: Request) -> str:
@@ -51,7 +53,9 @@ class DefaultProjectBody(BaseModel):
     name: str = Field(min_length=1)
 
 
-_ADMIN_ICON_NAMES = frozenset({"home.svg", "projects.svg", "advanced.svg", "logs.svg"})
+_ADMIN_ICON_NAMES = frozenset(
+    {"home.svg", "projects.svg", "advanced.svg", "logs.svg", "database.svg", "download.svg"}
+)
 
 
 @lru_cache(maxsize=8)
@@ -65,6 +69,7 @@ def create_admin_router(
     registry: ProjectRegistry,
     advanced_settings_store: FileAdvancedSettingsStore,
     log_buffer: InMemoryLogBuffer,
+    conversation_store: SQLiteConversationStore,
 ) -> APIRouter:
     router = APIRouter(tags=["admin"])
 
@@ -83,6 +88,98 @@ def create_admin_router(
     @router.get("/logs", response_class=HTMLResponse)
     def admin_logs(_: LocalhostOnly) -> str:
         return _load_template_html("logs.html")
+
+    @router.get("/database", response_class=HTMLResponse)
+    def admin_database(_: LocalhostOnly) -> str:
+        return _load_template_html("database.html")
+
+    @router.get("/api/database/tables")
+    def api_database_tables(_: LocalhostOnly) -> dict[str, object]:
+        browser = ConversationDatabaseBrowser(conversation_store.db_path)
+        return browser.tables_payload()
+
+    @router.get("/api/database/filter-options")
+    def api_database_filter_options(
+        _: LocalhostOnly,
+        table: str = Query(..., min_length=1, max_length=64),
+    ) -> dict[str, object]:
+        browser = ConversationDatabaseBrowser(conversation_store.db_path)
+        try:
+            return browser.distinct_filter_options(table)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @router.get("/api/database/rows")
+    def api_database_rows(
+        _: LocalhostOnly,
+        table: str = Query(..., min_length=1, max_length=64),
+        project: str | None = Query(None, max_length=200),
+        chat_id: int | None = Query(None),
+        role: str | None = Query(None, max_length=64),
+        job_id: str | None = Query(None, max_length=200),
+        q: str | None = Query(None, max_length=500),
+        sort: str | None = Query(None, max_length=64),
+        order: str = Query("desc"),
+        limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
+    ) -> dict[str, object]:
+        if order not in ("asc", "desc"):
+            raise HTTPException(status_code=422, detail="order는 asc 또는 desc 여야 합니다.")
+        browser = ConversationDatabaseBrowser(conversation_store.db_path)
+        try:
+            return browser.query_rows(
+                table,
+                project=project,
+                chat_id=chat_id,
+                role=role,
+                job_id=job_id,
+                q=q,
+                sort=sort,
+                order=order,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @router.get("/api/database/export.csv")
+    def api_database_export_csv(
+        _: LocalhostOnly,
+        table: str = Query(..., min_length=1, max_length=64),
+        project: str | None = Query(None, max_length=200),
+        chat_id: int | None = Query(None),
+        role: str | None = Query(None, max_length=64),
+        job_id: str | None = Query(None, max_length=200),
+        q: str | None = Query(None, max_length=500),
+        sort: str | None = Query(None, max_length=64),
+        order: str = Query("desc"),
+        max_rows: int = Query(50_000, ge=1, le=100_000),
+    ) -> StreamingResponse:
+        if order not in ("asc", "desc"):
+            raise HTTPException(status_code=422, detail="order는 asc 또는 desc 여야 합니다.")
+        browser = ConversationDatabaseBrowser(conversation_store.db_path)
+        try:
+            stream = browser.iter_csv_rows(
+                table,
+                project=project,
+                chat_id=chat_id,
+                role=role,
+                job_id=job_id,
+                q=q,
+                sort=sort,
+                order=order,
+                max_rows=max_rows,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        safe_name = table.replace("/", "_").replace("\\", "_")[:80] or "export"
+        return StreamingResponse(
+            stream,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_name}_export.csv"',
+            },
+        )
 
     @router.get("/api/logs")
     def api_logs(

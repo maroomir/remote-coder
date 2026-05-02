@@ -6,6 +6,7 @@ from app.admin.advanced_settings import FileAdvancedSettingsStore, advanced_sett
 from app.config import Settings
 from app.monitoring.log_buffer import InMemoryLogBuffer
 from app.projects.registry import ProjectRegistry
+from app.telegram.conversation import SQLiteConversationStore
 
 
 @pytest.fixture
@@ -42,3 +43,9 @@ def advanced_settings_store(test_settings: Settings) -> FileAdvancedSettingsStor
 @pytest.fixture
 def log_buffer() -> InMemoryLogBuffer:
     return InMemoryLogBuffer(max_entries=500)
+
+
+@pytest.fixture
+def conversation_store(test_settings: Settings) -> SQLiteConversationStore:
+    path = test_settings.project_root / ".remote-coder" / "admin_test_conversations.sqlite3"
+    return SQLiteConversationStore(path)

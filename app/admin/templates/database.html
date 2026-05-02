@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Remote AI Coder - 데이터 조회</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --bg-elevated: #1a2332;
+      --surface: #243044;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #e8edf4;
+      --text-muted: #8b9cb3;
+      --accent: #3d9cf5;
+      --accent-dim: rgba(61, 156, 245, 0.15);
+      --success: #34c759;
+      --success-bg: rgba(52, 199, 89, 0.12);
+      --danger: #ff453a;
+      --danger-bg: rgba(255, 69, 58, 0.12);
+      --warning: #ffcc00;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+      --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.5;
+      color: var(--text);
+      background: radial-gradient(ellipse 120% 80% at 50% -20%, #1e3a5f 0%, var(--bg) 55%);
+      padding: 1.25rem 1rem 2.5rem;
+    }
+
+    .wrap { max-width: 90rem; margin: 0 auto; }
+
+    .app-header {
+      margin-bottom: 1.5rem;
+      padding: 1.25rem 1.35rem;
+      background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--surface) 100%);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .app-header h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .app-header .tagline {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .localhost-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-top: 0.75rem;
+      padding: 0.35rem 0.65rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--warning);
+      background: rgba(255, 204, 0, 0.1);
+      border: 1px solid rgba(255, 204, 0, 0.25);
+      border-radius: 999px;
+    }
+
+    .header-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .header-icon-nav {
+      display: flex;
+      flex-shrink: 0;
+      gap: 0.35rem;
+      align-items: center;
+    }
+
+    .header-icon-link {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.15);
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .header-icon-link:hover {
+      background: #2d3d54;
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .header-icon-link:focus-visible {
+      outline: none;
+      box-shadow: var(--focus);
+    }
+
+    .header-icon-link.is-current {
+      border-color: rgba(61, 156, 245, 0.45);
+      background: var(--accent-dim);
+    }
+
+    .header-icon-link img {
+      display: block;
+      width: 1.35rem;
+      height: 1.35rem;
+    }
+
+    #global-msg {
+      margin-bottom: 1rem;
+      padding: 0.65rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.9rem;
+      display: none;
+    }
+
+    #global-msg.is-visible { display: block; }
+
+    #global-msg.msg-err {
+      color: #ffb4b0;
+      background: var(--danger-bg);
+      border: 1px solid rgba(255, 69, 58, 0.35);
+    }
+
+    section.card {
+      margin-bottom: 1.25rem;
+      padding: 1.25rem 1.35rem;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    section.card h2 {
+      margin: 0 0 0.5rem;
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+
+    section.card > .lead {
+      margin: 0 0 1rem;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem 0.75rem;
+      align-items: flex-end;
+      margin-bottom: 0.85rem;
+    }
+
+    .field-inline {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      min-width: 0;
+    }
+
+    .field-inline label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
+
+    .field-inline input,
+    .field-inline select {
+      font-family: inherit;
+      font-size: 0.88rem;
+      padding: 0.45rem 0.55rem;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      min-width: 0;
+    }
+
+    .field-inline input:focus,
+    .field-inline select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+
+    .field-inline.narrow { width: 8rem; }
+    .field-inline.mid { width: 11rem; }
+
+    .field-inline.role-wrap.hidden { display: none; }
+
+    .btn-row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 0.5rem;
+    }
+
+    .btn-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.45rem 0.6rem;
+      min-width: 2.5rem;
+      min-height: 2.35rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .btn-icon:hover {
+      background: #2d3d54;
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .btn-icon:focus-visible {
+      outline: none;
+      box-shadow: var(--focus);
+    }
+
+    .btn-icon img {
+      display: block;
+      width: 1.15rem;
+      height: 1.15rem;
+    }
+
+    .btn-detail {
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.35rem 0.6rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--accent);
+      background: var(--accent-dim);
+      color: var(--accent);
+      cursor: pointer;
+    }
+
+    .btn-detail:hover {
+      background: rgba(61, 156, 245, 0.25);
+    }
+
+    dialog.text-detail-dlg {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-elevated);
+      color: var(--text);
+      max-width: min(52rem, 94vw);
+      width: 100%;
+      padding: 0;
+      box-shadow: var(--shadow);
+    }
+
+    dialog.text-detail-dlg::backdrop {
+      background: rgba(0, 0, 0, 0.55);
+    }
+
+    .text-detail-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.85rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .text-detail-head h2 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .text-detail-body-wrap {
+      padding: 1rem 1.1rem;
+      max-height: min(70vh, 36rem);
+      overflow: auto;
+    }
+
+    #text-detail-body {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.85rem;
+      line-height: 1.45;
+      color: var(--text);
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.45rem 0.75rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+    }
+
+    button:hover:not(:disabled) {
+      background: #2d3d54;
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    button:focus-visible {
+      outline: none;
+      box-shadow: var(--focus);
+    }
+
+    button.btn-primary {
+      background: var(--accent);
+      border-color: transparent;
+      color: #0a1628;
+    }
+
+    button.btn-primary:hover:not(:disabled) {
+      background: #5aadf7;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 0.75rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+
+    table.data {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    table.data th,
+    table.data td {
+      padding: 0.5rem 0.6rem;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--border);
+    }
+
+    table.data th {
+      font-weight: 600;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      background: rgba(0, 0, 0, 0.25);
+      white-space: nowrap;
+    }
+
+    table.data tbody tr:hover td {
+      background: rgba(61, 156, 245, 0.04);
+    }
+
+    .pager {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      margin-top: 0.85rem;
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+
+    .db-path {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      word-break: break-all;
+      font-family: ui-monospace, monospace;
+    }
+
+    @media (max-width: 640px) {
+      .app-header h1 { font-size: 1.25rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="app-header">
+      <div class="header-row">
+        <div>
+          <h1>데이터 조회</h1>
+          <p class="tagline">대화 기억 SQLite를 읽기 전용으로 조회합니다. 임의 SQL은 실행되지 않습니다.</p>
+        </div>
+        <nav class="header-icon-nav" aria-label="페이지 이동">
+          <a href="/" class="header-icon-link" title="관리 홈" aria-label="관리 홈">
+            <img src="/admin-static/icons/home.svg" width="22" height="22" alt="" />
+          </a>
+          <a href="/projects" class="header-icon-link" title="프로젝트 등록" aria-label="프로젝트 등록">
+            <img src="/admin-static/icons/projects.svg" width="22" height="22" alt="" />
+          </a>
+          <a href="/advanced" class="header-icon-link" title="고급 설정" aria-label="고급 설정">
+            <img src="/admin-static/icons/advanced.svg" width="22" height="22" alt="" />
+          </a>
+          <a href="/logs" class="header-icon-link" title="서버 로그" aria-label="서버 로그">
+            <img src="/admin-static/icons/logs.svg" width="22" height="22" alt="" />
+          </a>
+          <a href="/database" class="header-icon-link is-current" title="데이터 조회" aria-label="데이터 조회">
+            <img src="/admin-static/icons/database.svg" width="22" height="22" alt="" />
+          </a>
+        </nav>
+      </div>
+      <span class="localhost-pill" aria-hidden="true">로컬 전용</span>
+      <p class="tagline" style="margin-top:0.65rem">이 페이지는 <strong>127.0.0.1</strong>에서만 열립니다.</p>
+    </header>
+
+    <div id="global-msg" role="status" aria-live="polite"></div>
+
+    <section class="card" aria-labelledby="db-heading">
+      <h2 id="db-heading">표</h2>
+      <p class="lead">테이블과 정렬 컬럼은 서버 화이트리스트로만 허용됩니다.</p>
+      <p class="db-path" id="db-path-line"></p>
+
+      <div class="toolbar">
+        <div class="field-inline mid">
+          <label for="f-table">테이블</label>
+          <select id="f-table" aria-label="테이블"></select>
+        </div>
+        <div class="field-inline narrow">
+          <label for="f-sort">정렬</label>
+          <select id="f-sort" aria-label="정렬 컬럼"></select>
+        </div>
+        <div class="field-inline narrow">
+          <label for="f-order">순서</label>
+          <select id="f-order" aria-label="정렬 순서">
+            <option value="desc">내림차순</option>
+            <option value="asc">오름차순</option>
+          </select>
+        </div>
+        <div class="field-inline narrow">
+          <label for="f-limit">페이지 크기</label>
+          <select id="f-limit" aria-label="페이지 크기">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+        <div class="field-inline mid">
+          <label for="f-project">project</label>
+          <select id="f-project" aria-label="프로젝트 필터"></select>
+        </div>
+        <div class="field-inline mid role-wrap" id="role-wrap">
+          <label for="f-role">role</label>
+          <select id="f-role" aria-label="역할 필터"></select>
+        </div>
+        <div class="field-inline mid">
+          <label for="f-q">검색 (부분 일치)</label>
+          <input id="f-q" type="text" autocomplete="off" />
+        </div>
+        <div class="btn-row-actions">
+          <button type="button" class="btn-primary" id="btn-load">조회</button>
+          <button type="button" class="btn-icon" id="btn-csv" title="CSV 다운로드 (현재 필터·정렬, 최대 5만행)" aria-label="CSV 다운로드">
+            <img src="/admin-static/icons/download.svg" width="20" height="20" alt="" />
+          </button>
+        </div>
+      </div>
+
+      <div class="pager">
+        <span id="pager-summary"></span>
+        <button type="button" id="btn-prev" disabled>이전</button>
+        <button type="button" id="btn-next" disabled>다음</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data" id="data-table">
+          <thead id="data-thead"></thead>
+          <tbody id="data-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <dialog class="text-detail-dlg" id="text-detail-modal" aria-labelledby="text-detail-title">
+    <div class="text-detail-head">
+      <h2 id="text-detail-title">text 내용</h2>
+      <button type="button" id="text-detail-close">닫기</button>
+    </div>
+    <div class="text-detail-body-wrap">
+      <pre id="text-detail-body"></pre>
+    </div>
+  </dialog>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const globalMsg = $("#global-msg");
+    let tablesMeta = [];
+    let currentOffset = 0;
+    let lastTotal = 0;
+    let lastLimit = 50;
+    let lastRows = [];
+
+    function hiddenDisplayColumns(tableName, allCols) {
+      const hide = new Set();
+      if (tableName === "conversation_entries") {
+        hide.add("message_id");
+        hide.add("reply_to_message_id");
+      } else if (tableName === "message_branch_links") {
+        hide.add("message_id");
+      }
+      return (allCols || []).filter((c) => !hide.has(c));
+    }
+
+    function filteredSortable(meta) {
+      if (!meta) return [];
+      const hide = new Set();
+      if (meta.name === "conversation_entries") {
+        hide.add("message_id");
+        hide.add("reply_to_message_id");
+      } else if (meta.name === "message_branch_links") {
+        hide.add("message_id");
+      }
+      return (meta.sortable || []).filter((c) => !hide.has(c));
+    }
+
+    function setGlobalMsg(kind, text) {
+      if (!text) {
+        globalMsg.textContent = "";
+        globalMsg.className = "";
+        return;
+      }
+      globalMsg.textContent = text;
+      globalMsg.className = "is-visible " + (kind === "err" ? "msg-err" : "");
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    function syncRoleVisibility() {
+      const t = $("#f-table").value;
+      $("#role-wrap").classList.toggle("hidden", t !== "conversation_entries");
+    }
+
+    function fillSelectOptions(selectEl, values, placeholder) {
+      const cur = selectEl.value;
+      selectEl.innerHTML = "";
+      const allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = placeholder;
+      selectEl.appendChild(allOpt);
+      (values || []).forEach((v) => {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = v;
+        selectEl.appendChild(o);
+      });
+      const list = values || [];
+      if (cur && list.includes(cur)) selectEl.value = cur;
+      else selectEl.value = "";
+    }
+
+    async function loadFilterOptions() {
+      const table = $("#f-table").value;
+      const r = await fetch("/api/database/filter-options?table=" + encodeURIComponent(table));
+      const raw = await r.text();
+      if (!r.ok) {
+        let detail = raw || "요청 실패 (" + r.status + ")";
+        try {
+          const j = JSON.parse(raw);
+          if (j && typeof j.detail === "string") detail = j.detail;
+        } catch (_) { /* ignore */ }
+        throw new Error(detail);
+      }
+      const d = JSON.parse(raw);
+      fillSelectOptions($("#f-project"), d.projects || [], "전체");
+      if ($("#f-table").value === "conversation_entries") {
+        fillSelectOptions($("#f-role"), d.roles || [], "전체");
+      } else {
+        $("#f-role").innerHTML = "";
+      }
+    }
+
+    function fillSortOptions() {
+      const name = $("#f-table").value;
+      const meta = tablesMeta.find((x) => x.name === name);
+      const sel = $("#f-sort");
+      if (!meta) return;
+      const prev = sel.value;
+      sel.innerHTML = "";
+      const sortable = filteredSortable(meta);
+      sortable.forEach((col) => {
+        const o = document.createElement("option");
+        o.value = col;
+        o.textContent = col;
+        sel.appendChild(o);
+      });
+      const pick = sortable.includes(prev) ? prev : meta.default_sort;
+      sel.value = sortable.includes(pick) ? pick : sortable[0] || meta.default_sort;
+    }
+
+    async function loadTablesMeta() {
+      const r = await fetch("/api/database/tables");
+      const raw = await r.text();
+      if (!r.ok) {
+        let detail = raw || "요청 실패 (" + r.status + ")";
+        try {
+          const j = JSON.parse(raw);
+          if (j && typeof j.detail === "string") detail = j.detail;
+        } catch (_) { /* ignore */ }
+        throw new Error(detail);
+      }
+      const d = JSON.parse(raw);
+      tablesMeta = d.tables || [];
+      $("#db-path-line").textContent = d.db_exists ? "DB: " + d.db_path : "DB 파일 없음: " + d.db_path;
+      const sel = $("#f-table");
+      sel.innerHTML = "";
+      tablesMeta.forEach((t) => {
+        const o = document.createElement("option");
+        o.value = t.name;
+        o.textContent = t.label + " (" + t.name + ")";
+        sel.appendChild(o);
+      });
+      if (!tablesMeta.length) {
+        setGlobalMsg("err", "등록된 테이블 메타가 없습니다.");
+        return;
+      }
+      syncRoleVisibility();
+      fillSortOptions();
+      await loadFilterOptions();
+    }
+
+    function buildRowsQuery() {
+      const params = new URLSearchParams();
+      params.set("table", $("#f-table").value);
+      const p = $("#f-project").value.trim();
+      if (p) params.set("project", p);
+      if ($("#f-table").value === "conversation_entries") {
+        const role = $("#f-role").value.trim();
+        if (role) params.set("role", role);
+      }
+      const q = $("#f-q").value.trim();
+      if (q) params.set("q", q);
+      params.set("sort", $("#f-sort").value);
+      params.set("order", $("#f-order").value);
+      lastLimit = Number($("#f-limit").value) || 50;
+      params.set("limit", String(lastLimit));
+      params.set("offset", String(currentOffset));
+      return params.toString();
+    }
+
+    function buildExportQuery() {
+      const params = new URLSearchParams();
+      params.set("table", $("#f-table").value);
+      const p = $("#f-project").value.trim();
+      if (p) params.set("project", p);
+      if ($("#f-table").value === "conversation_entries") {
+        const role = $("#f-role").value.trim();
+        if (role) params.set("role", role);
+      }
+      const q = $("#f-q").value.trim();
+      if (q) params.set("q", q);
+      params.set("sort", $("#f-sort").value);
+      params.set("order", $("#f-order").value);
+      params.set("max_rows", "50000");
+      return params.toString();
+    }
+
+    function openTextDetail(text) {
+      const dlg = $("#text-detail-modal");
+      $("#text-detail-body").textContent = text;
+      if (dlg.showModal) dlg.showModal();
+    }
+
+    function renderTable(d) {
+      lastRows = d.rows || [];
+      const tableName = d.table || $("#f-table").value;
+      const allCols = d.columns || [];
+      const cols = hiddenDisplayColumns(tableName, allCols);
+      const thead = $("#data-thead");
+      const tbody = $("#data-tbody");
+      thead.innerHTML = "<tr>" + cols.map((c) => "<th>" + escapeHtml(c) + "</th>").join("") + "</tr>";
+      if (!lastRows.length) {
+        tbody.innerHTML =
+          '<tr><td colspan="' +
+          Math.max(cols.length, 1) +
+          '" style="color:var(--text-muted);text-align:center;padding:1.5rem">행이 없습니다.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = lastRows
+        .map((row, rowIdx) => {
+          return (
+            "<tr>" +
+            cols
+              .map((c) => {
+                if (c === "text") {
+                  return (
+                    '<td><button type="button" class="btn-detail" data-row="' +
+                    rowIdx +
+                    '">상세보기</button></td>'
+                  );
+                }
+                const v = row[c];
+                const s = v === null || v === undefined ? "" : String(v);
+                return "<td>" + escapeHtml(s) + "</td>";
+              })
+              .join("") +
+            "</tr>"
+          );
+        })
+        .join("");
+      tbody.querySelectorAll("button.btn-detail").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const idx = Number(btn.getAttribute("data-row"));
+          const raw = lastRows[idx];
+          const t = raw && raw.text !== undefined && raw.text !== null ? String(raw.text) : "";
+          openTextDetail(t);
+        });
+      });
+    }
+
+    function updatePager(d) {
+      lastTotal = Number(d.total) || 0;
+      const from = lastTotal === 0 ? 0 : currentOffset + 1;
+      const to = Math.min(currentOffset + (d.rows || []).length, lastTotal);
+      $("#pager-summary").textContent =
+        "총 " + lastTotal + "행 · 표시 " + from + "–" + to + " (limit " + lastLimit + ", offset " + currentOffset + ")";
+      $("#btn-prev").disabled = currentOffset <= 0;
+      $("#btn-next").disabled = currentOffset + lastLimit >= lastTotal;
+    }
+
+    async function loadRows() {
+      setGlobalMsg("", "");
+      const r = await fetch("/api/database/rows?" + buildRowsQuery());
+      const raw = await r.text();
+      if (!r.ok) {
+        let detail = raw || "요청 실패 (" + r.status + ")";
+        try {
+          const j = JSON.parse(raw);
+          if (j && typeof j.detail === "string") detail = j.detail;
+        } catch (_) { /* ignore */ }
+        throw new Error(detail);
+      }
+      const d = JSON.parse(raw);
+      renderTable(d);
+      updatePager(d);
+    }
+
+    $("#f-table").addEventListener("change", async () => {
+      syncRoleVisibility();
+      fillSortOptions();
+      currentOffset = 0;
+      try {
+        await loadFilterOptions();
+      } catch (e) {
+        setGlobalMsg("err", String(e));
+      }
+    });
+
+    $("#text-detail-close").addEventListener("click", () => {
+      $("#text-detail-modal").close();
+    });
+
+    $("#text-detail-modal").addEventListener("click", (e) => {
+      if (e.target === $("#text-detail-modal")) $("#text-detail-modal").close();
+    });
+
+    $("#btn-csv").addEventListener("click", () => {
+      window.location.assign("/api/database/export.csv?" + buildExportQuery());
+    });
+
+    $("#btn-load").addEventListener("click", async () => {
+      currentOffset = 0;
+      try {
+        await loadRows();
+      } catch (e) {
+        setGlobalMsg("err", String(e));
+      }
+    });
+
+    $("#btn-prev").addEventListener("click", async () => {
+      currentOffset = Math.max(0, currentOffset - lastLimit);
+      try {
+        await loadRows();
+      } catch (e) {
+        setGlobalMsg("err", String(e));
+      }
+    });
+
+    $("#btn-next").addEventListener("click", async () => {
+      currentOffset = currentOffset + lastLimit;
+      try {
+        await loadRows();
+      } catch (e) {
+        setGlobalMsg("err", String(e));
+      }
+    });
+
+    (async function init() {
+      try {
+        await loadTablesMeta();
+        await loadRows();
+      } catch (e) {
+        setGlobalMsg("err", String(e));
+      }
+    })();
+  </script>
+</body>
+</html>
