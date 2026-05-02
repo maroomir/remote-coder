@@ -92,7 +92,7 @@ class CommandParser:
         default_name = self._project_registry.get_default_project_name()
         if not default_name:
             raise CommandParseError(
-                "등록된 기본 프로젝트가 없습니다. 브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요.",
+                "등록된 프로젝트가 없습니다. 브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요.",
             )
 
         chat_pref = (

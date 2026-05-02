@@ -17,7 +17,7 @@ def format_branch_monitor(
     project_name: str,
     max_len: int = TELEGRAM_SAFE_LEN,
 ) -> str:
-    """로컬·원격 브랜치 요약 및 목록(`/branches`와 유사, 적용 프로젝트 기준)."""
+    """로컬·원격 브랜치 요약 및 목록(적용 프로젝트 기준)."""
     try:
         current = git.get_current_branch(root)
         local_n = git.count_local_branches(root)

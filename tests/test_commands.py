@@ -7,7 +7,6 @@ from app.models import ModelName
 from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.commands import (
     BranchCommand,
-    BranchesCommand,
     ClearCommand,
     CommandContext,
     CommandRegistry,
@@ -69,7 +68,6 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
             ProjectsCommand(),
             ProjectCommand(),
             ReportsCommand(),
-            BranchesCommand(),
             BranchCommand(),
             RebaseCommand(),
             MonitorCommand(),
@@ -82,9 +80,11 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert "기본 명령" in text
     assert "프로젝트와 Git" in text
     assert "모니터링" in text
+    assert "정리 및 초기화" in text
+    assert "/clear branch:" in text
     assert "/status <job_id>: 작업 상태를 조회합니다." in text
     assert "/project <프로젝트이름>: 현재 채팅의 작업 프로젝트를 변경합니다." in text
-    assert "/rebase [브랜치이름]: 브랜치를 main 기준으로 rebase 후 병합합니다." in text
+    assert "/rebase [브랜치이름]: 적용 프로젝트에서 브랜치를 main 기준으로 rebase 후 병합합니다." in text
     assert "자연어 작업 요청" in text
     assert "옵션: project:, model:, branch:, no commit" in text
 
@@ -118,8 +118,7 @@ def test_projects_command_lists_registry(project_registry: ProjectRegistry):
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/projects"), _ctx(project_registry))
     assert text is not None
     assert "remote-coder" in text
-    assert "기본 프로젝트" in text
-    assert "현재 적용 프로젝트" in text
+    assert "이 채팅 적용 프로젝트" in text
 
 
 def test_project_command_shows_default_when_no_chat_preference(project_registry: ProjectRegistry):
@@ -180,21 +179,6 @@ def test_project_command_rejects_disabled_project(project_registry: ProjectRegis
         _ctx(project_registry),
     )
     assert text is not None and "비활성화" in text
-
-
-def test_branches_command_shows_local_and_remote(project_registry: ProjectRegistry):
-    ctx = _ctx(project_registry)
-    ctx.git_service.format_local_branches.return_value = "* main\n  feature"
-    ctx.git_service.format_remote_branches_for_remote.return_value = "origin/main"
-    registry = CommandRegistry([BranchesCommand()])
-    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/branches"), ctx)
-    assert "remote-coder" in text
-    assert "[로컬]" in text
-    assert "* main" in text
-    assert "[origin 원격]" in text
-    assert "origin/main" in text
-    ctx.git_service.format_local_branches.assert_called_once()
-    ctx.git_service.format_remote_branches_for_remote.assert_called_once()
 
 
 def test_branch_command_shows_current_branch(project_registry: ProjectRegistry):

@@ -11,7 +11,6 @@ from app.projects.registry import ProjectRegistry, projects_config_path_for_sett
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import (
     BranchCommand,
-    BranchesCommand,
     ClearCommand,
     CommandContext,
     CommandRegistry,
@@ -63,7 +62,6 @@ command_registry = CommandRegistry(
         ProjectsCommand(),
         ProjectCommand(),
         ReportsCommand(),
-        BranchesCommand(),
         BranchCommand(),
         RebaseCommand(),
         MonitorCommand(),

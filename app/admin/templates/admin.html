@@ -25,7 +25,7 @@
 
   <section>
     <h2>프로젝트 등록</h2>
-    <p class="muted">기본 프로젝트는 자연어 요청에서 <code>project:</code> 를 생략할 때 사용됩니다.</p>
+    <p class="muted">등록 기본값은 채팅에서 <code>/project</code> 미지정·자연어에 <code>project:</code> 생략 시 폴백으로 사용됩니다.</p>
     <div id="proj-msg" class="err"></div>
     <table id="proj-table">
       <thead><tr><th>이름</th><th>활성</th><th>루트</th><th>워크트리</th><th>기본 모델</th><th>동작</th></tr></thead>
@@ -88,7 +88,7 @@
       lastProjects.forEach((p) => tb.appendChild(row(p)));
       const cap = document.createElement("caption");
       cap.className = "muted";
-      cap.textContent = "현재 기본 프로젝트: " + (d.default_project || "(없음)");
+      cap.textContent = "등록 폴백 기본값: " + (d.default_project || "(없음)");
       const tbl = $("#proj-table");
       const old = tbl.querySelector("caption");
       if (old) old.remove();

@@ -72,13 +72,9 @@ HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
             CommandHelpEntry("/projects", "등록된 프로젝트와 현재 적용 프로젝트를 확인합니다."),
             CommandHelpEntry("/project", "현재 작업 프로젝트를 확인합니다."),
             CommandHelpEntry("/project <프로젝트이름>", "현재 채팅의 작업 프로젝트를 변경합니다."),
-            CommandHelpEntry("/branches", "기본 프로젝트의 로컬·원격 브랜치를 확인합니다."),
-            CommandHelpEntry("/branch", "기본 프로젝트의 현재 브랜치를 확인합니다."),
-            CommandHelpEntry("/branch <브랜치이름>", "기본 프로젝트의 로컬 브랜치로 전환합니다."),
-            CommandHelpEntry("/rebase [브랜치이름]", "브랜치를 main 기준으로 rebase 후 병합합니다."),
-            CommandHelpEntry("/clear branch", "등록 프로젝트의 remote-* 브랜치와 연결 worktree를 정리합니다."),
-            CommandHelpEntry("/clear worktrees", "등록 프로젝트의 관리 대상 worktree를 정리합니다."),
-            CommandHelpEntry("/clear memory", "대화 기억 SQLite 데이터베이스를 초기화합니다."),
+            CommandHelpEntry("/branch", "이 채팅 적용 프로젝트의 현재 브랜치를 확인합니다."),
+            CommandHelpEntry("/branch <브랜치이름>", "적용 프로젝트에서 로컬 브랜치로 전환합니다."),
+            CommandHelpEntry("/rebase [브랜치이름]", "적용 프로젝트에서 브랜치를 main 기준으로 rebase 후 병합합니다."),
         ],
     ),
     (
@@ -86,16 +82,24 @@ HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
         [
             CommandHelpEntry("/monitor model", "현재 모델·CLI 인증/버전 등 조회(토큰 한도는 환경별 안내)."),
             CommandHelpEntry("/monitor memory", "이 채팅·프로젝트 SQLite 대화 기억 행 수·DB 크기."),
-            CommandHelpEntry("/monitor branch", "로컬·원격 브랜치 요약(`/branches` 대체 후보)."),
+            CommandHelpEntry("/monitor branch", "로컬·원격 브랜치 요약(개수·목록)."),
             CommandHelpEntry("/monitor worktrees", "linked worktree 목록·managed 후보 요약."),
             CommandHelpEntry("/monitor code", "코드 파일 수·줄 수 추정(확장자 기준)."),
+        ],
+    ),
+    (
+        "정리 및 초기화 (확인 `y`/`Y` 필요)",
+        [
+            CommandHelpEntry("/clear branch", "등록된 enabled 프로젝트의 remote-* 브랜치·연결 worktree 삭제."),
+            CommandHelpEntry("/clear worktrees", "관리 대상 worktree 정리·stale prune."),
+            CommandHelpEntry("/clear memory", "대화 기억 SQLite DB 전체 초기화."),
         ],
     ),
 )
 
 
 def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | None:
-    """채팅별 `/project` 선택값이 있으면 그것, 없으면 레지스트리 전역 기본 프로젝트."""
+    """채팅별 `/project` 선택값이 있으면 그것, 없으면 레지스트리에 설정된 기본값(미선택 시 폴백)."""
     pref = ctx.project_preferences.get(chat_id)
     if pref:
         return pref
@@ -176,11 +180,9 @@ class ProjectsCommand(TelegramCommand):
     name = "/projects"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        default_name = ctx.project_registry.get_default_project_name()
         effective = effective_project_name_for_chat(ctx, message.chat_id)
         lines = [
-            f"기본 프로젝트: {default_name or '(없음)'}",
-            f"현재 적용 프로젝트(이 채팅): {effective or '(없음)'}",
+            f"이 채팅 적용 프로젝트: {effective or '(없음)'}",
             "등록된 프로젝트",
         ]
         for p in ctx.project_registry.list_projects():
@@ -200,7 +202,7 @@ class ProjectCommand(TelegramCommand):
             eff = effective_project_name_for_chat(ctx, message.chat_id)
             if not eff:
                 return (
-                    "등록된 기본 프로젝트가 없습니다. "
+                    "등록된 프로젝트가 없습니다. "
                     "브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요."
                 )
             return f"현재 작업 프로젝트: {eff}"
@@ -242,7 +244,7 @@ class ReportsCommand(TelegramCommand):
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
             return (
-                "등록된 기본 프로젝트가 없습니다. "
+                "등록된 프로젝트가 없습니다. "
                 "브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요."
             )
 
@@ -287,43 +289,8 @@ class ReportsCommand(TelegramCommand):
         return normalized[:limit].rstrip() + "..."
 
 
-class BranchesCommand(TelegramCommand):
-    """기본 프로젝트 Git 저장소의 로컬·원격 브랜치 목록."""
-
-    name = "/branches"
-
-    _TELEGRAM_SAFE_LEN = 3800
-
-    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        tokens = message.text.strip().split()
-        if len(tokens) != 1:
-            return format_usage("/branches")
-
-        default_name = ctx.project_registry.get_default_project_name()
-        if not default_name:
-            return "기본 프로젝트가 없습니다. /projects 로 등록 후 기본 프로젝트를 지정하세요."
-        entry = ctx.project_registry.get(default_name)
-        if not entry or not entry.enabled:
-            return "기본 프로젝트를 찾을 수 없거나 비활성화되어 있습니다."
-
-        try:
-            local_block = ctx.git_service.format_local_branches(entry.root_path)
-            remote_block = ctx.git_service.format_remote_branches_for_remote(
-                entry.root_path, ctx.git_remote_name
-            )
-        except RuntimeError as exc:
-            return f"/branches 실패: {exc}"
-
-        header = f"프로젝트: {default_name}\nroot: {entry.root_path}\n원격: {ctx.git_remote_name}\n\n"
-        body = f"[로컬]\n{local_block}\n\n[{ctx.git_remote_name} 원격]\n{remote_block}"
-        text = header + body
-        if len(text) > self._TELEGRAM_SAFE_LEN:
-            text = text[: self._TELEGRAM_SAFE_LEN].rstrip() + "\n\n...(메시지 길이 제한으로 생략)"
-        return text
-
-
 class BranchCommand(TelegramCommand):
-    """기본 프로젝트 저장소의 현재 브랜치 조회 또는 `git switch`로 전환."""
+    """이 채팅 적용 프로젝트 저장소의 현재 브랜치 조회 또는 `git switch`로 전환."""
 
     name = "/branch"
 
@@ -332,12 +299,12 @@ class BranchCommand(TelegramCommand):
         if len(tokens) > 2:
             return format_usage("/branch", "/branch <브랜치이름>")
 
-        default_name = ctx.project_registry.get_default_project_name()
-        if not default_name:
-            return "기본 프로젝트가 없습니다. /projects 로 등록 후 기본 프로젝트를 지정하세요."
-        entry = ctx.project_registry.get(default_name)
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return "등록된 프로젝트가 없습니다. /projects 로 등록하세요."
+        entry = ctx.project_registry.get(project_name)
         if not entry or not entry.enabled:
-            return "기본 프로젝트를 찾을 수 없거나 비활성화되어 있습니다."
+            return f"프로젝트를 찾을 수 없거나 비활성화되어 있습니다: {project_name}"
 
         root = entry.root_path
 
@@ -346,7 +313,7 @@ class BranchCommand(TelegramCommand):
                 current = ctx.git_service.get_current_branch(root)
             except RuntimeError as exc:
                 return f"/branch 실패: {exc}"
-            return f"프로젝트: {default_name}\n현재 브랜치: {current}"
+            return f"프로젝트: {project_name}\n현재 브랜치: {current}"
 
         branch = tokens[1]
         err = GitWorktreeService.validate_branch_token(branch)
@@ -360,11 +327,11 @@ class BranchCommand(TelegramCommand):
             ctx.git_service.switch_branch(root, branch)
         except RuntimeError as exc:
             return f"/branch 실패: {exc}"
-        return f"프로젝트: {default_name}\n`{branch}` 로 전환했습니다 (git switch)."
+        return f"프로젝트: {project_name}\n`{branch}` 로 전환했습니다 (git switch)."
 
 
 class RebaseCommand(TelegramCommand):
-    """기본 프로젝트 저장소에서 브랜치를 main 기준으로 rebase 후 main에 fast-forward 병합·push."""
+    """적용 프로젝트 저장소에서 브랜치를 main 기준으로 rebase 후 main에 fast-forward 병합·push."""
 
     name = "/rebase"
 
@@ -379,12 +346,12 @@ class RebaseCommand(TelegramCommand):
             if not branch:
                 return "최근 성공한 Job의 브랜치가 없습니다. /rebase <branch> 로 지정하세요."
 
-        default_name = ctx.project_registry.get_default_project_name()
-        if not default_name:
-            return "기본 프로젝트가 없습니다. /projects 로 등록 후 기본 프로젝트를 지정하세요."
-        entry = ctx.project_registry.get(default_name)
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return "등록된 프로젝트가 없습니다. /projects 로 등록하세요."
+        entry = ctx.project_registry.get(project_name)
         if not entry or not entry.enabled:
-            return "기본 프로젝트를 찾을 수 없거나 비활성화되어 있습니다."
+            return f"프로젝트를 찾을 수 없거나 비활성화되어 있습니다: {project_name}"
 
         ops_base = entry.worktree_base_dir / "_rebase_ops"
         try:
@@ -423,7 +390,7 @@ class MonitorCommand(TelegramCommand):
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
             return (
-                "등록된 기본 프로젝트가 없습니다. "
+                "등록된 프로젝트가 없습니다. "
                 "브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요."
             )
 

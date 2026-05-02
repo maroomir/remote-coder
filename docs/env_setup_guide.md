@@ -68,8 +68,8 @@ KEEP_WORKTREE_ON_SUCCESS=true
 - `/model claude`, `/model codex`는 현재 chat의 기본 모델을 바꿉니다. (서버 재시작 전까지 유지)
 - 자연어 요청에 `model: codex`, `branch: remote/test`, `no commit` 토큰을 함께 쓰면 요청별 옵션을 지정할 수 있습니다.
 - AI Job은 변경이 없으면 브랜치를 만들지 않습니다. 변경이 있으면 브랜치·커밋 후 `GIT_REMOTE_NAME`으로 push합니다.
-- `/branches`로 브랜치 목록을, `/branch`로 현재 브랜치를, `/branch <이름>`으로 로컬 브랜치가 있을 때만 `git switch` 할 수 있습니다.
-- `/rebase`는 기본 프로젝트 저장소에서 동작합니다. 인자 없으면 이 채팅에서 가장 최근에 성공한 Job의 브랜치를 대상으로 합니다.
+- `/monitor branch`로 브랜치 목록·요약을, `/branch`로 현재 브랜치를, `/branch <이름>`으로 로컬 브랜치가 있을 때만 `git switch` 할 수 있습니다(대상은 이 채팅의 적용 프로젝트).
+- `/rebase`는 이 채팅 적용 프로젝트 저장소에서 동작합니다. 인자 없으면 이 채팅에서 가장 최근에 성공한 Job의 브랜치를 대상으로 합니다.
 - `/clear`는 등록된 enabled 프로젝트마다 `remote-*` 이름의 로컬·원격 브랜치를 삭제합니다. 실행 전 의도를 다시 확인하세요.
 
 이렇게 `.env` 파일을 저장해두면, 앱이 실행될 때 설정 파일이 이 값들을 읽어와서 시스템이 봇을 조종하고 안전하게 인증을 처리할 수 있게 됩니다. 

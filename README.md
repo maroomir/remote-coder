@@ -33,8 +33,8 @@ cp .env.example .env
 서버를 띄운 뒤 **같은 머신**에서 브라우저로 접속합니다.
 
 - URL: `http://127.0.0.1:8000/`
-- 등록된 프로젝트 목록, 추가·수정·삭제, 기본 프로젝트 지정
-- 자연어 요청에서 `project: 프로젝트이름` 으로 대상을 바꿀 수 있습니다. 생략 시에는 텔레그램 채팅에서 `/project`로 선택한 작업 프로젝트가 있으면 그것을, 없으면 레지스트리의 기본 프로젝트가 사용됩니다.
+- 등록된 프로젝트 목록, 추가·수정·삭제, 미선택 시 폴백으로 쓰일 등록 기본값 지정
+- 자연어 요청에서 `project: 프로젝트이름` 으로 대상을 바꿀 수 있습니다. 생략 시에는 이 채팅에서 `/project`로 선택한 작업 프로젝트가 있으면 그것을, 없으면 등록 파일에 저장된 기본값(폴백)이 사용됩니다.
 - `PROJECTS_CONFIG_PATH`가 없으면 기본 경로 `PROJECT_ROOT/.remote-coder/projects.json`을 사용합니다.
 - 레지스트리 파일이 없으면 `.env`의 초기 시드 값(`DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`)으로 자동 생성됩니다.
 
@@ -79,16 +79,15 @@ ngrok version
 - `/project` : 이 채팅의 현재 작업 프로젝트(인메모리) 확인
 - `/project <이름>` : 이 채팅의 작업 프로젝트를 등록된 이름으로 전환(인메모리, 레지스트리 기본값은 변경하지 않음)
 - `/reports` : 현재 채팅·현재 작업 프로젝트 기준으로 SQLite 대화 기억을 SQL 집계해 요약 리포트
-- `/branches` : 기본 프로젝트 저장소의 로컬·원격(`GIT_REMOTE_NAME`) 브랜치 목록
-- `/branch` : 기본 프로젝트 저장소의 현재 checkout 브랜치 표시
-- `/branch <이름>` : 기본 프로젝트에서 로컬 브랜치가 있을 때만 `git switch` (없으면 오류, 원격만 있는 브랜치는 자동 생성하지 않음)
-- `/rebase` 또는 `/rebase <branch>` : 기본 프로젝트에서 해당 브랜치를 `main`(또는 `master`) 기준으로 rebase한 뒤 `main`에 fast-forward 병합 후 원격에 push (인자 생략 시 이 채팅의 최근 성공 Job 브랜치)
+- `/branch` : 이 채팅 **적용 프로젝트** 저장소의 현재 checkout 브랜치 표시
+- `/branch <이름>` : 적용 프로젝트에서 로컬 브랜치가 있을 때만 `git switch` (없으면 오류, 원격만 있는 브랜치는 자동 생성하지 않음)
+- `/rebase` 또는 `/rebase <branch>` : 적용 프로젝트에서 해당 브랜치를 `main`(또는 `master`) 기준으로 rebase한 뒤 `main`에 fast-forward 병합 후 원격에 push (인자 생략 시 이 채팅의 최근 성공 Job 브랜치)
 - `/clear branch` : 등록된 enabled 프로젝트마다 `remote-*` 로컬·원격 브랜치와 연결된 linked worktree 정리
 - `/clear worktrees` : 등록된 enabled 프로젝트마다 관리 대상 worktree(`WORKTREE_BASE_DIR` 하위 및 `remote-*` checkout linked worktree) 정리 + stale entry prune
 - `/clear memory` : 대화 기억 SQLite 데이터베이스 초기화
 - `/monitor model` : 현재 채팅 기본 모델 기준 Claude(`claude auth status`) / Codex(`codex --version`) 등 CLI Probe — 플랜·크레딧 남은량은 공급자 대시보드·안내 문구 참고
 - `/monitor memory` : 이 채팅·현재 **적용 프로젝트** 기준 SQLite 대화 기억 행 수·역할별 행 수·DB 파일 크기
-- `/monitor branch` : 적용 프로젝트 저장소의 브랜치 요약(로컬/원격 개수 및 목록, `/branches` 대체 후보)
+- `/monitor branch` : 적용 프로젝트 저장소의 브랜치 요약(로컬/원격 개수 및 목록)
 - `/monitor worktrees` : linked worktree 목록·detached 개수·Remote Coder managed 후보 요약
 - `/monitor code` : 적용 프로젝트 루트 기준 코드 파일 수·줄 수 추정(확장자 화이트리스트, `.git`·`node_modules` 등 제외)
 - 자연어 메시지: AI 작업 요청 생성
@@ -96,8 +95,8 @@ ngrok version
 참고:
 
 - `/model`로 변경한 기본 모델은 MVP에서는 인메모리 저장입니다. 서버 재시작 시 초기화됩니다.
-- `/project`로 선택한 작업 프로젝트도 채팅별 인메모리이며, 서버 재시작 시 초기화됩니다. `project:` 옵션이 있으면 그 값이 우선합니다. **`/monitor memory|branch|worktrees|code`는 이 채팅의 적용 프로젝트(없으면 레지스트리 기본 프로젝트)를 기준으로 합니다.** `/branches`·`/branch`는 여전히 레지스트리 **기본 프로젝트**만 봅니다.
-- AI Job은 기본 프로젝트 **현재 `HEAD` 커밋**에서 detached worktree를 만든 뒤 실행합니다. **워킹 트리에 변경이 있을 때만** 작업 브랜치를 만들고 커밋합니다. 커밋이 있으면 `GIT_REMOTE_NAME`(기본 `origin`)으로 push합니다. 저장소 브랜치를 바꾸려면 먼저 `/branch <이름>`으로 로컬 브랜치를 전환하세요.
+- `/project`로 선택한 작업 프로젝트도 채팅별 인메모리이며, 서버 재시작 시 초기화됩니다. `project:` 옵션이 있으면 그 값이 우선합니다. **`/branch`, `/rebase`, `/monitor memory|branch|worktrees|code`는 모두 이 채팅의 적용 프로젝트(없으면 등록 파일의 폴백 기본값)를 기준으로 합니다.**
+- AI Job은 **요청에 사용된 프로젝트 저장소**의 **현재 `HEAD` 커밋**에서 detached worktree를 만든 뒤 실행합니다. **워킹 트리에 변경이 있을 때만** 작업 브랜치를 만들고 커밋합니다. 커밋이 있으면 `GIT_REMOTE_NAME`(기본 `origin`)으로 push합니다. 저장소 브랜치를 바꾸려면 먼저 `/branch <이름>`으로 로컬 브랜치를 전환하세요.
 - 자동 생성 커밋 메시지는 다음 형식을 사용합니다.
 
   ```text
