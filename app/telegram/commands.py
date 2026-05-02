@@ -72,6 +72,10 @@ HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
             CommandHelpEntry("/projects", "등록된 프로젝트와 현재 적용 프로젝트를 확인합니다."),
             CommandHelpEntry("/project", "현재 작업 프로젝트를 확인합니다."),
             CommandHelpEntry("/project <프로젝트이름>", "현재 채팅의 작업 프로젝트를 변경합니다."),
+            CommandHelpEntry(
+                "/init",
+                "이 채팅의 작업 프로젝트·기본 모델·확인 대기 상태를 서버 시작 직후처럼 초기화합니다.",
+            ),
             CommandHelpEntry("/branch", "이 채팅 적용 프로젝트의 현재 브랜치를 확인합니다."),
             CommandHelpEntry("/branch <브랜치이름>", "적용 프로젝트에서 로컬 브랜치로 전환합니다."),
             CommandHelpEntry("/rebase [브랜치이름]", "적용 프로젝트에서 브랜치를 main 기준으로 rebase 후 병합합니다."),
@@ -216,6 +220,51 @@ class ProjectCommand(TelegramCommand):
             ctx.project_preferences.set(message.chat_id, name)
             return f"작업 프로젝트가 {name}로 변경되었습니다."
         return format_usage("/project", "/project <프로젝트이름>")
+
+
+class InitCommand(TelegramCommand):
+    """채팅별 인메모리 설정을 서버 시작 직후와 동일하게 되돌립니다."""
+
+    name = "/init"
+
+    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
+        tokens = message.text.strip().split()
+        if len(tokens) != 1:
+            return format_usage("/init")
+
+        chat_id = message.chat_id
+        ctx.project_preferences.clear(chat_id)
+        ctx.model_preferences.clear(chat_id)
+        ctx.confirmation_store.pop(chat_id)
+
+        default_name = ctx.project_registry.get_default_project_name()
+        if not default_name:
+            return (
+                "이 채팅의 작업 프로젝트·기본 모델·확인 대기 상태를 초기화했습니다.\n"
+                "등록된 프로젝트가 없습니다. "
+                "브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요."
+            )
+
+        entry = ctx.project_registry.get(default_name)
+        if not entry:
+            return (
+                "이 채팅의 작업 프로젝트·기본 모델·확인 대기 상태를 초기화했습니다.\n"
+                f"등록 파일의 기본 프로젝트 `{default_name}` 을(를) 찾을 수 없습니다. "
+                "관리 화면에서 프로젝트 설정을 확인하세요."
+            )
+        if not entry.enabled:
+            return (
+                "이 채팅의 작업 프로젝트·기본 모델·확인 대기 상태를 초기화했습니다.\n"
+                f"기본 프로젝트 `{default_name}` 이(가) 비활성화되어 있습니다. "
+                "관리 화면에서 활성화하거나 기본 프로젝트를 변경하세요."
+            )
+
+        model = ctx.model_preferences.get(chat_id)
+        return (
+            "이 채팅의 작업 프로젝트·기본 모델·확인 대기 상태를 초기화했습니다.\n"
+            f"적용 프로젝트: {default_name}\n"
+            f"기본 모델: {model.value}"
+        )
 
 
 class ReportsCommand(TelegramCommand):
@@ -544,6 +593,15 @@ class CommandRegistry:
         self._commands = {command.name: command for command in commands}
 
     def dispatch(self, message: TelegramMessage, ctx: CommandContext) -> str | None:
+        tokens = message.text.strip().split()
+        head = tokens[0] if tokens else ""
+        # `/init`은 확인 대기보다 우선합니다. 대기 중이던 확인은 취소·삭제한 뒤 초기화합니다.
+        if head == "/init":
+            init_cmd = self._commands.get("/init")
+            if init_cmd is not None:
+                ctx.confirmation_store.pop(message.chat_id)
+                return init_cmd.execute(message, ctx)
+
         pending = ctx.confirmation_store.get(message.chat_id)
         if pending is not None:
             command = self._commands.get(pending.command_name)
@@ -552,7 +610,6 @@ class CommandRegistry:
                 return command.confirm(message, ctx, confirmed)
             return "확인 대기 작업을 처리할 수 없습니다."
 
-        head = message.text.strip().split()[0] if message.text.strip() else ""
         if not head.startswith("/"):
             return None
         command = self._commands.get(head)

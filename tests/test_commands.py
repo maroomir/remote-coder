@@ -11,6 +11,7 @@ from app.telegram.commands import (
     CommandContext,
     CommandRegistry,
     HelpCommand,
+    InitCommand,
     ModelCommand,
     MonitorCommand,
     ProjectCommand,
@@ -21,7 +22,7 @@ from app.telegram.commands import (
     StatusCommand,
     TelegramMessage,
 )
-from app.telegram.confirmations import InMemoryConfirmationStore
+from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.project_preferences import InMemoryProjectPreferenceStore
@@ -67,6 +68,7 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
             StatusCommand(),
             ProjectsCommand(),
             ProjectCommand(),
+            InitCommand(),
             ReportsCommand(),
             BranchCommand(),
             RebaseCommand(),
@@ -84,6 +86,7 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert "/clear branch:" in text
     assert "/status <job_id>: 작업 상태를 조회합니다." in text
     assert "/project <프로젝트이름>: 현재 채팅의 작업 프로젝트를 변경합니다." in text
+    assert "/init:" in text
     assert "/rebase [브랜치이름]: 적용 프로젝트에서 브랜치를 main 기준으로 rebase 후 병합합니다." in text
     assert "자연어 작업 요청" in text
     assert "옵션: project:, model:, branch:, no commit" in text
@@ -179,6 +182,58 @@ def test_project_command_rejects_disabled_project(project_registry: ProjectRegis
         _ctx(project_registry),
     )
     assert text is not None and "비활성화" in text
+
+
+def test_init_command_resets_project_model_and_pending(project_registry: ProjectRegistry):
+    root = project_registry.config_path.parent / "init_other_repo"
+    root.mkdir()
+    wt = project_registry.config_path.parent / "init_other_wt"
+    wt.mkdir()
+    project_registry.add_project(
+        ProjectRecord(
+            name="other",
+            root_path=root,
+            worktree_base_dir=wt,
+            default_model=ModelName.CODEX,
+            enabled=True,
+        )
+    )
+    registry = CommandRegistry([InitCommand(), ClearCommand(), ModelCommand(), ProjectCommand()])
+    ctx = _ctx(project_registry)
+    chat_id = 42
+    ctx.project_preferences.set(chat_id, "other")
+    ctx.model_preferences.set(chat_id, ModelName.CODEX)
+    ctx.confirmation_store.set(chat_id, PendingConfirmation(command_name="/clear", action="memory"))
+
+    text = registry.dispatch(TelegramMessage(chat_id=chat_id, user_id=1, text="/init"), ctx)
+    assert text is not None
+    assert "초기화했습니다" in text
+    assert "적용 프로젝트: remote-coder" in text
+    assert "기본 모델: claude" in text
+    assert ctx.project_preferences.get(chat_id) is None
+    assert ctx.model_preferences.get(chat_id) == ModelName.CLAUDE
+    assert ctx.confirmation_store.get(chat_id) is None
+
+
+def test_init_command_runs_when_clear_confirmation_pending(project_registry: ProjectRegistry):
+    """`/init`은 확인 대기보다 우선하며, 대기 중인 `/clear` 확인을 버리고 초기화합니다."""
+    registry = CommandRegistry([InitCommand(), ClearCommand()])
+    ctx = _ctx(project_registry)
+    chat_id = 99
+    ctx.confirmation_store.set(chat_id, PendingConfirmation(command_name="/clear", action="memory"))
+
+    text = registry.dispatch(TelegramMessage(chat_id=chat_id, user_id=1, text="/init"), ctx)
+    assert text is not None and "초기화했습니다" in text
+    assert ctx.confirmation_store.get(chat_id) is None
+
+
+def test_init_command_rejects_extra_args(project_registry: ProjectRegistry):
+    registry = CommandRegistry([InitCommand()])
+    text = registry.dispatch(
+        TelegramMessage(chat_id=1, user_id=1, text="/init extra"),
+        _ctx(project_registry),
+    )
+    assert text == "사용법:\n/init"
 
 
 def test_branch_command_shows_current_branch(project_registry: ProjectRegistry):

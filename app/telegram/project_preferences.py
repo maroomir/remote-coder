@@ -17,3 +17,8 @@ class InMemoryProjectPreferenceStore:
     def set(self, chat_id: int, project_name: str) -> None:
         with self._lock:
             self._values[chat_id] = project_name
+
+    def clear(self, chat_id: int) -> None:
+        """채팅별 선택을 제거하면 적용 프로젝트는 레지스트리 기본값으로 폴백합니다."""
+        with self._lock:
+            self._values.pop(chat_id, None)

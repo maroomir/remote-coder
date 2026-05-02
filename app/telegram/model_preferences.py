@@ -18,3 +18,8 @@ class InMemoryModelPreferenceStore:
     def set(self, chat_id: int, model: ModelName) -> None:
         with self._lock:
             self._values[chat_id] = model
+
+    def clear(self, chat_id: int) -> None:
+        """채팅별 `/model` 선택을 제거하면 서버 기본 모델로 폴백합니다."""
+        with self._lock:
+            self._values.pop(chat_id, None)
