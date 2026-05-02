@@ -225,6 +225,38 @@ class GitWorktreeService:
                 lines.append(line)
         return "\n".join(lines) if lines else f"({remote} 원격 브랜치 없음)"
 
+    def count_local_branches(self, project_path: Path) -> int:
+        """로컬 브랜치(ref heads) 개수."""
+        result = self._run_git(project_path, ["branch", "--format=%(refname:short)"])
+        if result.returncode != 0:
+            raise RuntimeError(f"failed to count local branches: {result.stderr.strip()}")
+        return len([ln for ln in result.stdout.splitlines() if ln.strip()])
+
+    def count_remote_branches_for_remote(self, project_path: Path, remote: str) -> int:
+        """`git branch -r`에서 해당 원격 접두사만 카운트."""
+        result = self._run_git(project_path, ["branch", "-r", "--sort=refname"])
+        if result.returncode != 0:
+            raise RuntimeError(f"failed to count remote branches: {result.stderr.strip()}")
+        prefix = f"{remote}/"
+        n = 0
+        for raw in result.stdout.splitlines():
+            line = raw.strip()
+            if not line or "->" in line:
+                continue
+            if line.startswith(prefix):
+                rest = line[len(prefix) :]
+                if rest == "HEAD":
+                    continue
+                n += 1
+        return n
+
+    def list_worktree_entries(self, project_path: Path) -> list[tuple[Path, str | None]]:
+        """읽기 전용: linked worktree 경로와 체크아웃 브랜치 짧은 이름(detached면 None)."""
+        result = self._run_git(project_path, ["worktree", "list", "--porcelain"])
+        if result.returncode != 0:
+            raise RuntimeError(f"failed to list worktrees: {result.stderr.strip()}")
+        return self._parse_worktree_list_porcelain(result.stdout)
+
     @staticmethod
     def _branch_name_from_git_branch_output_line(line: str) -> str:
         """`git branch` 한 줄에서 마커 제거. `*` 현재 브랜치, `+` 다른 worktree checkout."""

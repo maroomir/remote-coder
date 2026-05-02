@@ -97,6 +97,19 @@ def test_generate_report_returns_none_when_no_memory(tmp_path: Path):
     assert store.generate_report("p1", 10) is None
 
 
+def test_get_chat_stats_counts_roles(tmp_path: Path):
+    db = tmp_path / "stats.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(project="p1", chat_id=9, role="user", text="a", job_id=None)
+    store.append(project="p1", chat_id=9, role="job_result", text="b", job_id="j1")
+    stats = store.get_chat_stats("p1", 9)
+    assert stats.total_rows == 2
+    assert stats.rows_by_role["user"] == 1
+    assert stats.rows_by_role["job_result"] == 1
+    assert stats.db_path == db.resolve()
+    assert stats.db_exists is True
+
+
 def test_bind_message_branch_and_lookup(tmp_path: Path):
     db = tmp_path / "branch_link.sqlite3"
     store = SQLiteConversationStore(db)

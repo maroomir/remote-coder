@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from app.git.service import GitWorktreeService
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
+from app.monitoring.code import count_project_code, format_code_monitor
+from app.monitoring.git import format_branch_monitor, format_worktree_monitor
+from app.monitoring.memory import format_memory_monitor
+from app.monitoring.model import format_model_monitor
 from app.projects.registry import ProjectRegistry
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
@@ -75,6 +79,16 @@ HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
             CommandHelpEntry("/clear branch", "등록 프로젝트의 remote-* 브랜치와 연결 worktree를 정리합니다."),
             CommandHelpEntry("/clear worktrees", "등록 프로젝트의 관리 대상 worktree를 정리합니다."),
             CommandHelpEntry("/clear memory", "대화 기억 SQLite 데이터베이스를 초기화합니다."),
+        ],
+    ),
+    (
+        "모니터링",
+        [
+            CommandHelpEntry("/monitor model", "현재 모델·CLI 인증/버전 등 조회(토큰 한도는 환경별 안내)."),
+            CommandHelpEntry("/monitor memory", "이 채팅·프로젝트 SQLite 대화 기억 행 수·DB 크기."),
+            CommandHelpEntry("/monitor branch", "로컬·원격 브랜치 요약(`/branches` 대체 후보)."),
+            CommandHelpEntry("/monitor worktrees", "linked worktree 목록·managed 후보 요약."),
+            CommandHelpEntry("/monitor code", "코드 파일 수·줄 수 추정(확장자 기준)."),
         ],
     ),
 )
@@ -383,6 +397,75 @@ class RebaseCommand(TelegramCommand):
             return summary
         except RuntimeError as exc:
             return f"/rebase 실패: {exc}"
+
+
+class MonitorCommand(TelegramCommand):
+    """현재 채팅 적용 프로젝트 기준 읽기 전용 모니터링."""
+
+    name = "/monitor"
+
+    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
+        tokens = message.text.strip().split()
+        if len(tokens) < 2:
+            return format_usage(
+                "/monitor <model|memory|branch|worktrees|code>",
+                "예: /monitor model",
+            )
+
+        sub = tokens[1].lower()
+        valid = {"model", "memory", "branch", "worktrees", "code"}
+        if sub not in valid:
+            return format_usage(
+                "/monitor <model|memory|branch|worktrees|code>",
+                "예: /monitor memory",
+            )
+
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return (
+                "등록된 기본 프로젝트가 없습니다. "
+                "브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요."
+            )
+
+        entry = ctx.project_registry.get(project_name)
+        if not entry:
+            return f"알 수 없는 프로젝트: {project_name}"
+        if not entry.enabled:
+            return f"비활성화된 프로젝트: {project_name}"
+
+        if sub == "model":
+            current = ctx.model_preferences.get(message.chat_id)
+            body = format_model_monitor(current)
+            return f"현재 채팅 기본 모델: {current.value}\n\n{body}"
+
+        if sub == "memory":
+            if ctx.conversation_store is None:
+                return "대화 기억 저장소가 설정되지 않았습니다."
+            stats = ctx.conversation_store.get_chat_stats(project_name, message.chat_id)
+            return format_memory_monitor(stats, project_name, message.chat_id)
+
+        if sub == "branch":
+            return format_branch_monitor(
+                ctx.git_service,
+                entry.root_path,
+                ctx.git_remote_name,
+                project_name,
+            )
+
+        if sub == "worktrees":
+            return format_worktree_monitor(
+                ctx.git_service,
+                entry.root_path,
+                entry.worktree_base_dir,
+                project_name,
+            )
+
+        # code
+        stats = count_project_code(
+            entry.root_path,
+            worktree_base_dir=entry.worktree_base_dir,
+        )
+        return format_code_monitor(stats, project_name, entry.root_path)
 
 
 class ClearCommand(ConfirmableCommand):

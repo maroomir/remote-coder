@@ -1,4 +1,5 @@
-from unittest.mock import Mock
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 from app.jobs.schemas import Job, JobRequest, JobStatus
 from app.jobs.store import InMemoryJobStore
@@ -12,6 +13,7 @@ from app.telegram.commands import (
     CommandRegistry,
     HelpCommand,
     ModelCommand,
+    MonitorCommand,
     ProjectCommand,
     ProjectsCommand,
     ReportsCommand,
@@ -70,6 +72,7 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
             BranchesCommand(),
             BranchCommand(),
             RebaseCommand(),
+            MonitorCommand(),
             ClearCommand(),
         ]
     )
@@ -78,6 +81,7 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert text.startswith("도움말")
     assert "기본 명령" in text
     assert "프로젝트와 Git" in text
+    assert "모니터링" in text
     assert "/status <job_id>: 작업 상태를 조회합니다." in text
     assert "/project <프로젝트이름>: 현재 채팅의 작업 프로젝트를 변경합니다." in text
     assert "/rebase [브랜치이름]: 브랜치를 main 기준으로 rebase 후 병합합니다." in text
@@ -360,3 +364,97 @@ def test_reports_command_handles_empty_memory(project_registry: ProjectRegistry,
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/reports"), ctx)
 
     assert text == "기억된 대화 기록이 없습니다. (project=remote-coder)"
+
+
+def test_monitor_command_shows_usage(project_registry: ProjectRegistry):
+    registry = CommandRegistry([MonitorCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/monitor"), _ctx(project_registry))
+    assert text is not None
+    assert "사용법" in text
+    assert "/monitor" in text
+
+
+def test_monitor_command_rejects_invalid_subcommand(project_registry: ProjectRegistry):
+    registry = CommandRegistry([MonitorCommand()])
+    text = registry.dispatch(
+        TelegramMessage(chat_id=1, user_id=1, text="/monitor nope"),
+        _ctx(project_registry),
+    )
+    assert text is not None
+    assert "사용법" in text
+
+
+def test_monitor_memory_shows_sqlite_stats(project_registry: ProjectRegistry, tmp_path):
+    db = tmp_path / "monitor_mem.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(project="remote-coder", chat_id=42, role="user", text="hi", job_id=None)
+    ctx = _ctx(project_registry)
+    ctx.conversation_store = store
+    registry = CommandRegistry([MonitorCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=42, user_id=1, text="/monitor memory"), ctx)
+    assert text is not None
+    assert "메모리(SQLite)" in text
+    assert "이 채팅 저장 행 수: 1" in text
+    assert "user=1" in text
+
+
+def test_monitor_branch_uses_git_service(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    ctx.git_service.get_current_branch.return_value = "main"
+    ctx.git_service.count_local_branches.return_value = 2
+    ctx.git_service.count_remote_branches_for_remote.return_value = 1
+    ctx.git_service.format_local_branches.return_value = "* main"
+    ctx.git_service.format_remote_branches_for_remote.return_value = "origin/main"
+    registry = CommandRegistry([MonitorCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/monitor branch"), ctx)
+    assert text is not None
+    assert "브랜치 모니터" in text
+    ctx.git_service.count_local_branches.assert_called_once()
+
+
+def test_monitor_worktrees_lists_entries(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    ctx.git_service.list_worktree_entries.return_value = [
+        (Path("/fake/repo"), "main"),
+        (Path("/fake/repo/wt"), None),
+    ]
+    registry = CommandRegistry([MonitorCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/monitor worktrees"), ctx)
+    assert text is not None
+    assert "워크트리 모니터" in text
+    assert "detached" in text
+
+
+def test_monitor_model_invokes_claude_probe(project_registry: ProjectRegistry):
+    with patch("app.monitoring.model.subprocess.run") as mock_run:
+        mock_run.return_value = Mock(returncode=0, stdout="Logged in\n", stderr="")
+        registry = CommandRegistry([MonitorCommand()])
+        text = registry.dispatch(
+            TelegramMessage(chat_id=1, user_id=1, text="/monitor model"),
+            _ctx(project_registry),
+        )
+    assert text is not None
+    assert "현재 채팅 기본 모델: claude" in text
+    assert "[Claude]" in text
+
+
+def test_monitor_code_counts_lines(project_registry: ProjectRegistry, tmp_path):
+    root = project_registry.config_path.parent / "count_repo"
+    root.mkdir(parents=True)
+    (root / "a.py").write_text("# x\nprint(1)\n", encoding="utf-8")
+    project_registry.add_project(
+        ProjectRecord(
+            name="countproj",
+            root_path=root,
+            worktree_base_dir=tmp_path / "wt",
+            enabled=True,
+        )
+    )
+    project_registry.set_default_project("countproj")
+    registry = CommandRegistry([MonitorCommand()])
+    ctx = _ctx(project_registry)
+    ctx.project_preferences.set(7, "countproj")
+    text = registry.dispatch(TelegramMessage(chat_id=7, user_id=1, text="/monitor code"), ctx)
+    assert text is not None
+    assert "코드 규모" in text
+    assert "스캔한 코드 파일 수: 1" in text

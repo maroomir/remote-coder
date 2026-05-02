@@ -51,6 +51,17 @@ class ConversationRoleCount:
 
 
 @dataclass(frozen=True)
+class ConversationDbChatStats:
+    """모니터링용: 특정 프로젝트+채팅의 SQLite 행 수 및 DB 파일 크기."""
+
+    db_path: Path
+    db_exists: bool
+    db_size_bytes: int
+    total_rows: int
+    rows_by_role: dict[str, int]
+
+
+@dataclass(frozen=True)
 class ConversationReport:
     project: str
     chat_id: int
@@ -84,6 +95,11 @@ class SQLiteConversationStore:
         self._db_path = db_path.resolve()
         self._lock = Lock()
         self.ensure_schema()
+
+    @property
+    def db_path(self) -> Path:
+        """대화 기억 SQLite 파일 경로."""
+        return self._db_path
 
     def ensure_schema(self) -> None:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -431,6 +447,46 @@ class SQLiteConversationStore:
             latest_job_id=str(latest_job_row[0]) if latest_job_row and latest_job_row[0] else None,
             latest_job_result=str(latest_job_row[1]) if latest_job_row is not None else None,
             recent_entries=[_row_to_entry(r) for r in recent_rows],
+        )
+
+    def get_chat_stats(self, project: str, chat_id: int) -> ConversationDbChatStats:
+        """프로젝트+채팅별 행 수와 DB 파일 크기를 반환합니다."""
+        db_exists = self._db_path.exists()
+        size_bytes = self._db_path.stat().st_size if db_exists else 0
+        rows_by_role: dict[str, int] = {}
+        total_rows = 0
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                total_rows = int(
+                    conn.execute(
+                        """
+                        SELECT COUNT(*)
+                        FROM conversation_entries
+                        WHERE project = ? AND chat_id = ?
+                        """,
+                        (project, chat_id),
+                    ).fetchone()[0]
+                )
+                for role, cnt in conn.execute(
+                    """
+                    SELECT role, COUNT(*)
+                    FROM conversation_entries
+                    WHERE project = ? AND chat_id = ?
+                    GROUP BY role
+                    ORDER BY role
+                    """,
+                    (project, chat_id),
+                ).fetchall():
+                    rows_by_role[str(role)] = int(cnt)
+            finally:
+                conn.close()
+        return ConversationDbChatStats(
+            db_path=self._db_path,
+            db_exists=db_exists,
+            db_size_bytes=size_bytes,
+            total_rows=total_rows,
+            rows_by_role=rows_by_role,
         )
 
 

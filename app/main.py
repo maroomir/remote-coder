@@ -17,6 +17,7 @@ from app.telegram.commands import (
     CommandRegistry,
     HelpCommand,
     ModelCommand,
+    MonitorCommand,
     ProjectCommand,
     ProjectsCommand,
     ReportsCommand,
@@ -65,6 +66,7 @@ command_registry = CommandRegistry(
         BranchesCommand(),
         BranchCommand(),
         RebaseCommand(),
+        MonitorCommand(),
         ClearCommand(),
     ]
 )

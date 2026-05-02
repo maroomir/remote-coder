@@ -83,6 +83,50 @@ def test_format_local_branches(mock_run, tmp_path: Path):
 
 
 @patch("app.git.service.subprocess.run")
+def test_count_local_branches(mock_run, tmp_path: Path):
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stdout = "main\nfeature\n"
+    mock_run.return_value.stderr = ""
+    service = GitWorktreeService(base_dir=tmp_path)
+    assert service.count_local_branches(tmp_path) == 2
+    assert mock_run.call_args[0][0][:3] == ["git", "branch", "--format=%(refname:short)"]
+
+
+@patch("app.git.service.subprocess.run")
+def test_count_remote_branches_for_remote(mock_run, tmp_path: Path):
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stdout = (
+        "  origin/HEAD -> origin/main\n"
+        "  origin/main\n"
+        "  origin/foo\n"
+    )
+    mock_run.return_value.stderr = ""
+    service = GitWorktreeService(base_dir=tmp_path)
+    assert service.count_remote_branches_for_remote(tmp_path, "origin") == 2
+
+
+@patch("app.git.service.subprocess.run")
+def test_list_worktree_entries(mock_run, tmp_path: Path):
+    sample = (
+        "worktree /repo\n"
+        "HEAD abc\n"
+        "branch refs/heads/main\n"
+        "\n"
+        "worktree /repo/wt\n"
+        "HEAD def\n"
+        "detached\n"
+    )
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stdout = sample
+    mock_run.return_value.stderr = ""
+    service = GitWorktreeService(base_dir=tmp_path)
+    entries = service.list_worktree_entries(tmp_path)
+    assert len(entries) == 2
+    assert entries[0][1] == "main"
+    assert entries[1][1] is None
+
+
+@patch("app.git.service.subprocess.run")
 def test_format_remote_branches_for_remote_filters_head(mock_run, tmp_path: Path):
     mock_run.return_value.returncode = 0
     mock_run.return_value.stdout = (
