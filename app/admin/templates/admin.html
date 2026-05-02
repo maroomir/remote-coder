@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Remote AI Coder - 설정</title>
+  <title>Remote AI Coder - 관리</title>
   <style>
     :root {
       --bg: #0f1419;
@@ -39,12 +39,8 @@
       padding: 1.25rem 1rem 2.5rem;
     }
 
-    .wrap {
-      max-width: 56rem;
-      margin: 0 auto;
-    }
+    .wrap { max-width: 56rem; margin: 0 auto; }
 
-    /* Header */
     .app-header {
       margin-bottom: 1.5rem;
       padding: 1.25rem 1.35rem;
@@ -81,7 +77,6 @@
       border-radius: 999px;
     }
 
-    /* Global message */
     #global-msg {
       margin-bottom: 1rem;
       padding: 0.65rem 1rem;
@@ -110,7 +105,6 @@
       border: 1px solid rgba(61, 156, 245, 0.25);
     }
 
-    /* Summary grid */
     .summary-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
@@ -148,7 +142,6 @@
       word-break: break-all;
     }
 
-    /* Sections */
     section.card {
       margin-bottom: 1.25rem;
       padding: 1.25rem 1.35rem;
@@ -205,59 +198,93 @@
       color: var(--accent);
     }
 
-    /* Table */
-    .table-wrap {
-      overflow-x: auto;
-      margin-top: 0.5rem;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--border);
+    .section-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
     }
 
-    table.data {
-      width: 100%;
-      border-collapse: collapse;
+    .section-head h2 {
+      margin: 0;
+    }
+
+    .link-manage {
       font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--accent);
+      text-decoration: none;
     }
 
-    table.data caption {
-      caption-side: top;
-      text-align: left;
-      padding: 0.65rem 0.85rem;
+    .link-manage:hover {
+      text-decoration: underline;
+    }
+
+    .active-proj-empty {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .active-proj-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .active-proj-item {
+      padding: 0.85rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .active-proj-item h3 {
+      margin: 0 0 0.45rem;
+      font-size: 0.98rem;
+      font-weight: 700;
+    }
+
+    .active-proj-item h3 code {
+      font-family: ui-monospace, monospace;
+      font-size: 0.95em;
+    }
+
+    .active-proj-dl {
+      display: grid;
+      gap: 0.45rem;
+      margin: 0;
       font-size: 0.82rem;
       color: var(--text-muted);
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
     }
 
-    table.data th,
-    table.data td {
-      padding: 0.65rem 0.75rem;
-      text-align: left;
-      vertical-align: top;
-      border-bottom: 1px solid var(--border);
+    .active-proj-dl > div {
+      margin: 0;
     }
 
-    table.data th {
+    .active-proj-dl dt {
+      margin: 0;
       font-weight: 600;
+      color: var(--text);
       font-size: 0.72rem;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
-      background: rgba(0, 0, 0, 0.2);
+      letter-spacing: 0.04em;
     }
 
-    table.data tbody tr:last-child td { border-bottom: none; }
-
-    table.data tbody tr:hover td {
-      background: rgba(61, 156, 245, 0.04);
+    .active-proj-dl dd {
+      margin: 0.15rem 0 0;
+      word-break: break-word;
     }
 
-    .path-cell {
-      max-width: 14rem;
+    .active-proj-dl .mono {
       font-family: ui-monospace, monospace;
       font-size: 0.78rem;
-      word-break: break-all;
-      color: var(--text-muted);
+      color: var(--accent);
     }
 
     .badge {
@@ -268,8 +295,8 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
       border-radius: 4px;
-      margin-right: 0.25rem;
-      margin-bottom: 0.15rem;
+      margin-left: 0.35rem;
+      vertical-align: middle;
     }
 
     .badge-default {
@@ -278,325 +305,103 @@
       border: 1px solid rgba(61, 156, 245, 0.35);
     }
 
-    .badge-on {
-      color: #9ee6b0;
-      background: var(--success-bg);
-      border: 1px solid rgba(52, 199, 89, 0.35);
-    }
-
-    .badge-off {
-      color: var(--text-muted);
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border);
-    }
-
-    .btn-row {
+    .header-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.4rem;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
     }
 
-    button {
-      font-family: inherit;
-      font-size: 0.82rem;
-      font-weight: 600;
-      padding: 0.45rem 0.75rem;
+    .header-icon-nav {
+      display: flex;
+      flex-shrink: 0;
+      gap: 0.35rem;
+      align-items: center;
+    }
+
+    .header-icon-link {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.5rem;
+      height: 2.5rem;
       border-radius: var(--radius-sm);
       border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      cursor: pointer;
-      transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+      background: rgba(0, 0, 0, 0.15);
+      transition: background 0.15s, border-color 0.15s;
     }
 
-    button:hover:not(:disabled) {
+    .header-icon-link:hover {
       background: #2d3d54;
       border-color: rgba(255, 255, 255, 0.12);
     }
 
-    button:focus-visible {
+    .header-icon-link:focus-visible {
       outline: none;
       box-shadow: var(--focus);
     }
 
-    button:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
-
-    button.btn-primary {
-      background: var(--accent);
-      border-color: transparent;
-      color: #0a1628;
-    }
-
-    button.btn-primary:hover:not(:disabled) {
-      background: #5aadf7;
-    }
-
-    button.btn-danger {
-      color: #ffb4b0;
-      background: var(--danger-bg);
-      border-color: rgba(255, 69, 58, 0.35);
-    }
-
-    button.btn-danger:hover:not(:disabled) {
-      background: rgba(255, 69, 58, 0.22);
-    }
-
-    button.btn-ghost {
-      background: transparent;
-    }
-
-    /* Form */
-    .form-mode {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 1rem;
-      padding: 0.45rem 0.75rem;
-      font-size: 0.82rem;
-      font-weight: 600;
-      border-radius: var(--radius-sm);
-      background: var(--surface);
-      border: 1px solid var(--border);
-    }
-
-    .form-mode.mode-add { color: var(--accent); }
-    .form-mode.mode-edit { color: var(--warning); }
-
-    label.field {
+    .header-icon-link img {
       display: block;
-      margin-top: 0.85rem;
-      font-weight: 600;
-      font-size: 0.78rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--text-muted);
-    }
-
-    label.field:first-of-type { margin-top: 0; }
-
-    .hint {
-      margin: 0.2rem 0 0;
-      font-size: 0.78rem;
-      font-weight: 400;
-      color: var(--text-muted);
-      text-transform: none;
-      letter-spacing: normal;
-    }
-
-    input, select {
-      width: 100%;
-      max-width: 100%;
-      margin-top: 0.35rem;
-      padding: 0.55rem 0.65rem;
-      font-family: inherit;
-      font-size: 0.95rem;
-      color: var(--text);
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-    }
-
-    input:focus, select:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-dim);
-    }
-
-    input:read-only {
-      opacity: 0.85;
-      cursor: default;
-    }
-
-    label.checkbox {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-top: 0.85rem;
-      font-weight: 600;
-      font-size: 0.9rem;
-      color: var(--text);
-      text-transform: none;
-      letter-spacing: normal;
-    }
-
-    label.checkbox input {
-      width: auto;
-      margin: 0;
-    }
-
-    .form-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-top: 1.1rem;
-    }
-
-    .empty-state {
-      padding: 1.5rem;
-      text-align: center;
-      color: var(--text-muted);
-      font-size: 0.9rem;
-    }
-
-    .view-panel { display: none; }
-    .view-panel.is-active { display: block; }
-
-    .header-actions {
-      margin-top: 0.85rem;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      align-items: center;
-    }
-
-    .lead.danger {
-      color: #ffb4b0;
-      border-left: 3px solid var(--danger);
-      padding-left: 0.75rem;
+      width: 1.35rem;
+      height: 1.35rem;
     }
 
     @media (max-width: 640px) {
       .app-header h1 { font-size: 1.25rem; }
-      .path-cell { max-width: none; }
     }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header class="app-header">
-      <h1>Remote AI Coder</h1>
-      <p class="tagline">로컬 프로젝트 등록 및 폴백 기본값 관리</p>
+      <div class="header-row">
+        <div>
+          <h1>Remote AI Coder</h1>
+          <p class="tagline">로컬 관리 UI</p>
+        </div>
+        <nav class="header-icon-nav" aria-label="빠른 이동">
+          <a href="/projects" class="header-icon-link" title="프로젝트 등록" aria-label="프로젝트 등록">
+            <img src="/admin-static/icons/projects.svg" width="22" height="22" alt="" />
+          </a>
+          <a href="/advanced" class="header-icon-link" title="고급 설정" aria-label="고급 설정">
+            <img src="/admin-static/icons/advanced.svg" width="22" height="22" alt="" />
+          </a>
+        </nav>
+      </div>
       <span class="localhost-pill" aria-hidden="true">로컬 전용</span>
       <p class="tagline" style="margin-top:0.65rem">이 페이지는 <strong>127.0.0.1</strong>에서만 열립니다.</p>
-      <div class="header-actions">
-        <button type="button" class="btn-ghost" id="btn-open-advanced">고급 설정</button>
-      </div>
     </header>
 
     <div id="global-msg" role="status" aria-live="polite"></div>
 
-    <div id="view-main" class="view-panel is-active">
     <div class="summary-grid" id="summary-grid" aria-label="요약"></div>
+
+    <section class="card" aria-labelledby="active-projects-heading">
+      <div class="section-head">
+        <h2 id="active-projects-heading">활성 프로젝트</h2>
+        <a href="/projects" class="link-manage">등록·편집</a>
+      </div>
+      <p class="lead">활성화된 프로젝트만 표시합니다. 추가·비활성·삭제는 프로젝트 등록 화면에서 할 수 있습니다.</p>
+      <div id="active-projects-view" aria-live="polite"></div>
+    </section>
 
     <section class="card" aria-labelledby="settings-heading">
       <h2 id="settings-heading">환경 요약</h2>
       <p class="lead">등록 파일 경로와 텔레그램 관련 설정(마스킹)입니다. Webhook은 스크립트로 등록합니다.</p>
       <dl class="settings-meta" id="settings-meta"></dl>
     </section>
-
-    <section class="card" aria-labelledby="projects-heading">
-      <h2 id="projects-heading">프로젝트 등록</h2>
-      <p class="lead">등록 기본값은 채팅에서 <code>/project</code> 미지정·자연어에 <code>project:</code> 생략 시 <strong>폴백</strong>으로 사용됩니다.</p>
-
-      <div class="table-wrap">
-        <table class="data" id="proj-table">
-          <thead>
-            <tr>
-              <th>이름</th>
-              <th>상태</th>
-              <th>Git 루트</th>
-              <th>워크트리</th>
-              <th>모델</th>
-              <th>동작</th>
-            </tr>
-          </thead>
-          <tbody id="proj-tbody"></tbody>
-        </table>
-      </div>
-
-      <h2 style="margin-top:1.5rem;font-size:1.05rem" id="form-heading">추가 / 수정</h2>
-      <div class="form-mode mode-add" id="form-mode-banner" aria-live="polite">새 프로젝트 추가</div>
-
-      <form id="proj-form">
-        <label class="field" for="f-name">
-          이름
-          <span class="hint">영문·숫자로 시작, <code>.</code> <code>_</code> <code>-</code> 허용</span>
-        </label>
-        <input id="f-name" name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*" autocomplete="off" />
-
-        <label class="field" for="f-root">Git 루트 경로</label>
-        <p class="hint" style="margin:0.35rem 0 0">절대 경로. 디렉터리가 존재해야 저장됩니다.</p>
-        <input id="f-root" name="root_path" required autocomplete="off" />
-
-        <label class="field" for="f-wt">워크트리 베이스 디렉터리</label>
-        <p class="hint" style="margin:0.35rem 0 0">없으면 생성됩니다.</p>
-        <input id="f-wt" name="worktree_base_dir" required autocomplete="off" />
-
-        <label class="field" for="f-model">기본 모델</label>
-        <select id="f-model" name="default_model">
-          <option value="claude">claude</option>
-          <option value="codex">codex</option>
-        </select>
-
-        <label class="checkbox"><input type="checkbox" name="enabled" checked /> 활성</label>
-
-        <div class="form-actions">
-          <button type="submit" class="btn-primary" id="btn-submit">추가</button>
-          <button type="button" class="btn-ghost" id="btn-clear">폼 비우기</button>
-        </div>
-      </form>
-    </section>
-    </div>
-
-    <div id="view-advanced" class="view-panel" aria-hidden="true">
-      <section class="card" aria-labelledby="advanced-heading">
-        <h2 id="advanced-heading">고급 설정</h2>
-        <p class="lead danger">
-          아래 옵션은 저장소와 대화 기억 SQLite에 넓게 영향을 줄 수 있습니다. 필요할 때만 켜고, 의미를 이해한 뒤 사용하세요.
-        </p>
-        <div class="form-actions" style="margin-top:0">
-          <button type="button" class="btn-ghost" id="btn-back-main">← 기본 화면</button>
-        </div>
-
-        <form id="adv-form" style="margin-top:1rem">
-          <label class="checkbox">
-            <input type="checkbox" id="adv-merge-main" name="auto_merge_to_main_enabled" />
-            요청 결과를 즉시 <code>main</code>/<code>master</code>에 반영한 뒤 원격에 push
-          </label>
-          <p class="hint" style="margin:0.35rem 0 0 1.75rem">
-            끄면 기존과 같이 작업 전용 브랜치에 커밋·push만 합니다. 켜면 Job 성공 후 <code>/rebase</code>와 유사한 통합(rebase → main fast-forward merge → push)을 자동 수행합니다.
-          </p>
-
-          <label class="checkbox" style="margin-top:1.1rem">
-            <input type="checkbox" id="adv-memory-enabled" name="conversation_memory_limit_enabled" />
-            SQLite 대화 기억 저장량 제한
-          </label>
-          <p class="hint" style="margin:0.35rem 0 0 1.75rem">
-            켜면 <strong>전역</strong>으로 오래된 <code>conversation_entries</code> 행부터 삭제합니다. 행 수·DB 파일 크기 중 하나 이상을 양수로 지정해야 합니다.
-          </p>
-
-          <label class="field" for="adv-max-rows">최대 행 수 (비우면 미사용)</label>
-          <input type="number" id="adv-max-rows" name="conversation_memory_max_rows" min="1" step="1" placeholder="예: 5000" autocomplete="off" />
-
-          <label class="field" for="adv-max-bytes">최대 DB 용량 (bytes, 비우면 미사용)</label>
-          <input type="number" id="adv-max-bytes" name="conversation_memory_max_bytes" min="1" step="1" placeholder="예: 10485760" autocomplete="off" />
-
-          <div class="form-actions">
-            <button type="submit" class="btn-primary" id="btn-adv-save">저장</button>
-            <button type="button" class="btn-ghost" id="btn-adv-reload">다시 불러오기</button>
-          </div>
-        </form>
-      </section>
-    </div>
   </div>
 
   <script>
     const $ = (s) => document.querySelector(s);
     const globalMsg = $("#global-msg");
-    let lastProjects = [];
-    let lastDefault = "";
-    let busy = false;
 
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, (c) => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       }[c]));
-    }
-    function escapeAttr(s) {
-      return String(s).replace(/'/g, "&#39;");
     }
 
     function setGlobalMsg(kind, text) {
@@ -624,92 +429,50 @@
       return rawText || "요청 실패 (" + r.status + ")";
     }
 
-    const viewMain = $("#view-main");
-    const viewAdvanced = $("#view-advanced");
-
-    function parseOptionalPositiveInt(raw) {
-      const s = String(raw ?? "").trim();
-      if (!s) return null;
-      const n = Number(s);
-      if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return null;
-      return n;
-    }
-
-    function syncAdvMemoryInputs() {
-      const on = $("#adv-memory-enabled").checked;
-      $("#adv-max-rows").disabled = !on;
-      $("#adv-max-bytes").disabled = !on;
-    }
-
-    function showView(name) {
-      if (name === "advanced") {
-        viewMain.classList.remove("is-active");
-        viewAdvanced.classList.add("is-active");
-        viewAdvanced.setAttribute("aria-hidden", "false");
-        viewMain.setAttribute("aria-hidden", "true");
-      } else {
-        viewAdvanced.classList.remove("is-active");
-        viewMain.classList.add("is-active");
-        viewMain.setAttribute("aria-hidden", "false");
-        viewAdvanced.setAttribute("aria-hidden", "true");
-      }
-    }
-
-    async function loadAdvancedSettings() {
-      const r = await fetch("/api/advanced-settings");
-      const t = await r.text();
-      if (!r.ok) {
-        setGlobalMsg("err", await parseApiError(r, t));
-        return;
-      }
-      const d = JSON.parse(t);
-      $("#adv-merge-main").checked = !!d.auto_merge_to_main_enabled;
-      $("#adv-memory-enabled").checked = !!d.conversation_memory_limit_enabled;
-      $("#adv-max-rows").value =
-        d.conversation_memory_max_rows != null ? String(d.conversation_memory_max_rows) : "";
-      $("#adv-max-bytes").value =
-        d.conversation_memory_max_bytes != null ? String(d.conversation_memory_max_bytes) : "";
-      syncAdvMemoryInputs();
-    }
-
-    function setBusy(v) {
-      busy = v;
-      document.querySelectorAll(
-        "#proj-form button, #proj-table button, #adv-form button, #btn-open-advanced, #btn-back-main"
-      ).forEach((b) => {
-        b.disabled = v;
-      });
-      if (!v) {
-        document.querySelectorAll('#proj-table button[data-a="default"]').forEach((b) => {
-          if (b.dataset.n === lastDefault) b.disabled = true;
-        });
-      }
-    }
-
-    function updateFormModeBanner() {
-      const f = $("#proj-form");
-      const banner = $("#form-mode-banner");
-      const editing = f.name.readOnly;
-      banner.className = "form-mode " + (editing ? "mode-edit" : "mode-add");
-      banner.textContent = editing ? "편집 중: " + f.name.value : "새 프로젝트 추가";
-    }
-
     function renderSummary(settings, projectsPayload) {
       const grid = $("#summary-grid");
-      const list = projectsPayload.projects || [];
-      const enabled = list.filter((p) => p.enabled).length;
       const defName = projectsPayload.default_project || "(없음)";
       const envModel = settings.default_model_env || "—";
       const tokenOk = settings.telegram_bot_token_masked && settings.telegram_bot_token_masked !== "(설정 안 됨)";
 
       grid.innerHTML = `
-        <div class="stat-card"><p class="label">등록 프로젝트</p><p class="value">${list.length}</p></div>
-        <div class="stat-card"><p class="label">활성</p><p class="value">${enabled}</p></div>
         <div class="stat-card"><p class="label">폴백 기본</p><p class="value" style="font-size:1rem">${escapeHtml(defName)}</p></div>
         <div class="stat-card"><p class="label">환경 기본 모델</p><p class="value" style="font-size:1rem">${escapeHtml(envModel)}</p></div>
         <div class="stat-card"><p class="label">봇 토큰</p><p class="value" style="font-size:0.95rem">${tokenOk ? "설정됨" : "미설정"}</p>
           <p class="sub">${escapeHtml(settings.telegram_bot_token_masked || "")}</p></div>
       `;
+    }
+
+    function renderActiveProjects(projectsPayload) {
+      const container = $("#active-projects-view");
+      const defaultName = projectsPayload.default_project || "";
+      const active = (projectsPayload.projects || [])
+        .filter((p) => p.enabled)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
+
+      if (!active.length) {
+        container.innerHTML =
+          '<p class="active-proj-empty">활성화된 프로젝트가 없습니다. ' +
+          '<a href="/projects" class="link-manage">프로젝트 등록</a>에서 추가·활성화할 수 있습니다.</p>';
+        return;
+      }
+
+      const items = active
+        .map((p) => {
+          const isDef = p.name === defaultName;
+          const badge = isDef ? '<span class="badge badge-default">폴백 기본</span>' : "";
+          return `<li class="active-proj-item">
+          <h3><code>${escapeHtml(p.name)}</code>${badge}</h3>
+          <dl class="active-proj-dl">
+            <div><dt>루트</dt><dd class="mono">${escapeHtml(String(p.root_path))}</dd></div>
+            <div><dt>워크트리</dt><dd class="mono">${escapeHtml(String(p.worktree_base_dir))}</dd></div>
+            <div><dt>기본 모델</dt><dd>${escapeHtml(String(p.default_model))}</dd></div>
+          </dl>
+        </li>`;
+        })
+        .join("");
+
+      container.innerHTML = `<ul class="active-proj-list">${items}</ul>`;
     }
 
     function renderSettings(settings) {
@@ -726,31 +489,8 @@
       `;
     }
 
-    function row(p, defaultName) {
-      const tr = document.createElement("tr");
-      const isDefault = p.name === defaultName;
-      const badges =
-        (isDefault ? '<span class="badge badge-default">기본</span>' : "") +
-        (p.enabled ? '<span class="badge badge-on">활성</span>' : '<span class="badge badge-off">비활성</span>');
-      tr.innerHTML = `
-        <td><code>${escapeHtml(p.name)}</code></td>
-        <td>${badges}</td>
-        <td class="path-cell">${escapeHtml(String(p.root_path))}</td>
-        <td class="path-cell">${escapeHtml(String(p.worktree_base_dir))}</td>
-        <td>${escapeHtml(p.default_model)}</td>
-        <td>
-          <div class="btn-row">
-            <button type="button" class="btn-primary" data-a="default" data-n="${escapeAttr(p.name)}" ${isDefault ? "disabled" : ""}>기본으로</button>
-            <button type="button" data-a="edit" data-n="${escapeAttr(p.name)}">편집</button>
-            <button type="button" class="btn-danger" data-a="del" data-n="${escapeAttr(p.name)}">삭제</button>
-          </div>
-        </td>`;
-      return tr;
-    }
-
-    async function loadAll() {
+    async function loadHub() {
       setGlobalMsg("", "");
-      setBusy(true);
       try {
         const [rs, rp] = await Promise.all([fetch("/api/settings"), fetch("/api/projects")]);
         const settingsText = await rs.text();
@@ -765,194 +505,15 @@
         }
         const settings = JSON.parse(settingsText);
         const d = JSON.parse(projectsText);
-        lastProjects = d.projects || [];
-        lastDefault = d.default_project || "";
         renderSettings(settings);
         renderSummary(settings, d);
-
-        const tb = $("#proj-tbody");
-        tb.innerHTML = "";
-        const cap = document.createElement("caption");
-        cap.textContent = "등록 폴백 기본값: " + (lastDefault || "(없음)");
-        const tbl = $("#proj-table");
-        const oldCap = tbl.querySelector("caption");
-        if (oldCap) oldCap.remove();
-        tbl.prepend(cap);
-
-        if (!lastProjects.length) {
-          const tr = document.createElement("tr");
-          tr.innerHTML = '<td colspan="6" class="empty-state">등록된 프로젝트가 없습니다. 아래 폼에서 추가하세요.</td>';
-          tb.appendChild(tr);
-        } else {
-          lastProjects.forEach((p) => tb.appendChild(row(p, lastDefault)));
-        }
-      } finally {
-        setBusy(false);
-        updateFormModeBanner();
+        renderActiveProjects(d);
+      } catch (e) {
+        setGlobalMsg("err", String(e));
       }
     }
 
-    $("#proj-table").addEventListener("click", async (e) => {
-      const b = e.target.closest("button[data-a]");
-      if (!b || busy) return;
-      const a = b.dataset.a;
-      const n = b.dataset.n;
-      if (a === "default") {
-        setGlobalMsg("", "");
-        setBusy(true);
-        try {
-          const r = await fetch("/api/projects/default", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: n }),
-          });
-          const t = await r.text();
-          if (!r.ok) {
-            setGlobalMsg("err", await parseApiError(r, t));
-            return;
-          }
-          setGlobalMsg("ok", "기본 프로젝트를 \"" + n + "\"(으)로 설정했습니다.");
-          await loadAll();
-        } finally {
-          setBusy(false);
-        }
-      }
-      if (a === "del") {
-        if (!confirm("프로젝트 \"" + n + "\"을(를) 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) return;
-        setBusy(true);
-        try {
-          const r = await fetch("/api/projects/" + encodeURIComponent(n), { method: "DELETE" });
-          const t = await r.text();
-          if (!r.ok) {
-            setGlobalMsg("err", await parseApiError(r, t));
-            return;
-          }
-          setGlobalMsg("ok", "삭제했습니다.");
-          await loadAll();
-        } finally {
-          setBusy(false);
-        }
-      }
-      if (a === "edit") {
-        const p = lastProjects.find((x) => x.name === n);
-        if (!p) return;
-        const f = $("#proj-form");
-        f.name.value = p.name;
-        f.root_path.value = p.root_path;
-        f.worktree_base_dir.value = p.worktree_base_dir;
-        f.default_model.value = p.default_model;
-        f.enabled.checked = !!p.enabled;
-        f.name.readOnly = true;
-        $("#btn-submit").textContent = "저장 (PUT)";
-        setGlobalMsg("info", "이름은 변경할 수 없습니다. 다른 필드를 수정한 뒤 저장하세요.");
-        updateFormModeBanner();
-        f.name.focus();
-      }
-    });
-
-    $("#btn-clear").addEventListener("click", () => {
-      $("#proj-form").reset();
-      $("#proj-form").name.readOnly = false;
-      $("#btn-submit").textContent = "추가";
-      setGlobalMsg("", "");
-      updateFormModeBanner();
-    });
-
-    $("#proj-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      if (busy) return;
-      setGlobalMsg("", "");
-      const f = e.target;
-      const body = {
-        name: f.name.value.trim(),
-        root_path: f.root_path.value.trim(),
-        worktree_base_dir: f.worktree_base_dir.value.trim(),
-        default_model: f.default_model.value,
-        enabled: f.enabled.checked,
-      };
-      const editing = f.name.readOnly;
-      const url = editing ? "/api/projects/" + encodeURIComponent(body.name) : "/api/projects";
-      const method = editing ? "PUT" : "POST";
-      setBusy(true);
-      try {
-        const r = await fetch(url, {
-          method,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const t = await r.text();
-        if (!r.ok) {
-          setGlobalMsg("err", await parseApiError(r, t));
-          return;
-        }
-        f.name.readOnly = false;
-        $("#btn-submit").textContent = "추가";
-        f.reset();
-        setGlobalMsg("ok", editing ? "수정했습니다." : "추가했습니다.");
-        await loadAll();
-      } finally {
-        setBusy(false);
-      }
-    });
-
-    $("#btn-open-advanced").addEventListener("click", async () => {
-      showView("advanced");
-      setGlobalMsg("", "");
-      setBusy(true);
-      try {
-        await loadAdvancedSettings();
-      } finally {
-        setBusy(false);
-      }
-    });
-
-    $("#btn-back-main").addEventListener("click", () => {
-      showView("main");
-      setGlobalMsg("", "");
-    });
-
-    $("#adv-memory-enabled").addEventListener("change", syncAdvMemoryInputs);
-
-    $("#btn-adv-reload").addEventListener("click", async () => {
-      if (busy) return;
-      setBusy(true);
-      try {
-        await loadAdvancedSettings();
-        setGlobalMsg("ok", "서버에서 고급 설정을 불러왔습니다.");
-      } finally {
-        setBusy(false);
-      }
-    });
-
-    $("#adv-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      if (busy) return;
-      const body = {
-        auto_merge_to_main_enabled: $("#adv-merge-main").checked,
-        conversation_memory_limit_enabled: $("#adv-memory-enabled").checked,
-        conversation_memory_max_rows: parseOptionalPositiveInt($("#adv-max-rows").value),
-        conversation_memory_max_bytes: parseOptionalPositiveInt($("#adv-max-bytes").value),
-      };
-      setGlobalMsg("", "");
-      setBusy(true);
-      try {
-        const r = await fetch("/api/advanced-settings", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const t = await r.text();
-        if (!r.ok) {
-          setGlobalMsg("err", await parseApiError(r, t));
-          return;
-        }
-        setGlobalMsg("ok", "고급 설정을 저장했습니다.");
-      } finally {
-        setBusy(false);
-      }
-    });
-
-    loadAll();
+    loadHub();
   </script>
 </body>
 </html>

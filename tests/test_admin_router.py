@@ -13,6 +13,51 @@ def test_admin_root_returns_html(test_settings, project_registry, advanced_setti
     response = client.get("/")
     assert response.status_code == 200
     assert "Remote AI Coder" in response.text
+    assert 'href="/projects"' in response.text
+    assert 'href="/advanced"' in response.text
+    assert "프로젝트 등록" in response.text
+    assert "고급 설정" in response.text
+    assert 'id="proj-form"' not in response.text
+    assert 'id="adv-form"' not in response.text
+    assert 'id="active-projects-view"' in response.text
+    assert "활성 프로젝트" in response.text
+
+
+def test_admin_projects_page_returns_html(test_settings, project_registry, advanced_settings_store):
+    app = FastAPI()
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    client = TestClient(app)
+    response = client.get("/projects")
+    assert response.status_code == 200
+    assert "프로젝트 등록" in response.text
+    assert 'id="proj-form"' in response.text
+    assert 'href="/"' in response.text
+    assert 'href="/advanced"' in response.text
+
+
+def test_admin_advanced_page_returns_html(test_settings, project_registry, advanced_settings_store):
+    app = FastAPI()
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    client = TestClient(app)
+    response = client.get("/advanced")
+    assert response.status_code == 200
+    assert "고급 설정" in response.text
+    assert 'id="adv-form"' in response.text
+    assert 'href="/"' in response.text
+    assert 'href="/projects"' in response.text
+
+
+def test_admin_icon_svg_served_for_localhost(test_settings, project_registry, advanced_settings_store):
+    app = FastAPI()
+    app.include_router(create_admin_router(test_settings, project_registry, advanced_settings_store))
+    client = TestClient(app)
+    r = client.get("/admin-static/icons/projects.svg")
+    assert r.status_code == 200
+    assert "image/svg+xml" in (r.headers.get("content-type") or "")
+    assert b"<svg" in r.content
+
+    bad = client.get("/admin-static/icons/other.svg")
+    assert bad.status_code == 404
 
 
 def test_admin_api_settings_masks_short_token(test_settings, project_registry, advanced_settings_store):

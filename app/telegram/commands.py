@@ -207,7 +207,7 @@ class ProjectCommand(TelegramCommand):
             if not eff:
                 return (
                     "등록된 프로젝트가 없습니다. "
-                    "브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요."
+                    "브라우저에서 http://127.0.0.1:8000/projects 로 프로젝트를 등록하세요."
                 )
             return f"현재 작업 프로젝트: {eff}"
         if len(tokens) == 2:
@@ -242,7 +242,7 @@ class InitCommand(TelegramCommand):
             return (
                 "이 채팅의 작업 프로젝트·기본 모델·확인 대기 상태를 초기화했습니다.\n"
                 "등록된 프로젝트가 없습니다. "
-                "브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요."
+                "브라우저에서 http://127.0.0.1:8000/projects 로 프로젝트를 등록하세요."
             )
 
         entry = ctx.project_registry.get(default_name)
@@ -294,7 +294,7 @@ class ReportsCommand(TelegramCommand):
         if not project_name:
             return (
                 "등록된 프로젝트가 없습니다. "
-                "브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요."
+                "브라우저에서 http://127.0.0.1:8000/projects 로 프로젝트를 등록하세요."
             )
 
         entry = ctx.project_registry.get(project_name)
@@ -440,7 +440,7 @@ class MonitorCommand(TelegramCommand):
         if not project_name:
             return (
                 "등록된 프로젝트가 없습니다. "
-                "브라우저에서 http://127.0.0.1:8000/ 로 프로젝트를 등록하세요."
+                "브라우저에서 http://127.0.0.1:8000/projects 로 프로젝트를 등록하세요."
             )
 
         entry = ctx.project_registry.get(project_name)

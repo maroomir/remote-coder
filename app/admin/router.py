@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsStore
@@ -50,9 +50,12 @@ class DefaultProjectBody(BaseModel):
     name: str = Field(min_length=1)
 
 
-@lru_cache
-def _load_admin_html() -> str:
-    template_path = Path(__file__).parent / "templates" / "admin.html"
+_ADMIN_ICON_NAMES = frozenset({"home.svg", "projects.svg", "advanced.svg"})
+
+
+@lru_cache(maxsize=8)
+def _load_template_html(template_name: str) -> str:
+    template_path = Path(__file__).parent / "templates" / template_name
     return template_path.read_text(encoding="utf-8")
 
 
@@ -64,8 +67,16 @@ def create_admin_router(
     router = APIRouter(tags=["admin"])
 
     @router.get("/", response_class=HTMLResponse)
-    def admin_index(_: LocalhostOnly) -> str:
-        return _load_admin_html()
+    def admin_hub(_: LocalhostOnly) -> str:
+        return _load_template_html("admin.html")
+
+    @router.get("/projects", response_class=HTMLResponse)
+    def admin_projects(_: LocalhostOnly) -> str:
+        return _load_template_html("projects.html")
+
+    @router.get("/advanced", response_class=HTMLResponse)
+    def admin_advanced(_: LocalhostOnly) -> str:
+        return _load_template_html("advanced.html")
 
     @router.get("/api/settings")
     def api_settings(_: LocalhostOnly) -> dict:
@@ -138,5 +149,14 @@ def create_admin_router(
     @router.put("/api/advanced-settings")
     def api_advanced_settings_put(body: AdvancedSettings, _: LocalhostOnly) -> dict:
         return advanced_settings_store.save(body).model_dump(mode="json")
+
+    @router.get("/admin-static/icons/{filename}")
+    def admin_icon(filename: str, _: LocalhostOnly) -> FileResponse:
+        if filename not in _ADMIN_ICON_NAMES:
+            raise HTTPException(status_code=404, detail="not found")
+        path = Path(__file__).parent / "static" / "icons" / filename
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(path, media_type="image/svg+xml")
 
     return router

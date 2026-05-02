@@ -32,15 +32,16 @@ cp .env.example .env
 
 서버를 띄운 뒤 **같은 머신**에서 브라우저로 접속합니다.
 
-- URL: `http://127.0.0.1:8000/`
-- 등록된 프로젝트 목록, 추가·수정·삭제, 미선택 시 폴백으로 쓰일 등록 기본값 지정
+- 관리 허브: `http://127.0.0.1:8000/` (요약·다른 페이지로 이동)
+- 프로젝트 등록: `http://127.0.0.1:8000/projects` (목록, 추가·수정·삭제, 폴백 기본값 지정)
+- 고급 설정: `http://127.0.0.1:8000/advanced`
 - 자연어 요청에서 `project: 프로젝트이름` 으로 대상을 바꿀 수 있습니다. 생략 시에는 이 채팅에서 `/project`로 선택한 작업 프로젝트가 있으면 그것을, 없으면 등록 파일에 저장된 기본값(폴백)이 사용됩니다.
 - `PROJECTS_CONFIG_PATH`가 없으면 기본 경로 `PROJECT_ROOT/.remote-coder/projects.json`을 사용합니다.
 - 레지스트리 파일이 없으면 `.env`의 초기 시드 값(`DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`)으로 자동 생성됩니다.
 
 ### 고급 설정 (위험 옵션)
 
-기본 화면에서 **고급 설정**으로 들어가면, 전역 설정 파일 `PROJECT_ROOT/.remote-coder/advanced_settings.json`을 읽고 저장할 수 있습니다. 기본값은 모두 꺼져 있으며, 켜지 않으면 기존 동작과 동일합니다.
+관리 UI의 **고급 설정** 페이지(`http://127.0.0.1:8000/advanced`)에서 전역 설정 파일 `PROJECT_ROOT/.remote-coder/advanced_settings.json`을 읽고 저장할 수 있습니다. 기본값은 모두 꺼져 있으며, 켜지 않으면 기존 동작과 동일합니다.
 
 - **요청 결과를 즉시 main/master에 반영 후 push**: Job이 변경을 커밋·브랜치 push까지 성공하면, `/rebase`와 유사하게 해당 브랜치를 통합 브랜치(`main` 또는 `master`)에 fast-forward 병합한 뒤 원격에 push합니다. 충돌·non-ff 등으로 통합에 실패하면 Job은 실패로 기록됩니다.
 - **SQLite 대화 기억 저장량 제한**: 켜면 `conversation_entries` 테이블 전체를 대상으로, 오래된 행부터 삭제합니다. **최대 행 수**와 **최대 DB 용량(bytes)** 중 하나 이상을 양수로 지정해야 하며, 둘 다 지정하면 행 수 제한을 먼저 맞춘 뒤 용량 제한을 맞추기 위해 삭제·`VACUUM`을 반복합니다. `message_branch_links`는 고아 링크를 정리합니다.
