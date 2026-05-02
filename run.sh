@@ -11,14 +11,11 @@ echo "✅ Conda 환경(remote-coder) 활성화 완료"
 
 # 2. ngrok AuthToken 확인
 if ! ngrok config check 2>&1 | grep -q "Valid configuration"; then
-    # Some older ngrok versions might not support `config check` or output differently.
-    # We'll just do a soft check, if it explicitly says "no authtoken", we abort.
-    if ngrok config check 2>&1 | grep -i -q "no authtoken"; then
-        echo "❌ ngrok AuthToken이 설정되어 있지 않습니다."
-        echo "💡 https://dashboard.ngrok.com 에서 회원가입 후 AuthToken을 발급받으세요."
-        echo "💡 실행 명령어: ngrok config add-authtoken <your-token>"
-        exit 1
-    fi
+    # ngrok 설정 파일이 아예 없거나 authtoken이 없는 경우 중단합니다.
+    echo "❌ ngrok 설정이 유효하지 않거나 AuthToken이 없습니다."
+    echo "💡 https://dashboard.ngrok.com 에서 회원가입 후 AuthToken을 발급받으세요."
+    echo "💡 실행 명령어: ngrok config add-authtoken <your-token>"
+    exit 1
 fi
 
 # 3. 기존 ngrok 종료 (충돌 방지)
@@ -48,7 +45,7 @@ try:
     sys.exit(1)
 except Exception as e:
     sys.exit(1)
-")
+" || true)
 
 if [ -z "$PUBLIC_URL" ]; then
     echo "❌ ngrok URL을 가져오지 못했습니다. ngrok이 제대로 실행되었는지 확인해주세요."
