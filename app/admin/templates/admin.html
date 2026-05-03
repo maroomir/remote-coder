@@ -342,6 +342,11 @@
       box-shadow: var(--focus);
     }
 
+    .header-icon-link.is-current {
+      border-color: rgba(61, 156, 245, 0.45);
+      background: var(--accent-dim);
+    }
+
     .header-icon-link img {
       display: block;
       width: 1.35rem;
@@ -362,6 +367,9 @@
           <p class="tagline">로컬 관리 UI</p>
         </div>
         <nav class="header-icon-nav" aria-label="빠른 이동">
+          <a href="/" class="header-icon-link is-current" title="관리 홈" aria-label="관리 홈">
+            <img src="/admin-static/icons/home.svg" width="22" height="22" alt="" />
+          </a>
           <a href="/projects" class="header-icon-link" title="프로젝트 등록" aria-label="프로젝트 등록">
             <img src="/admin-static/icons/projects.svg" width="22" height="22" alt="" />
           </a>

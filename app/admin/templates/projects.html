@@ -114,6 +114,11 @@
       box-shadow: var(--focus);
     }
 
+    .header-icon-link.is-current {
+      border-color: rgba(61, 156, 245, 0.45);
+      background: var(--accent-dim);
+    }
+
     .header-icon-link img {
       display: block;
       width: 1.35rem;
@@ -465,6 +470,9 @@
         <nav class="header-icon-nav" aria-label="페이지 이동">
           <a href="/" class="header-icon-link" title="관리 홈" aria-label="관리 홈">
             <img src="/admin-static/icons/home.svg" width="22" height="22" alt="" />
+          </a>
+          <a href="/projects" class="header-icon-link is-current" title="프로젝트 등록" aria-label="프로젝트 등록">
+            <img src="/admin-static/icons/projects.svg" width="22" height="22" alt="" />
           </a>
           <a href="/advanced" class="header-icon-link" title="고급 설정" aria-label="고급 설정">
             <img src="/admin-static/icons/advanced.svg" width="22" height="22" alt="" />
