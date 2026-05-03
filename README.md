@@ -2,6 +2,27 @@
 
 텔레그램 메시지를 통해 로컬 개발 머신에서 AI 코딩 작업을 실행하고 Git 브랜치/커밋 결과를 알림으로 받는 MVP 프로젝트입니다.
 
+> [!WARNING]
+> 이 프로젝트는 Telegram 메시지를 통해 로컬 머신의 AI CLI와 Git 작업을 실행합니다. 공개 인터넷에 서버나 관리 UI를 직접 노출하지 말고, 반드시 Telegram allowlist와 webhook secret을 설정한 뒤 개인·신뢰 환경에서만 사용하세요.
+
+## 공개/보안 안내
+
+- `TELEGRAM_BOT_TOKEN`, Chat/User ID, webhook secret, AI API key, 개인 경로는 코드나 문서에 커밋하지 마세요.
+- `.env`, `.remote-coder/`, worktree, 로그, SQLite 대화 기억 파일은 로컬 전용 데이터입니다. 이 저장소의 `.gitignore`는 기본적으로 이 파일들을 제외합니다.
+- 관리 UI(`/`, `/projects`, `/advanced`, `/logs`, `/database`)는 localhost 전용으로 설계되어 있습니다. reverse proxy, ngrok, 포트포워딩 등으로 외부에 공개하지 마세요.
+- Claude `--dangerously-skip-permissions`, Gemini `--approval-mode yolo`, Codex `danger-full-access` 같은 옵션은 로컬 파일을 수정할 수 있으므로 허용 프로젝트와 신뢰 사용자 범위를 제한한 뒤 사용하세요.
+- 대화 기억 SQLite에는 사용자의 Telegram 요청과 Job 요약이 저장될 수 있습니다. 민감한 코드를 메시지에 붙여넣지 말고, 필요 시 `/clear memory` 또는 관리 UI 고급 설정으로 정리하세요.
+
+취약점 제보와 공개 전 점검 절차는 [`SECURITY.md`](SECURITY.md)를 참고하세요.
+
+## 사전 준비
+
+- Python 3.11 이상 또는 Conda
+- Telegram Bot Token과 허용할 Chat ID/User ID
+- HTTPS 터널 도구(개발용 예: ngrok)
+- Claude Code CLI, Codex CLI, Gemini CLI 중 사용할 도구 1개 이상
+- 대상 Git 프로젝트와 worktree를 둘 로컬 디렉터리
+
 ## 1) 환경 준비 (Conda)
 
 ```bash
@@ -61,6 +82,9 @@ cp .env.example .env
 ### 고급 설정 (위험 옵션)
 
 관리 UI의 **고급 설정** 페이지(`http://127.0.0.1:8000/advanced`)에서 전역 설정 파일 `PROJECT_ROOT/.remote-coder/advanced_settings.json`을 읽고 저장할 수 있습니다. 기본값은 모두 꺼져 있으며, 켜지 않으면 기존 동작과 동일합니다.
+
+> [!WARNING]
+> “요청 결과를 즉시 main/master에 반영 후 push” 옵션은 AI가 만든 변경을 통합 브랜치에 자동 반영합니다. 개인 실험용 저장소가 아니라면 기본값(off)을 유지하고, 사용 전 원격 브랜치 보호와 백업 정책을 확인하세요.
 
 - **요청 결과를 즉시 main/master에 반영 후 push**: Job이 변경을 커밋·브랜치 push까지 성공하면, `/rebase`와 유사하게 해당 브랜치를 통합 브랜치(`main` 또는 `master`)에 fast-forward 병합한 뒤 원격에 push합니다. 충돌·non-ff 등으로 통합에 실패하면 Job은 실패로 기록됩니다.
 - **SQLite 대화 기억 저장량 제한**: 켜면 `conversation_entries` 테이블 전체를 대상으로, 오래된 행부터 삭제합니다. **최대 행 수**와 **최대 DB 용량(bytes)** 중 하나 이상을 양수로 지정해야 하며, 둘 다 지정하면 행 수 제한을 먼저 맞춘 뒤 용량 제한을 맞추기 위해 삭제·`VACUUM`을 반복합니다. `message_branch_links`는 고아 링크를 정리합니다.
@@ -158,5 +182,12 @@ ngrok version
 
 ```bash
 conda activate remote-coder
-pytest -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q -p pytest_asyncio.plugin -p respx.fixtures
 ```
+
+## 7) 공개 저장소 관리
+
+- 라이선스: [Apache License 2.0](LICENSE)
+- 기여 방법: [CONTRIBUTING.md](CONTRIBUTING.md)
+- 보안 정책: [SECURITY.md](SECURITY.md)
+- Pull Request 전에는 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 conda run -n remote-coder pytest -q -p pytest_asyncio.plugin -p respx.fixtures`를 실행해 주세요.
