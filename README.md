@@ -114,7 +114,7 @@ ngrok version
 - `/clear branch` : 등록된 enabled 프로젝트마다 `remote-*` 로컬·원격 브랜치와 연결된 linked worktree 정리
 - `/clear worktrees` : 등록된 enabled 프로젝트마다 관리 대상 worktree(`WORKTREE_BASE_DIR` 하위 및 `remote-*` checkout linked worktree) 정리 + stale entry prune
 - `/clear memory` : 대화 기억 SQLite 데이터베이스 초기화
-- `/monitor model` : 현재 채팅 기본 모델 기준 Claude(`claude auth status`) / Codex(`codex --version`) / Gemini(`gemini --version`) 등 CLI Probe — 플랜·크레딧 남은량은 공급자 대시보드·안내 문구 참고
+- `/monitor model` : 현재 채팅 기본 모델 기준 Claude(`claude auth status`) / Codex(`codex --version`) / Gemini(`gemini --version`) 등 CLI Probe + 최근 Job 로그에서 관측된 세부 모델명·토큰 사용량 요약 — 플랜·크레딧 남은량은 공급자 대시보드·안내 문구 참고
 - `/monitor memory` : 이 채팅·현재 **적용 프로젝트** 기준 SQLite 대화 기억 행 수·역할별 행 수·DB 파일 크기
 - `/monitor branch` : 적용 프로젝트 저장소의 브랜치 요약(로컬/원격 개수 및 목록)
 - `/monitor worktrees` : linked worktree 목록·detached 개수·Remote Coder managed 후보 요약

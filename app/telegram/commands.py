@@ -90,7 +90,7 @@ HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
     (
         "모니터링",
         [
-            CommandHelpEntry("/monitor model", "현재 모델·CLI 인증/버전 등 조회(토큰 한도는 환경별 안내)."),
+            CommandHelpEntry("/monitor model", "현재 모델·CLI 인증/버전·최근 Job 토큰 사용량 조회."),
             CommandHelpEntry("/monitor memory", "이 채팅·프로젝트 SQLite 대화 기억 행 수·DB 크기."),
             CommandHelpEntry("/monitor branch", "로컬·원격 브랜치 요약(개수·목록)."),
             CommandHelpEntry("/monitor worktrees", "linked worktree 목록·managed 후보 요약."),
@@ -459,7 +459,12 @@ class MonitorCommand(TelegramCommand):
 
         if sub == "model":
             current = ctx.model_preferences.get(message.chat_id)
-            body = format_model_monitor(current)
+            body = format_model_monitor(
+                current,
+                recent_jobs=ctx.job_store.list_recent(50),
+                chat_id=message.chat_id,
+                project=project_name,
+            )
             return f"현재 채팅 기본 모델: {current.value}\n\n{body}"
 
         if sub == "memory":

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from app.jobs.schemas import Job, JobRequest, JobStatus
 from app.monitoring.code import ProjectCodeStats, count_project_code
 from app.monitoring.memory import format_memory_monitor
 from app.monitoring.model import format_model_monitor
@@ -45,3 +46,29 @@ def test_format_model_monitor_codex_not_installed():
 def test_format_model_monitor_gemini_not_installed():
     text = format_model_monitor(ModelName.GEMINI, timeout_seconds=2)
     assert "[Gemini]" in text
+
+
+def test_format_model_monitor_includes_recent_job_usage():
+    job = Job(
+        id="job-usage",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CODEX,
+            instruction="x",
+            chat_id=7,
+            requested_by=1,
+        ),
+        status=JobStatus.SUCCEEDED,
+        runner_stdout_summary="model: ChatGPT 5.5\ninput tokens: 1,200\noutput tokens: 300",
+    )
+    text = format_model_monitor(
+        ModelName.CODEX,
+        timeout_seconds=2,
+        recent_jobs=[job],
+        chat_id=7,
+        project="remote-coder",
+    )
+    assert "최근 Job 사용량" in text
+    assert "관측된 세부 모델: ChatGPT 5.5" in text
+    assert "input=1,200" in text
+    assert "output=300" in text

@@ -473,16 +473,24 @@ def test_monitor_worktrees_lists_entries(project_registry: ProjectRegistry):
 
 
 def test_monitor_model_invokes_claude_probe(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    job = ctx.job_store.get("job1")
+    assert job is not None
+    job.status = JobStatus.SUCCEEDED
+    job.runner_stdout_summary = "model: Claude Opus 4.7\ninput tokens: 100\noutput tokens: 25"
+    ctx.job_store.update(job)
     with patch("app.monitoring.model.subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="Logged in\n", stderr="")
         registry = CommandRegistry([MonitorCommand()])
         text = registry.dispatch(
             TelegramMessage(chat_id=1, user_id=1, text="/monitor model"),
-            _ctx(project_registry),
+            ctx,
         )
     assert text is not None
     assert "현재 채팅 기본 모델: claude" in text
     assert "[Claude]" in text
+    assert "관측된 세부 모델: Claude Opus 4.7" in text
+    assert "input=100" in text
 
 
 def test_monitor_code_counts_lines(project_registry: ProjectRegistry, tmp_path):
