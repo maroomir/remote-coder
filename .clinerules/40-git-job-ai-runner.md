@@ -8,7 +8,7 @@
 - 변경 사항이 없으면 브랜치를 만들지 않고, 빈 커밋을 만들지 않습니다.
 - 변경 사항이 있으면 브랜치를 생성·커밋한 뒤 설정된 원격(기본 `origin`)에 push합니다.
 - 커밋 전 변경 파일 목록을 수집해 Job 결과에 포함합니다.
-- 자동 커밋 메시지는 기존 `type: title`·bullet·`committed by remote-coder:<job-id>` 형식을 유지하되, `title`과 첫 번째 bullet은 변경 파일명이 아니라 요청된 기능·수정 의도를 설명해야 합니다.
+- 자동 커밋 메시지는 `type: title`·bullet·`committed by remote-coder: <job-id>` 형식을 유지하고, `title`은 기능 수정 내용을 한 줄로 요약해야 하며 첫 번째 bullet은 사용자 원문이나 변경 파일명이 아니라 AI Agent가 수행한 변경 내용을 설명해야 합니다.
 - worktree 삭제/보존 정책은 명시적으로 설정 가능하게 만듭니다.
 
 ## 2. Job 처리 규칙

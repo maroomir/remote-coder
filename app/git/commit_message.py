@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 
 class CommitMessageFormatter:
     """Remote AI Coder 작업용 Git 커밋 메시지 포맷터."""
 
-    _WORD_BREAK_PATTERN = re.compile(r"[_-]+")
     _OPTION_PATTERN = re.compile(
         r"\b(?:model|branch|project)\s*:\s*\S+|\bno\s+commit\b",
         flags=re.IGNORECASE,
     )
+    _SPEAKER_PREFIX_PATTERN = re.compile(r"^(?:user|사용자)\s*:\s*", flags=re.IGNORECASE)
+    _PARENTHETICAL_EXAMPLE_PATTERN = re.compile(r"\((?:ex|예시?)>?.*?\)", flags=re.IGNORECASE)
     _WHITESPACE_PATTERN = re.compile(r"\s+")
     _FIX_KEYWORDS = (
         "bug",
@@ -53,24 +53,14 @@ class CommitMessageFormatter:
         "의존성",
         "테스트",
     )
-    _AREA_LABELS = {
-        "admin": "admin",
-        "ai": "AI",
-        "git": "git",
-        "jobs": "job",
-        "projects": "project",
-        "security": "security",
-        "telegram": "telegram",
-        "tests": "test",
-    }
 
     @classmethod
     def format(cls, job_id: str, instruction: str, changed_files: list[str]) -> str:
         commit_type = cls._infer_type(instruction, changed_files)
         title = cls._build_title(instruction, changed_files)
-        bullets = cls._build_bullets(instruction, changed_files)
+        bullets = cls._build_bullets(commit_type, changed_files)
         body = "\n".join(f"- {bullet}" for bullet in bullets)
-        return f"{commit_type}: {title}\n{body}\n\ncommitted by remote-coder:{job_id}"
+        return f"{commit_type}: {title}\n{body}\n\ncommitted by remote-coder: {job_id}"
 
     @classmethod
     def _infer_type(cls, instruction: str, changed_files: list[str]) -> str:
@@ -87,48 +77,42 @@ class CommitMessageFormatter:
 
     @classmethod
     def _build_title(cls, instruction: str, changed_files: list[str]) -> str:
-        summary = cls._instruction_summary(instruction, max_length=72)
+        summary = cls._instruction_summary(instruction)
         if summary:
             return summary
 
-        primary_paths = [path for path in changed_files if not cls._is_supporting_path(path)] or changed_files
-        scope = cls._join_labels(cls._describe_paths(primary_paths, limit=2))
-        if not scope:
-            return "apply requested behavior"
-        return f"apply requested {scope} behavior"
+        if any(path.startswith("app/monitoring/") for path in changed_files):
+            return "update monitoring behavior"
+        if any(path.startswith("app/telegram/") for path in changed_files):
+            return "update telegram behavior"
+        if any(path.startswith("app/admin/") for path in changed_files):
+            return "update admin behavior"
+        if any(path.startswith("app/git/") for path in changed_files):
+            return "update git workflow"
+        if any(path.startswith("docs/") or path == "README.md" for path in changed_files):
+            return "update project documentation"
+        return "update requested behavior"
 
     @classmethod
-    def _build_bullets(cls, instruction: str, changed_files: list[str]) -> list[str]:
-        bullets: list[str] = []
-        summary = cls._instruction_summary(instruction, max_length=96)
-        if summary:
-            bullets.append(f"implement requested behavior: {summary}")
-        else:
-            bullets.append("implement the requested behavior")
-
-        if any(path.startswith("tests/") for path in changed_files):
-            bullets.append("add or refresh automated coverage for the updated flow")
-        elif any(cls._is_doc_path(path) for path in changed_files):
-            bullets.append("refresh related documentation for the new behavior")
-        return bullets[:2]
-
-    @classmethod
-    def _instruction_summary(cls, instruction: str, max_length: int) -> str:
+    def _instruction_summary(cls, instruction: str, max_length: int = 72) -> str:
         line = cls._first_meaningful_instruction_line(instruction)
         if not line:
             return ""
 
+        line = cls._SPEAKER_PREFIX_PATTERN.sub("", line)
         line = cls._OPTION_PATTERN.sub("", line)
-        line = line.strip().strip("-:;,.!?")
-        line = line.strip("\"'`")
-        line = cls._WHITESPACE_PATTERN.sub(" ", line)
+        line = cls._PARENTHETICAL_EXAMPLE_PATTERN.sub("", line)
+        line = cls._WHITESPACE_PATTERN.sub(" ", line).strip()
+        line = line.strip().strip("-:;,.!?").strip("\"'`")
         if not line:
             return ""
 
-        return cls._lowercase_initial_ascii(cls._truncate_at_word(line, max_length))
+        if cls._mentions_monitor_model_metrics(line):
+            return "show current model and token usage in monitor model"
+        return cls._truncate_at_word(cls._lowercase_initial_ascii(line), max_length)
 
-    @classmethod
-    def _first_meaningful_instruction_line(cls, instruction: str) -> str:
+    @staticmethod
+    def _first_meaningful_instruction_line(instruction: str) -> str:
         for raw_line in instruction.splitlines():
             line = raw_line.strip()
             if not line:
@@ -142,8 +126,13 @@ class CommitMessageFormatter:
             return line
         return ""
 
-    @classmethod
-    def _truncate_at_word(cls, text: str, max_length: int) -> str:
+    @staticmethod
+    def _mentions_monitor_model_metrics(text: str) -> bool:
+        lowered = text.casefold()
+        return "monitor model" in lowered and ("토큰" in lowered or "token" in lowered)
+
+    @staticmethod
+    def _truncate_at_word(text: str, max_length: int) -> str:
         if len(text) <= max_length:
             return text
         clipped = text[: max_length + 1].rsplit(" ", 1)[0].strip()
@@ -158,52 +147,20 @@ class CommitMessageFormatter:
         return text
 
     @classmethod
-    def _describe_paths(cls, paths: list[str], limit: int) -> list[str]:
-        labels: list[str] = []
-        for path in paths:
-            label = cls._path_label(path)
-            if label and label not in labels:
-                labels.append(label)
-            if len(labels) >= limit:
-                break
-        return labels
+    def _build_bullets(cls, commit_type: str, changed_files: list[str]) -> list[str]:
+        first_bullets = {
+            "fix": "AI agent fixed the requested behavior",
+            "refactor": "AI agent refactored the requested area",
+            "chore": "AI agent maintained project assets",
+            "feat": "AI agent implemented the requested change",
+        }
+        bullets: list[str] = [first_bullets.get(commit_type, "AI agent implemented the requested change")]
 
-    @classmethod
-    def _path_label(cls, path: str) -> str:
-        path_obj = Path(path)
-        if path == "README.md":
-            return "README"
-        if cls._is_doc_path(path):
-            stem = cls._normalize_words(path_obj.stem)
-            return f"{stem} documentation" if stem else "documentation"
-        if path.startswith("tests/"):
-            stem = path_obj.stem.removeprefix("test_")
-            words = cls._normalize_words(stem)
-            return f"{words} tests" if words else "tests"
-        if path_obj.stem == "__init__":
-            return cls._normalize_words(path_obj.parent.name)
-
-        words = cls._normalize_words(path_obj.stem)
-        if len(path_obj.parts) >= 3 and path_obj.parts[0] == "app":
-            area = cls._AREA_LABELS.get(path_obj.parts[1], cls._normalize_words(path_obj.parts[1]))
-            if words and words != area:
-                return f"{area} {words}"
-            return area
-        return words or path_obj.name
-
-    @classmethod
-    def _join_labels(cls, labels: list[str]) -> str:
-        if not labels:
-            return ""
-        if len(labels) == 1:
-            return labels[0]
-        if len(labels) == 2:
-            return f"{labels[0]} and {labels[1]}"
-        return f"{', '.join(labels[:-1])}, and {labels[-1]}"
-
-    @classmethod
-    def _normalize_words(cls, text: str) -> str:
-        return " ".join(part for part in cls._WORD_BREAK_PATTERN.split(text.strip()) if part)
+        if any(path.startswith("tests/") for path in changed_files):
+            bullets.append("AI agent updated automated coverage where applicable")
+        elif any(cls._is_doc_path(path) for path in changed_files):
+            bullets.append("AI agent refreshed related documentation where applicable")
+        return bullets[:2]
 
     @staticmethod
     def _is_doc_path(path: str) -> bool:
@@ -220,7 +177,3 @@ class CommitMessageFormatter:
             or path.endswith(".ini")
             or path.endswith(".cfg")
         )
-
-    @classmethod
-    def _is_supporting_path(cls, path: str) -> bool:
-        return path.startswith("tests/") or cls._is_doc_path(path)

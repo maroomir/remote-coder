@@ -10,9 +10,9 @@ def test_commit_message_formatter_builds_remote_coder_template():
 
     assert message == (
         "fix: fix commit message format\n"
-        "- implement requested behavior: fix commit message format\n"
-        "- add or refresh automated coverage for the updated flow\n\n"
-        "committed by remote-coder:job_20260430010101_ab12cd"
+        "- AI agent fixed the requested behavior\n"
+        "- AI agent updated automated coverage where applicable\n\n"
+        "committed by remote-coder: job_20260430010101_ab12cd"
     )
 
 
@@ -24,7 +24,7 @@ def test_commit_message_formatter_uses_chore_for_docs_only_changes():
     )
 
     assert message.startswith("chore: README 문서 업데이트\n")
-    assert "- refresh related documentation for the new behavior\n" in message
+    assert "- AI agent refreshed related documentation where applicable\n" in message
 
 
 def test_commit_message_formatter_prefers_feature_intent_over_changed_file_list():
@@ -45,3 +45,26 @@ def test_commit_message_formatter_prefers_feature_intent_over_changed_file_list(
     )
     assert "00 project context" not in message
     assert "10 architecture oop gof" not in message
+
+
+def test_commit_message_formatter_does_not_repeat_user_message():
+    instruction = (
+        "user: Monitor model 로 모델을 조회할 때, 현재 사용 모델(ex> ChatGPT 5.5 또는 "
+        "Claude Opus 4.7 등등)과 토큰 사용량 등도 나오면"
+    )
+
+    message = CommitMessageFormatter.format(
+        job_id="job_20260502215006_fa3889",
+        instruction=instruction,
+        changed_files=["app/monitoring/model.py", "tests/test_monitoring.py"],
+    )
+
+    assert message == (
+        "feat: show current model and token usage in monitor model\n"
+        "- AI agent implemented the requested change\n"
+        "- AI agent updated automated coverage where applicable\n\n"
+        "committed by remote-coder: job_20260502215006_fa3889"
+    )
+    assert "user: Monitor model" not in message
+    assert "ChatGPT 5.5" not in message
+    assert "Claude Opus" not in message

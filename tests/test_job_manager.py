@@ -59,6 +59,7 @@ def test_job_manager_submit_and_run_success(test_settings, project_registry):
         Path("/tmp/wt"),
         CommitMessageFormatter.format(job.id, request.instruction, ["a.py"]),
     )
+    assert git_service.commit_all.call_args.args[1].endswith(f"committed by remote-coder: {job.id}")
     git_service.push_branch.assert_called_once_with(
         test_settings.project_root, test_settings.git_remote_name, "remote-test"
     )

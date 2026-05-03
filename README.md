@@ -134,10 +134,10 @@ ngrok version
   - contents1
   - contents2
 
-  committed by remote-coder:job-id
+  committed by remote-coder: job-id
   ```
 
-  `title`과 첫 번째 본문 항목은 최근 수정 파일 목록이 아니라 요청된 기능·수정 의도를 설명합니다. 변경 파일 목록은 Job 결과 알림에서 별도로 확인합니다.
+  `title`은 기능 수정 내용을 한 줄로 요약하고, 첫 번째 본문 항목은 사용자 원문이나 최근 수정 파일 목록이 아니라 AI Agent가 수행한 변경 내용을 설명합니다. 변경 파일 목록은 Job 결과 알림에서 별도로 확인합니다.
 
 - 자연어 메시지에서 `model: codex`, `model: gemini`, `branch: my-branch`, `project: 등록이름`, `no commit` 토큰을 함께 사용할 수 있습니다. (`branch:` 값은 `/branch`와 동일 규칙으로 검증됩니다.)
 - **대화 기억(SQLite)**: 같은 텔레그램 채팅·같은 작업 프로젝트 기준으로 사용자 메시지와 Job 접수/결과 요약이 SQLite에 쌓입니다. 서버를 재시작해도 유지됩니다. 이전에 구체적인 지시를 보낸 뒤 `작업 시작해줘`, `진행해줘`, `그거 해줘`, `시작해줘`처럼 짧은 후속 문장만내면, 최근 기록을 합쳐 AI 지시문으로 만듭니다. 맥락이 없으면 봇이 안내 메시지를 보냅니다.
