@@ -59,6 +59,18 @@ def format_help_section(title: str, entries: list[CommandHelpEntry]) -> str:
 MODEL_USAGE = "<claude|codex|gemini>"
 
 
+@dataclass
+class InlineButton:
+    label: str
+    callback_data: str
+
+
+@dataclass
+class CommandResponse:
+    text: str
+    inline_buttons: list[list["InlineButton"]] | None = None
+
+
 HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
     (
         "기본 명령",
@@ -124,6 +136,9 @@ class TelegramCommand(ABC):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         raise NotImplementedError
 
+    def get_inline_buttons(self) -> list[list[InlineButton]] | None:
+        return None
+
 
 class ConfirmableCommand(TelegramCommand):
     @abstractmethod
@@ -156,6 +171,24 @@ class HelpCommand(TelegramCommand):
             "- 옵션: project:, model:, branch:, no commit"
         )
         return "\n\n".join(["도움말", *sections, natural_language_help])
+
+    def get_inline_buttons(self) -> list[list[InlineButton]] | None:
+        return [
+            [
+                InlineButton("모델: claude", "/model claude"),
+                InlineButton("모델: codex", "/model codex"),
+                InlineButton("모델: gemini", "/model gemini"),
+            ],
+            [
+                InlineButton("monitor: model", "/monitor model"),
+                InlineButton("monitor: memory", "/monitor memory"),
+                InlineButton("monitor: branch", "/monitor branch"),
+            ],
+            [
+                InlineButton("monitor: worktrees", "/monitor worktrees"),
+                InlineButton("monitor: code", "/monitor code"),
+            ],
+        ]
 
 
 class ModelCommand(TelegramCommand):
@@ -630,3 +663,13 @@ class CommandRegistry:
         if not command:
             return "알 수 없는 명령어입니다. /help 를 확인하세요."
         return command.execute(message, ctx)
+
+    def dispatch_rich(self, message: TelegramMessage, ctx: CommandContext) -> CommandResponse | None:
+        text = self.dispatch(message, ctx)
+        if text is None:
+            return None
+        tokens = message.text.strip().split()
+        head = tokens[0] if tokens else ""
+        command = self._commands.get(head)
+        buttons = command.get_inline_buttons() if command is not None else None
+        return CommandResponse(text=text, inline_buttons=buttons)

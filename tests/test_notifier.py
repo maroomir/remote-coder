@@ -136,3 +136,36 @@ def test_notifier_send_text_logs_outbound_warning_on_failure(caplog):
         notifier.send_text(7, "x")
     assert route.call_count >= 1
     assert any("sendMessage failed" in r.getMessage() for r in caplog.records)
+
+
+@respx.mock
+def test_notifier_send_with_buttons_sends_inline_keyboard():
+    from app.telegram.commands import InlineButton
+
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    buttons = [[InlineButton("claude", "/model claude"), InlineButton("codex", "/model codex")]]
+    notifier.send_with_buttons(42, "도움말", buttons)
+    assert route.called
+    payload = json.loads(route.calls[0].request.content)
+    assert payload["chat_id"] == 42
+    assert payload["text"] == "도움말"
+    assert "reply_markup" in payload
+    kb = payload["reply_markup"]["inline_keyboard"]
+    assert kb[0][0]["text"] == "claude"
+    assert kb[0][0]["callback_data"] == "/model claude"
+    assert kb[0][1]["text"] == "codex"
+
+
+@respx.mock
+def test_notifier_answer_callback_query():
+    route = respx.post("https://api.telegram.org/bottoken/answerCallbackQuery").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    notifier.answer_callback_query("cq_abc")
+    assert route.called
+    payload = json.loads(route.calls[0].request.content)
+    assert payload["callback_query_id"] == "cq_abc"

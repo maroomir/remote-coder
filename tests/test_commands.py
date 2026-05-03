@@ -21,6 +21,7 @@ from app.telegram.commands import (
     StartCommand,
     StatusCommand,
     TelegramMessage,
+    InlineButton,
 )
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
@@ -513,3 +514,47 @@ def test_monitor_code_counts_lines(project_registry: ProjectRegistry, tmp_path):
     assert text is not None
     assert "코드 규모" in text
     assert "스캔한 코드 파일 수: 1" in text
+
+
+def test_help_command_get_inline_buttons():
+    cmd = HelpCommand()
+    buttons = cmd.get_inline_buttons()
+    assert buttons is not None
+    flat = [btn for row in buttons for btn in row]
+    assert all(isinstance(b, InlineButton) for b in flat)
+    data = {btn.callback_data for btn in flat}
+    assert "/model claude" in data
+    assert "/model codex" in data
+    assert "/model gemini" in data
+    assert "/monitor model" in data
+    assert "/monitor memory" in data
+
+
+def test_dispatch_rich_help_includes_buttons(project_registry: ProjectRegistry):
+    registry = CommandRegistry([HelpCommand()])
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="/help"),
+        _ctx(project_registry),
+    )
+    assert response is not None
+    assert response.text.startswith("도움말")
+    assert response.inline_buttons is not None
+
+
+def test_dispatch_rich_non_help_has_no_buttons(project_registry: ProjectRegistry):
+    registry = CommandRegistry([ModelCommand()])
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="/model"),
+        _ctx(project_registry),
+    )
+    assert response is not None
+    assert response.inline_buttons is None
+
+
+def test_dispatch_rich_returns_none_for_natural_language(project_registry: ProjectRegistry):
+    registry = CommandRegistry([ModelCommand()])
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="자연어 메시지"),
+        _ctx(project_registry),
+    )
+    assert response is None

@@ -15,6 +15,7 @@ class TelegramNotifier:
 
     def __init__(self, bot_token: str) -> None:
         self._api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        self._callback_answer_url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
 
     def send_text(self, chat_id: int, text: str) -> None:
         payload = {"chat_id": chat_id, "text": text}
@@ -42,6 +43,60 @@ class TelegramNotifier:
                         type(exc).__name__,
                         chat_id=chat_id,
                     )
+                    return
+                time.sleep(attempt)
+
+    def send_with_buttons(self, chat_id: int, text: str, inline_buttons: list) -> None:
+        keyboard = [
+            [{"text": btn.label, "callback_data": btn.callback_data} for btn in row]
+            for row in inline_buttons
+        ]
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "reply_markup": {"inline_keyboard": keyboard},
+        }
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = httpx.post(
+                    self._api_url,
+                    json=payload,
+                    timeout=httpx.Timeout(10.0, connect=5.0),
+                )
+                response.raise_for_status()
+                _outbound.info(
+                    "sent message with buttons len=%d attempt=%d",
+                    len(text),
+                    attempt,
+                    chat_id=chat_id,
+                )
+                return
+            except httpx.HTTPError as exc:
+                if attempt == max_attempts:
+                    _outbound.warning(
+                        "sendMessage (buttons) failed after %s attempts: %s",
+                        max_attempts,
+                        type(exc).__name__,
+                        chat_id=chat_id,
+                    )
+                    return
+                time.sleep(attempt)
+
+    def answer_callback_query(self, callback_query_id: str) -> None:
+        payload = {"callback_query_id": callback_query_id}
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = httpx.post(
+                    self._callback_answer_url,
+                    json=payload,
+                    timeout=httpx.Timeout(10.0, connect=5.0),
+                )
+                response.raise_for_status()
+                return
+            except httpx.HTTPError:
+                if attempt == max_attempts:
                     return
                 time.sleep(attempt)
 

@@ -7,7 +7,7 @@ from app.jobs.manager import JobManager
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.events import EventLogger
 from app.security.auth import AllowlistAuthService
-from app.telegram.commands import CommandContext, CommandRegistry, TelegramMessage
+from app.telegram.commands import CommandContext, CommandRegistry, CommandResponse, TelegramMessage
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.notifier import TelegramNotifier
 from app.telegram.parser import CommandParseError, CommandParser
@@ -47,9 +47,27 @@ class TelegramIncomingMessage(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class TelegramCallbackQueryFrom(BaseModel):
+    id: int
+
+
+class TelegramCallbackQueryMessage(BaseModel):
+    chat: TelegramChat
+
+
+class TelegramCallbackQuery(BaseModel):
+    id: str
+    from_user: TelegramCallbackQueryFrom = Field(alias="from")
+    message: TelegramCallbackQueryMessage | None = None
+    data: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
 class TelegramUpdate(BaseModel):
     update_id: int
     message: TelegramIncomingMessage | None = None
+    callback_query: TelegramCallbackQuery | None = None
 
 
 def create_webhook_router(
@@ -74,6 +92,26 @@ def create_webhook_router(
         if webhook_secret and x_telegram_bot_api_secret_token != webhook_secret:
             _authlog.warning("webhook secret mismatch")
             return {"status": "ignored"}
+
+        if update.callback_query:
+            cq = update.callback_query
+            if cq.message is None or not cq.data:
+                background_tasks.add_task(notifier.answer_callback_query, cq.id)
+                return {"status": "ignored"}
+            cq_chat_id = cq.message.chat.id
+            cq_user_id = cq.from_user.id
+            if not auth_service.is_allowed(chat_id=cq_chat_id, user_id=cq_user_id):
+                _authlog.warning("unauthorized callback_query", chat_id=cq_chat_id, user_id=cq_user_id)
+                background_tasks.add_task(notifier.answer_callback_query, cq.id)
+                return {"status": "ignored"}
+            cq_message = TelegramMessage(chat_id=cq_chat_id, user_id=cq_user_id, text=cq.data)
+            cq_response = command_registry.dispatch(cq_message, command_context)
+            background_tasks.add_task(notifier.answer_callback_query, cq.id)
+            if cq_response:
+                _cmdlog.info("callback_query handled: %s", cq.data, chat_id=cq_chat_id, user_id=cq_user_id)
+                background_tasks.add_task(notifier.send_text, cq_chat_id, cq_response)
+            return {"status": "ok"}
+
         if not update.message:
             _inbound.info("update without message skipped")
             return {"status": "ignored"}
@@ -92,12 +130,20 @@ def create_webhook_router(
             return {"status": "ignored"}
 
         message = TelegramMessage(chat_id=chat_id, user_id=user_id, text=update.message.text)
-        command_response = command_registry.dispatch(message, command_context)
+        command_response: CommandResponse | None = command_registry.dispatch_rich(message, command_context)
         if command_response:
             raw_cmd = message.text.strip()
             cmd_token = raw_cmd.split(maxsplit=1)[0] if raw_cmd else ""
             _cmdlog.info("command handled: %s", cmd_token, chat_id=chat_id, user_id=user_id)
-            background_tasks.add_task(notifier.send_text, chat_id, command_response)
+            if command_response.inline_buttons:
+                background_tasks.add_task(
+                    notifier.send_with_buttons,
+                    chat_id,
+                    command_response.text,
+                    command_response.inline_buttons,
+                )
+            else:
+                background_tasks.add_task(notifier.send_text, chat_id, command_response.text)
             return {"status": "ok"}
 
         try:
