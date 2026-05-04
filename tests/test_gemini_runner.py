@@ -20,4 +20,4 @@ def test_gemini_runner_invokes_subprocess(mock_popen, caplog):
     assert result.stdout == "done"
     assert any(r.name == "app.ai.gemini" for r in caplog.records)
     command = mock_popen.call_args.args[0]
-    assert command == ["gemini", "--approval-mode", "yolo", "-p", "test"]
+    assert command == ["gemini", "--approval-mode", "yolo", "--skip-trust", "-p", "test"]
