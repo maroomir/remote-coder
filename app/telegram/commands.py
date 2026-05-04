@@ -107,6 +107,7 @@ def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | 
 
 class TelegramCommand(ABC):
     name: str
+    menu_text: str | None = None
 
     @abstractmethod
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
@@ -227,14 +228,43 @@ class StartCommand(TelegramCommand):
 
 class HelpCommand(TelegramCommand):
     name = "/help"
+    _registry: dict[str, TelegramCommand] | None = None
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        _ = (message, ctx)
+        _ = ctx
+        tokens = message.text.strip().split()
+        if len(tokens) >= 2 and self._registry is not None:
+            subcmd = self._registry.get("/" + tokens[1])
+            if subcmd is not None and subcmd.menu_text:
+                return subcmd.menu_text
         return HELP_TEXT
+
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        if self._registry is None:
+            return None
+        tokens = message.text.strip().split() if message else []
+        if len(tokens) >= 2:
+            subcmd = self._registry.get("/" + tokens[1])
+            if subcmd is not None:
+                sub_buttons = subcmd.get_inline_buttons(message, ctx) or []
+                return sub_buttons + [[InlineButton("← 뒤로", "/help")]]
+        menu_cmds = [
+            cmd for name, cmd in self._registry.items()
+            if name not in ("/help", "/start") and cmd.menu_text
+        ]
+        if not menu_cmds:
+            return None
+        buttons = [InlineButton(cmd.name[1:], f"/help {cmd.name[1:]}") for cmd in menu_cmds]
+        return _button_rows(buttons, per_row=2)
 
 
 class ModelCommand(TelegramCommand):
     name = "/model"
+    menu_text = "모델을 선택하세요."
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -832,6 +862,9 @@ class StopCommand(TelegramCommand):
 class CommandRegistry:
     def __init__(self, commands: list[TelegramCommand]) -> None:
         self._commands = {command.name: command for command in commands}
+        help_cmd = self._commands.get("/help")
+        if isinstance(help_cmd, HelpCommand):
+            help_cmd._registry = self._commands
 
     def dispatch(self, message: TelegramMessage, ctx: CommandContext) -> str | None:
         tokens = message.text.strip().split()
