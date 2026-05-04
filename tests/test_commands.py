@@ -80,17 +80,10 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help"), _ctx(project_registry))
     assert text is not None
     assert text.startswith("도움말")
-    assert "기본 명령" in text
-    assert "프로젝트와 Git" in text
-    assert "모니터링" in text
-    assert "정리 및 초기화" in text
-    assert "/clear branch:" in text
-    assert "/status <job_id>: 작업 상태를 조회합니다." in text
-    assert "/project <프로젝트이름>: 현재 채팅의 작업 프로젝트를 변경합니다." in text
-    assert "/init:" in text
-    assert "/rebase [브랜치이름]: 적용 프로젝트에서 브랜치를 main 기준으로 rebase 후 병합합니다." in text
-    assert "자연어 작업 요청" in text
+    assert "작업 지시는 일반 메시지로 보내세요." in text
     assert "옵션: project:, model:, branch:, no commit" in text
+    assert "주요 명령: /projects, /project, /branch, /status, /reports, /init, /rebase" in text
+    assert "/clear branch:" not in text
 
 
 def test_help_command_top_level_buttons_are_grouped(project_registry: ProjectRegistry):
@@ -113,8 +106,7 @@ def test_help_command_model_submenu_buttons(project_registry: ProjectRegistry):
     )
 
     assert response is not None
-    assert response.text.startswith("model")
-    assert "/model <claude|codex|gemini>" in response.text
+    assert response.text == "모델을 선택하세요."
     assert response.inline_buttons == [
         [
             InlineButton("claude", "/model claude"),
@@ -138,11 +130,11 @@ def test_help_command_monitor_and_clear_submenus(project_registry: ProjectRegist
     )
 
     assert monitor is not None
-    assert monitor.text.startswith("monitor")
+    assert monitor.text == "확인할 모니터링 항목을 선택하세요."
     assert monitor.inline_buttons is not None
     assert InlineButton("worktrees", "/monitor worktrees") in monitor.inline_buttons[1]
     assert clear is not None
-    assert clear.text.startswith("clear")
+    assert clear.text == "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다."
     assert clear.inline_buttons is not None
     assert InlineButton("memory", "/clear memory") in clear.inline_buttons[0]
 

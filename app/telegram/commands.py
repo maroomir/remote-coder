@@ -45,20 +45,8 @@ class CommandContext:
     job_manager: JobManager | None = None
 
 
-@dataclass(frozen=True)
-class CommandHelpEntry:
-    usage: str
-    description: str
-
-
 def format_usage(*lines: str) -> str:
     return "사용법:\n" + "\n".join(lines)
-
-
-def format_help_section(title: str, entries: list[CommandHelpEntry]) -> str:
-    lines = [title]
-    lines.extend(f"- {entry.usage}: {entry.description}" for entry in entries)
-    return "\n".join(lines)
 
 
 MODEL_USAGE = "<claude|codex|gemini>"
@@ -76,53 +64,21 @@ class CommandResponse:
     inline_buttons: list[list["InlineButton"]] | None = None
 
 
-HELP_SECTIONS: tuple[tuple[str, list[CommandHelpEntry]], ...] = (
-    (
-        "기본 명령",
-        [
-            CommandHelpEntry("/start", "시작 안내를 확인합니다."),
-            CommandHelpEntry("/help", "이 도움말을 확인합니다."),
-            CommandHelpEntry("/model", "현재 기본 모델을 확인합니다."),
-            CommandHelpEntry(f"/model {MODEL_USAGE}", "기본 모델을 변경합니다."),
-            CommandHelpEntry("/status <job_id>", "작업 상태를 조회합니다."),
-            CommandHelpEntry("/reports", "현재 채팅/프로젝트의 기억 리포트를 확인합니다."),
-            CommandHelpEntry("/reports <recent_limit>", "최근 기억 개수(1~10)를 지정해 리포트를 확인합니다."),
-        ],
-    ),
-    (
-        "프로젝트와 Git",
-        [
-            CommandHelpEntry("/projects", "등록된 프로젝트와 현재 적용 프로젝트를 확인합니다."),
-            CommandHelpEntry("/project", "현재 작업 프로젝트를 확인합니다."),
-            CommandHelpEntry("/project <프로젝트이름>", "현재 채팅의 작업 프로젝트를 변경합니다."),
-            CommandHelpEntry(
-                "/init",
-                "이 채팅의 작업 프로젝트·기본 모델·확인 대기 상태를 서버 시작 직후처럼 초기화합니다.",
-            ),
-            CommandHelpEntry("/branch", "이 채팅 적용 프로젝트의 현재 브랜치를 확인합니다."),
-            CommandHelpEntry("/branch <브랜치이름>", "적용 프로젝트에서 로컬 브랜치로 전환합니다."),
-            CommandHelpEntry("/rebase [브랜치이름]", "적용 프로젝트에서 브랜치를 main 기준으로 rebase 후 병합합니다."),
-        ],
-    ),
-    (
-        "모니터링",
-        [
-            CommandHelpEntry("/monitor model", "현재 모델·CLI 인증/버전·최근 Job 토큰 사용량 조회."),
-            CommandHelpEntry("/monitor memory", "이 채팅·프로젝트 SQLite 대화 기억 행 수·DB 크기."),
-            CommandHelpEntry("/monitor branch", "로컬·원격 브랜치 요약(개수·목록)."),
-            CommandHelpEntry("/monitor worktrees", "linked worktree 목록·managed 후보 요약."),
-            CommandHelpEntry("/monitor code", "코드 파일 수·줄 수 추정(확장자 기준)."),
-        ],
-    ),
-    (
-        "정리 및 초기화 (확인 `y`/`Y` 필요)",
-        [
-            CommandHelpEntry("/clear branch", "등록된 enabled 프로젝트의 remote-* 브랜치·연결 worktree 삭제."),
-            CommandHelpEntry("/clear worktrees", "관리 대상 worktree 정리·stale prune."),
-            CommandHelpEntry("/clear memory", "대화 기억 SQLite DB 전체 초기화."),
-        ],
-    ),
+HELP_TEXT = "\n".join(
+    [
+        "도움말",
+        "작업 지시는 일반 메시지로 보내세요.",
+        "옵션: project:, model:, branch:, no commit",
+        "",
+        "주요 명령: /projects, /project, /branch, /status, /reports, /init, /rebase",
+        "아래 버튼에서 모델, 모니터링, 정리 명령을 선택할 수 있습니다.",
+    ]
 )
+HELP_TOPIC_TEXT: dict[str, str] = {
+    "model": "모델을 선택하세요.",
+    "monitor": "확인할 모니터링 항목을 선택하세요.",
+    "clear": "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다.",
+}
 
 
 def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | None:
@@ -177,17 +133,11 @@ class HelpCommand(TelegramCommand):
         tokens = message.text.strip().split()
         if len(tokens) == 2:
             topic = tokens[1].lower()
-            topic_text = self._format_topic(topic)
+            topic_text = HELP_TOPIC_TEXT.get(topic)
             if topic_text is not None:
                 return topic_text
 
-        sections = [format_help_section(title, entries) for title, entries in HELP_SECTIONS]
-        natural_language_help = (
-            "자연어 작업 요청\n"
-            "- 일반 메시지로 작업 지시를 보내면 Job이 생성됩니다.\n"
-            "- 옵션: project:, model:, branch:, no commit"
-        )
-        return "\n\n".join(["도움말", *sections, natural_language_help])
+        return HELP_TEXT
 
     def get_inline_buttons(
         self,
@@ -234,39 +184,6 @@ class HelpCommand(TelegramCommand):
             [InlineButton("monitor", "/help monitor")],
             [InlineButton("clear", "/help clear")],
         ]
-
-    @staticmethod
-    def _format_topic(topic: str) -> str | None:
-        if topic == "model":
-            return format_help_section(
-                "model",
-                [
-                    CommandHelpEntry("/model", "현재 기본 모델을 확인합니다."),
-                    CommandHelpEntry(f"/model {MODEL_USAGE}", "기본 모델을 변경합니다."),
-                ],
-            )
-        if topic == "monitor":
-            return format_help_section(
-                "monitor",
-                [
-                    CommandHelpEntry("/monitor model", "현재 모델·CLI 인증/버전·최근 Job 토큰 사용량 조회."),
-                    CommandHelpEntry("/monitor memory", "이 채팅·프로젝트 SQLite 대화 기억 행 수·DB 크기."),
-                    CommandHelpEntry("/monitor branch", "로컬·원격 브랜치 요약(개수·목록)."),
-                    CommandHelpEntry("/monitor worktrees", "linked worktree 목록·managed 후보 요약."),
-                    CommandHelpEntry("/monitor code", "코드 파일 수·줄 수 추정(확장자 기준)."),
-                ],
-            )
-        if topic == "clear":
-            return format_help_section(
-                "clear",
-                [
-                    CommandHelpEntry("/clear branch", "등록된 enabled 프로젝트의 remote-* 브랜치·연결 worktree 삭제."),
-                    CommandHelpEntry("/clear worktrees", "관리 대상 worktree 정리·stale prune."),
-                    CommandHelpEntry("/clear memory", "대화 기억 SQLite DB 전체 초기화."),
-                ],
-            )
-        return None
-
 
 class ModelCommand(TelegramCommand):
     name = "/model"

@@ -851,7 +851,7 @@ def test_webhook_callback_query_sends_help_submenu_buttons(project_registry):
     assert response.json()["status"] == "ok"
     assert notifier.sent_with_buttons
     assert notifier.sent_with_buttons[0][0] == 123
-    assert notifier.sent_with_buttons[0][1].startswith("model")
+    assert notifier.sent_with_buttons[0][1] == "모델을 선택하세요."
     buttons = notifier.sent_with_buttons[0][2]
     assert buttons[0][0].callback_data == "/model claude"
     assert buttons[1][0].callback_data == "/help"
