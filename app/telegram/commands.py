@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.jobs.store import InMemoryJobStore
@@ -299,6 +300,18 @@ class ModelCommand(TelegramCommand):
         ]
 
 
+_STATUS_EMOJI: dict[str, str] = {
+    "queued": "⏳",
+    "running": "🔄",
+    "succeeded": "✅",
+    "failed": "❌",
+    "cancelled": "⛔",
+}
+_STDOUT_TAIL = 1500
+_STDERR_TAIL = 800
+_MAX_CHANGED_FILES = 10
+
+
 class StatusCommand(TelegramCommand):
     name = "/status"
 
@@ -314,7 +327,85 @@ class StatusCommand(TelegramCommand):
         job = ctx.job_store.get(tokens[1])
         if not job:
             return "해당 Job ID를 찾을 수 없습니다."
-        return f"Job {job.id} 상태: {job.status.value}"
+        return self._format_job_detail(job)
+
+    @staticmethod
+    def _fmt_time(dt: datetime) -> str:
+        return dt.astimezone().strftime("%H:%M:%S")
+
+    @staticmethod
+    def _duration_str(seconds: int) -> str:
+        mins, secs = divmod(seconds, 60)
+        return f"{mins}분 {secs}초" if mins > 0 else f"{secs}초"
+
+    @classmethod
+    def _format_job_detail(cls, job: Job) -> str:
+        lines: list[str] = []
+        emoji = _STATUS_EMOJI.get(job.status.value, "")
+        lines.append(f"Job {job.id}")
+        lines.append(f"상태: {job.status.value} {emoji}")
+        lines.append(f"프로젝트: {job.request.project} | 모델: {job.request.model.value}")
+
+        instr = job.request.instruction.strip().replace("\n", " ")
+        if len(instr) > 80:
+            instr = instr[:80].rstrip() + "..."
+        lines.append(f"지시: {instr}")
+
+        now = datetime.now(UTC)
+        started = job.started_at
+        finished = job.finished_at
+        if started:
+            if finished:
+                elapsed = int((finished - started).total_seconds())
+                lines.append(
+                    f"시작: {cls._fmt_time(started)} → 완료: {cls._fmt_time(finished)}"
+                    f" (소요: {cls._duration_str(elapsed)})"
+                )
+            else:
+                elapsed = int((now - started).total_seconds())
+                lines.append(
+                    f"시작: {cls._fmt_time(started)} (경과: {cls._duration_str(elapsed)})"
+                )
+        else:
+            lines.append(f"생성: {cls._fmt_time(job.created_at)}")
+
+        if job.status.value == "succeeded":
+            if job.branch:
+                lines.append(f"브랜치: {job.branch}")
+            if job.commit_hash:
+                lines.append(f"커밋: {job.commit_hash[:8]}")
+            if job.changed_files:
+                lines.append(f"변경 파일 ({len(job.changed_files)}개):")
+                for f in job.changed_files[:_MAX_CHANGED_FILES]:
+                    lines.append(f"  - {f}")
+                if len(job.changed_files) > _MAX_CHANGED_FILES:
+                    lines.append(f"  ... 외 {len(job.changed_files) - _MAX_CHANGED_FILES}개")
+            else:
+                lines.append("변경 파일: 없음 (no-op)")
+            if job.runner_stdout_summary:
+                lines.append("")
+                lines.append("[AI 출력 요약]")
+                summary = job.runner_stdout_summary
+                if len(summary) > _STDOUT_TAIL:
+                    summary = "...(앞부분 생략)\n" + summary[-_STDOUT_TAIL:]
+                lines.append(summary)
+
+        elif job.status.value == "failed":
+            if job.error_stage:
+                lines.append(f"오류 단계: {job.error_stage}")
+            if job.error:
+                lines.append(f"오류: {job.error[:300]}")
+            if job.runner_stderr_summary:
+                lines.append("")
+                lines.append("[stderr]")
+                lines.append(job.runner_stderr_summary[-_STDERR_TAIL:])
+
+        elif job.status.value == "running" and job.runner_stdout_summary:
+            lines.append("")
+            lines.append("[현재 출력]")
+            lines.append(job.runner_stdout_summary[-_STDOUT_TAIL:])
+
+        return "\n".join(lines)
 
     def get_inline_buttons(
         self,

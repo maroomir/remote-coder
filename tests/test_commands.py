@@ -100,7 +100,11 @@ def test_status_command_dispatch(project_registry: ProjectRegistry):
         TelegramMessage(chat_id=1, user_id=1, text="/status job1"),
         _ctx(project_registry),
     )
-    assert text == "Job job1 상태: queued"
+    assert text is not None
+    assert "job1" in text
+    assert "queued" in text
+    assert "프로젝트:" in text
+    assert "모델:" in text
 
 
 def test_status_command_lists_recent_jobs_as_buttons(project_registry: ProjectRegistry):
