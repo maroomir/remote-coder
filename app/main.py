@@ -29,6 +29,7 @@ from app.telegram.commands import (
     RebaseCommand,
     StartCommand,
     StatusCommand,
+    StopCommand,
 )
 from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
@@ -85,6 +86,7 @@ command_registry = CommandRegistry(
         RebaseCommand(),
         MonitorCommand(),
         ClearCommand(),
+        StopCommand(),
     ]
 )
 git_service = GitWorktreeService(base_dir=settings.worktree_base_dir)
@@ -113,6 +115,7 @@ job_manager = JobManager(
     advanced_settings_store=advanced_settings_store,
     ai_commit_body_generator=AiCommitBodyGenerator(),
 )
+command_context.job_manager = job_manager
 
 app = FastAPI(title="Remote AI Coder")
 app.include_router(

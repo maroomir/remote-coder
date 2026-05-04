@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -51,6 +52,8 @@ class JobManager:
         self._project_registry = project_registry
         self._advanced_settings_store = advanced_settings_store
         self._ai_commit_body_generator = ai_commit_body_generator
+        self._cancel_events: dict[str, threading.Event] = {}
+        self._cancelled_job_ids: set[str] = set()
 
     def submit(self, request: JobRequest) -> Job:
         job = Job(id=self._make_job_id(), request=request)
@@ -66,10 +69,41 @@ class JobManager:
         self._notifier.send_job_accepted(job)
         return job
 
+    def cancel(self, job_id: str) -> bool:
+        job = self._job_store.get(job_id)
+        if not job:
+            return False
+        if job.status.value not in ("queued", "running"):
+            return False
+        self._cancelled_job_ids.add(job_id)
+        job.mark_cancelled()
+        self._job_store.update(job)
+        _joblog.info(
+            "cancelled",
+            chat_id=job.request.chat_id,
+            user_id=job.request.requested_by,
+            project=job.request.project,
+            job_id=job_id,
+        )
+        event = self._cancel_events.get(job_id)
+        if event is not None:
+            event.set()
+        return True
+
     def run(self, job_id: str) -> Job:
         job = self._job_store.get(job_id)
         if not job:
             raise ValueError("job not found")
+
+        if job_id in self._cancelled_job_ids:
+            if job.status.value not in ("cancelled",):
+                job.mark_cancelled()
+                self._job_store.update(job)
+            self._notifier.send_job_result(job)
+            return job
+
+        cancel_event = threading.Event()
+        self._cancel_events[job_id] = cancel_event
 
         entry = self._project_registry.get(job.request.project)
         if not entry or not entry.enabled:
@@ -154,6 +188,7 @@ class JobManager:
                     cwd=worktree_path,
                     timeout_seconds=self._settings.job_timeout_seconds,
                     env=None,
+                    cancel_event=cancel_event,
                 )
             )
             self._save_runner_log(job, runner_result, worktree_base)
@@ -274,19 +309,33 @@ class JobManager:
                     job_id=job.id,
                 )
         except Exception as exc:  # pylint: disable=broad-except
-            _joblog.exception(
-                "failed stage=%s: %s",
-                failed_stage or "unknown",
-                exc,
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job.id,
-            )
-            job.mark_failed(str(exc))
-            job.error_stage = failed_stage or "unknown"
-            self._job_store.update(job)
+            if job_id in self._cancelled_job_ids:
+                _joblog.info(
+                    "runner stopped by cancellation",
+                    chat_id=job.request.chat_id,
+                    user_id=job.request.requested_by,
+                    project=job.request.project,
+                    job_id=job.id,
+                )
+                if job.status.value != "cancelled":
+                    job.mark_cancelled()
+                    self._job_store.update(job)
+            else:
+                _joblog.exception(
+                    "failed stage=%s: %s",
+                    failed_stage or "unknown",
+                    exc,
+                    chat_id=job.request.chat_id,
+                    user_id=job.request.requested_by,
+                    project=job.request.project,
+                    job_id=job.id,
+                )
+                job.mark_failed(str(exc))
+                job.error_stage = failed_stage or "unknown"
+                self._job_store.update(job)
         finally:
+            self._cancel_events.pop(job_id, None)
+            self._cancelled_job_ids.discard(job_id)
             if (
                 worktree_path
                 and created_worktree_for_job

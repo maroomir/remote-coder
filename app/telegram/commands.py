@@ -19,6 +19,7 @@ from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
 if TYPE_CHECKING:
     from app.git.service import GitWorktreeService
+    from app.jobs.manager import JobManager
 
 _cmd_evt = EventLogger("app.telegram.command", "telegram.command")
 
@@ -41,6 +42,7 @@ class CommandContext:
     git_remote_name: str
     confirmation_store: InMemoryConfirmationStore
     conversation_store: SQLiteConversationStore | None = None
+    job_manager: JobManager | None = None
 
 
 @dataclass(frozen=True)
@@ -710,6 +712,25 @@ class ClearCommand(ConfirmableCommand):
             except RuntimeError as exc:
                 lines.append(f"{p.name}: 실패 — {exc}")
         return "\n".join(lines)
+
+
+class StopCommand(TelegramCommand):
+    name = "/stop"
+
+    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
+        tokens = message.text.strip().split(maxsplit=1)
+        if len(tokens) < 2:
+            return "사용법: /stop <job_id>"
+        job_id = tokens[1].strip()
+        if ctx.job_manager is None:
+            return "작업 중단 기능을 사용할 수 없습니다."
+        success = ctx.job_manager.cancel(job_id)
+        if success:
+            return f"작업 중단 요청 완료: {job_id}"
+        job = ctx.job_store.get(job_id)
+        if not job:
+            return f"Job을 찾을 수 없습니다: {job_id}"
+        return f"작업을 중단할 수 없습니다: {job_id} (현재 상태: {job.status.value})"
 
 
 class CommandRegistry:

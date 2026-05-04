@@ -64,6 +64,12 @@ class Job(BaseModel):
         self.error = error
         self.finished_at = datetime.now(UTC)
 
+    def mark_cancelled(self) -> None:
+        if self.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
+            raise ValueError(f"Cannot move {self.status} to cancelled")
+        self.status = JobStatus.CANCELLED
+        self.finished_at = datetime.now(UTC)
+
 
 class JobResult(BaseModel):
     success: bool

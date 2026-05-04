@@ -1,19 +1,23 @@
 import logging
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from app.ai.base import RunnerInput
 from app.ai.claude import ClaudeRunner
 
 
-@patch("app.ai.claude.subprocess.run")
-def test_claude_runner_invokes_subprocess(mock_run, caplog):
-    mock_run.return_value.returncode = 0
-    mock_run.return_value.stdout = "done"
-    mock_run.return_value.stderr = ""
+@patch("app.ai.claude.subprocess.Popen")
+def test_claude_runner_invokes_subprocess(mock_popen, caplog):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("done", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
     with caplog.at_level(logging.INFO, logger="app.ai.claude"):
         runner = ClaudeRunner()
         result = runner.run(RunnerInput(instruction="test", cwd=Path("."), timeout_seconds=10))
     assert result.exit_code == 0
     assert result.stdout == "done"
     assert any(r.name == "app.ai.claude" for r in caplog.records)
+    cmd = mock_popen.call_args.args[0]
+    assert cmd[:2] == ["claude", "-p"]

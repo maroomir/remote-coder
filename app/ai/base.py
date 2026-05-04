@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import threading
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -12,6 +13,7 @@ class RunnerInput:
     cwd: Path
     timeout_seconds: int
     env: dict[str, str] | None = None
+    cancel_event: threading.Event | None = field(default=None, compare=False)
 
 
 @dataclass

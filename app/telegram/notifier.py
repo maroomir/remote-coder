@@ -107,9 +107,16 @@ class TelegramNotifier:
             job_id=job.id,
             project=job.request.project,
         )
-        self.send_text(
+
+        class _Btn:
+            def __init__(self, label: str, callback_data: str) -> None:
+                self.label = label
+                self.callback_data = callback_data
+
+        self.send_with_buttons(
             job.request.chat_id,
             f"작업 접수 완료\nJob ID: {job.id}\n프로젝트: {job.request.project}\n모델: {job.request.model.value}",
+            [[_Btn("작업 중단", f"/stop {job.id}")]],
         )
 
     def send_job_result(self, job: Job) -> None:
@@ -121,6 +128,14 @@ class TelegramNotifier:
             job_id=job.id,
             project=job.request.project,
         )
+        if job.status.value == "cancelled":
+            text = (
+                f"작업 중단됨\n"
+                f"Job ID: {job.id}\n"
+                f"프로젝트: {job.request.project}"
+            )
+            self.send_long_text(job.request.chat_id, text)
+            return
         if job.status.value == "succeeded":
             changed = ", ".join(job.changed_files) if job.changed_files else "변경 없음"
             branch_line = job.branch if job.branch else "(없음 — 변경 없어 브랜치 미생성)"
