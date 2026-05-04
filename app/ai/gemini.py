@@ -18,7 +18,7 @@ class GeminiRunner(AiRunner):
         _log.info("start cwd=%s timeout=%d", cwd_name, runner_input.timeout_seconds)
         started_at = datetime.now(UTC)
         proc = subprocess.Popen(
-            ["gemini", "--approval-mode", "yolo", "-p", runner_input.instruction],
+            ["gemini", "--approval-mode", "yolo", "--skip-trust", "-p", runner_input.instruction],
             cwd=runner_input.cwd,
             env=runner_input.env,
             stdout=subprocess.PIPE,
