@@ -188,6 +188,11 @@ class HelpCommand(TelegramCommand):
                 InlineButton("monitor: worktrees", "/monitor worktrees"),
                 InlineButton("monitor: code", "/monitor code"),
             ],
+            [
+                InlineButton("clear: branch", "/clear branch"),
+                InlineButton("clear: worktrees", "/clear worktrees"),
+                InlineButton("clear: memory", "/clear memory"),
+            ],
         ]
 
 
