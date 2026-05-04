@@ -210,9 +210,10 @@ class JobManager:
                 job.changed_files = self._git_service.collect_changes(worktree_path)
 
                 if job.request.commit:
+                    ai_title = None
                     ai_body = None
                     if self._ai_commit_body_generator is not None:
-                        ai_body = self._ai_commit_body_generator.generate(
+                        ai_title, ai_body = self._ai_commit_body_generator.generate(
                             instruction=job.request.instruction,
                             changed_files=job.changed_files,
                         )
@@ -221,6 +222,7 @@ class JobManager:
                         instruction=job.request.instruction,
                         changed_files=job.changed_files,
                         ai_body=ai_body,
+                        ai_title=ai_title,
                     )
                     job.commit_hash = self._git_service.commit_all(worktree_path, commit_message)
                 else:

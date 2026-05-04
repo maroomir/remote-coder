@@ -9,7 +9,7 @@ def test_commit_message_formatter_builds_remote_coder_template():
     )
 
     assert message == (
-        "fix: fix commit message format\n"
+        "fix: fix commit message format\n\n"
         "- AI agent fixed the requested behavior\n"
         "- AI agent updated automated coverage where applicable\n\n"
         "committed by remote-coder: job_20260430010101_ab12cd"
@@ -23,7 +23,7 @@ def test_commit_message_formatter_uses_chore_for_docs_only_changes():
         changed_files=["README.md", "docs/claude-guide.md"],
     )
 
-    assert message.startswith("chore: README 문서 업데이트\n")
+    assert message.startswith("chore: README 문서 업데이트\n\n")
     assert "- AI agent refreshed related documentation where applicable\n" in message
 
 
@@ -41,7 +41,7 @@ def test_commit_message_formatter_prefers_feature_intent_over_changed_file_list(
     )
 
     assert message.startswith(
-        "feat: improve generated commit messages so commits clearly describe the added\n"
+        "feat: improve generated commit messages so commits clearly describe the added\n\n"
     )
     assert "00 project context" not in message
     assert "10 architecture oop gof" not in message
@@ -60,7 +60,7 @@ def test_commit_message_formatter_does_not_repeat_user_message():
     )
 
     assert message == (
-        "feat: show current model and token usage in monitor model\n"
+        "feat: show current model and token usage in monitor model\n\n"
         "- AI agent implemented the requested change\n"
         "- AI agent updated automated coverage where applicable\n\n"
         "committed by remote-coder: job_20260502215006_fa3889"

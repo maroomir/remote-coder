@@ -61,15 +61,16 @@ class CommitMessageFormatter:
         instruction: str,
         changed_files: list[str],
         ai_body: str | None = None,
+        ai_title: str | None = None,
     ) -> str:
         commit_type = cls._infer_type(instruction, changed_files)
-        title = cls._build_title(instruction, changed_files)
+        title = ai_title if ai_title else cls._build_title(instruction, changed_files)
         if ai_body:
             body = ai_body
         else:
             bullets = cls._build_bullets(commit_type, changed_files)
             body = "\n".join(f"- {bullet}" for bullet in bullets)
-        return f"{commit_type}: {title}\n{body}\n\ncommitted by remote-coder: {job_id}"
+        return f"{commit_type}: {title}\n\n{body}\n\ncommitted by remote-coder: {job_id}"
 
     @classmethod
     def _infer_type(cls, instruction: str, changed_files: list[str]) -> str:
