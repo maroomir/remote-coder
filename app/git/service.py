@@ -515,3 +515,44 @@ class GitWorktreeService:
         )
         _gitlog.info("rebase_branch_onto_main_and_merge done branch=%s", branch)
         return summary
+
+    def create_github_pr(
+        self,
+        project_path: Path,
+        branch: str,
+        base_branch: str,
+        title: str,
+        body: str,
+    ) -> str:
+        """GitHub CLI(`gh`)로 Pull Request를 생성합니다. 반환: PR URL."""
+        _gitlog.info("create_github_pr branch=%s base=%s", branch, base_branch)
+        result = subprocess.run(
+            ["gh", "pr", "create", "--base", base_branch, "--head", branch,
+             "--title", title, "--body", body],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            check=False,
+            shell=False,
+        )
+        if result.returncode == 0:
+            url = result.stdout.strip()
+            _gitlog.info("create_github_pr created url=%s", url)
+            return url
+        stderr = result.stderr.strip()
+        stdout = result.stdout.strip()
+        combined = (stderr + stdout).lower()
+        if "already exists" in combined:
+            view = subprocess.run(
+                ["gh", "pr", "view", branch, "--json", "url", "--jq", ".url"],
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                check=False,
+                shell=False,
+            )
+            if view.returncode == 0 and view.stdout.strip():
+                existing_url = view.stdout.strip()
+                _gitlog.info("create_github_pr already exists url=%s", existing_url)
+                return existing_url
+        raise RuntimeError(f"gh pr create 실패: {stderr or stdout}")

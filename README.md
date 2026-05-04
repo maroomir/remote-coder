@@ -42,7 +42,7 @@ cp .env.example .env
 - `TELEGRAM_ALLOWED_CHAT_IDS`
 - `TELEGRAM_ALLOWED_USER_IDS` (선택)
 - 필요 시 `TELEGRAM_WEBHOOK_SECRET`
-- 선택: `GIT_REMOTE_NAME` (기본 `origin`) — 커밋 후 push 및 `/rebase`, `/clear` 시 사용
+- 선택: `GIT_REMOTE_NAME` (기본 `origin`) — 커밋 후 push 및 `/rebase`, `/pr`, `/clear` 시 사용
 - 선택: `PROJECTS_CONFIG_PATH` — 여러 Git 프로젝트 등록 파일(JSON 또는 `.yaml`) 경로
 - 선택: `CONVERSATION_DB_PATH` — 프로젝트+채팅별 대화 기억 SQLite 경로 (미설정 시 `PROJECT_ROOT/.remote-coder/conversations.sqlite3`)
 - 선택: `CONVERSATION_RECENT_LIMIT` — 모호한 후속 요청 시 runner에 붙이는 최근 기록 개수 (기본 `10`)
@@ -136,6 +136,8 @@ ngrok version
 - `/branch <이름>` : 적용 프로젝트에서 로컬 브랜치가 있을 때만 `git switch` (없으면 오류, 원격만 있는 브랜치는 자동 생성하지 않음)
 - `/rebase` : 인라인 버튼으로 로컬 브랜치 선택 (main/master 제외) 후 `main`(또는 `master`) 기준으로 rebase → fast-forward 병합 → 원격 push
 - `/rebase <branch>` : 직접 브랜치를 지정해 rebase
+- `/pr` : 인라인 버튼으로 로컬 브랜치 선택 후 GitHub Pull Request 생성. PR 본문에는 해당 브랜치 작업 시 주고받은 요청과 AI 결과가 포함됩니다. GitHub CLI(`gh`)가 필요합니다 (`gh auth login`).
+- `/pr <branch>` : 직접 브랜치를 지정해 PR 생성
 - `/clear branch` : 등록된 enabled 프로젝트마다 `remote-*` 로컬·원격 브랜치와 연결된 linked worktree 정리
 - `/clear worktrees` : 등록된 enabled 프로젝트마다 관리 대상 worktree(`WORKTREE_BASE_DIR` 하위 및 `remote-*` checkout linked worktree) 정리 + stale entry prune
 - `/clear memory` : 대화 기억 SQLite 데이터베이스 초기화

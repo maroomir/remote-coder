@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -78,6 +79,7 @@ HELP_TEXT = "\n".join(
         "/project <이름> - 작업 프로젝트 전환",
         "/branch [이름] - 브랜치 조회 또는 전환",
         "/rebase [브랜치] - 브랜치 리베이스",
+        "/pr [브랜치] - 브랜치를 GitHub PR로 올리기",
         "/monitor <model|memory|branch|worktrees|code|project> - 모니터링",
         "/clear <branch|worktrees|memory> - 정리 (확인 필요)",
         "/reports [개수] - 대화 기억 리포트",
@@ -211,13 +213,14 @@ class StartCommand(TelegramCommand):
                     InlineButton("리베이스", "/rebase"),
                 ],
                 [
-                    InlineButton("상태", "/status"),
-                    InlineButton("중단", "/stop")
+                    InlineButton("PR 올리기", "/pr"),
+                    InlineButton("중단", "/stop"),
                 ],
                 [
+                    InlineButton("상태", "/status"),
                     InlineButton("초기화", "/init"),
-                    InlineButton("뒤로", "/start")
                 ],
+                [InlineButton("뒤로", "/start")],
             ]
         return [
             [InlineButton("프로젝트", "/start project"), InlineButton("모델", "/start model")],
@@ -620,6 +623,119 @@ class RebaseCommand(TelegramCommand):
             return []
         excluded = {main_branch, "main", "master"}
         return [branch for branch in branches if branch not in excluded]
+
+
+def _branch_to_pr_title(branch: str) -> str:
+    """브랜치 이름에서 PR 제목 추출: remote- 접두사와 날짜 접미사 제거."""
+    slug = branch
+    if slug.startswith("remote-"):
+        slug = slug[len("remote-"):]
+    slug = re.sub(r"-\d{8}-\d{6}$", "", slug)
+    return slug.replace("-", " ").strip() or branch
+
+
+class PrCommand(TelegramCommand):
+    """적용 프로젝트 저장소의 브랜치를 GitHub Pull Request로 올립니다."""
+
+    name = "/pr"
+    menu_text = "PR을 올릴 브랜치를 선택하세요."
+
+    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
+        tokens = message.text.strip().split()
+        if len(tokens) > 2:
+            return format_usage("/pr", "/pr <branch>")
+        if len(tokens) == 2:
+            branch = tokens[1]
+        else:
+            branches = self._list_pr_candidates(message, ctx)
+            if not branches:
+                return "PR을 올릴 브랜치가 없습니다. /pr <branch> 로 직접 지정할 수 있습니다."
+            return "PR을 올릴 브랜치를 선택하세요."
+
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return "등록된 프로젝트가 없습니다. /projects 로 등록하세요."
+        entry = ctx.project_registry.get(project_name)
+        if not entry or not entry.enabled:
+            return f"프로젝트를 찾을 수 없거나 비활성화되어 있습니다: {project_name}"
+
+        try:
+            base_branch = ctx.git_service.resolve_integrate_branch(entry.root_path)
+        except RuntimeError as exc:
+            return f"/pr 실패: {exc}"
+
+        title, body = self._build_pr_content(branch, project_name, message.chat_id, ctx)
+
+        try:
+            pr_url = ctx.git_service.create_github_pr(
+                entry.root_path,
+                branch,
+                base_branch,
+                title,
+                body,
+            )
+        except RuntimeError as exc:
+            return f"/pr 실패: {exc}"
+
+        return f"PR이 생성되었습니다:\n{pr_url}"
+
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        if message is None or ctx is None:
+            return None
+        if len(message.text.strip().split()) != 1:
+            return None
+        branches = self._list_pr_candidates(message, ctx)
+        buttons = [InlineButton(branch, f"/pr {branch}") for branch in branches]
+        return _button_rows(buttons, per_row=1) if buttons else None
+
+    def _list_pr_candidates(self, message: TelegramMessage, ctx: CommandContext) -> list[str]:
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return []
+        entry = ctx.project_registry.get(project_name)
+        if not entry or not entry.enabled:
+            return []
+        try:
+            main_branch = ctx.git_service.resolve_integrate_branch(entry.root_path)
+            branches = ctx.git_service.list_local_branches(entry.root_path)
+        except RuntimeError:
+            return []
+        if not isinstance(branches, list):
+            return []
+        excluded = {main_branch, "main", "master"}
+        return [branch for branch in branches if branch not in excluded]
+
+    def _build_pr_content(
+        self,
+        branch: str,
+        project_name: str,
+        chat_id: int,
+        ctx: CommandContext,
+    ) -> tuple[str, str]:
+        if ctx.conversation_store is None:
+            return _branch_to_pr_title(branch), f"작업 브랜치: `{branch}`"
+
+        entries = ctx.conversation_store.get_entries_for_branch(project_name, chat_id, branch)
+        if not entries:
+            return _branch_to_pr_title(branch), f"작업 브랜치: `{branch}`"
+
+        title = entries[0][0][:70].rstrip()
+
+        body_parts: list[str] = ["## 작업 요청\n"]
+        for i, (user_text, job_result) in enumerate(entries, 1):
+            if len(entries) > 1:
+                body_parts.append(f"### 요청 {i}\n")
+            body_parts.append(f"**요청:** {user_text}\n")
+            if job_result:
+                body_parts.append(f"\n**AI 결과:**\n{job_result}\n")
+            if i < len(entries):
+                body_parts.append("\n---\n")
+
+        return title, "\n".join(body_parts)
 
 
 class MonitorCommand(TelegramCommand):

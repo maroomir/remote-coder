@@ -436,6 +436,56 @@ class SQLiteConversationStore:
                 conn.close()
         return str(row[0]) if row is not None and row[0] is not None else None
 
+    def get_entries_for_branch(
+        self, project: str, chat_id: int, branch: str
+    ) -> list[tuple[str, str | None]]:
+        """브랜치에 연결된 user 요청과 job 결과를 시간순으로 반환합니다.
+
+        Returns list of (user_text, job_result_text or None).
+        """
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                links = conn.execute(
+                    """
+                    SELECT message_id, job_id
+                    FROM message_branch_links
+                    WHERE project = ? AND chat_id = ? AND branch = ?
+                    ORDER BY created_at ASC
+                    """,
+                    (project, chat_id, branch),
+                ).fetchall()
+            finally:
+                conn.close()
+
+        result: list[tuple[str, str | None]] = []
+        for message_id, job_id in links:
+            user_entry = self.get_user_entry_by_message_id(project, chat_id, message_id)
+            if user_entry is None:
+                continue
+            job_result: str | None = None
+            if job_id:
+                with self._lock:
+                    conn = sqlite3.connect(self._db_path)
+                    try:
+                        row = conn.execute(
+                            """
+                            SELECT text FROM conversation_entries
+                            WHERE project = ? AND chat_id = ? AND role = 'job_result' AND job_id = ?
+                            ORDER BY id DESC LIMIT 1
+                            """,
+                            (project, chat_id, str(job_id)),
+                        ).fetchone()
+                    finally:
+                        conn.close()
+                job_result = str(row[0]) if row is not None else None
+            else:
+                job_result = self.get_latest_job_result_text_for_user_message(
+                    project, chat_id, message_id
+                )
+            result.append((user_entry.text, job_result))
+        return result
+
     def generate_report(
         self,
         project: str,
