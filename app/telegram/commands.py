@@ -78,6 +78,7 @@ HELP_TEXT = "\n".join(
         "/status <job_id> - 작업 상태 확인",
         "/project <이름> - 작업 프로젝트 전환",
         "/branch [이름] - 브랜치 조회 또는 전환",
+        "/pull - 원격 저장소의 모든 브랜치 pull",
         "/rebase [브랜치] - 브랜치 리베이스",
         "/pr [브랜치] - 브랜치를 GitHub PR로 올리기",
         "/monitor <model|memory|branch|worktrees|code|project> - 모니터링",
@@ -210,17 +211,20 @@ class StartCommand(TelegramCommand):
             return [
                 [
                     InlineButton("브랜치 확인", "/branch"),
+                    InlineButton("Pull", "/pull"),
+                ],
+                [
                     InlineButton("리베이스", "/rebase"),
-                ],
-                [
                     InlineButton("PR 올리기", "/pr"),
-                    InlineButton("중단", "/stop"),
                 ],
                 [
+                    InlineButton("중단", "/stop"),
                     InlineButton("상태", "/status"),
-                    InlineButton("초기화", "/init"),
                 ],
-                [InlineButton("뒤로", "/start")],
+                [
+                    InlineButton("초기화", "/init"),
+                    InlineButton("뒤로", "/start"),
+                ],
             ]
         return [
             [InlineButton("프로젝트", "/start project"), InlineButton("모델", "/start model")],
@@ -632,6 +636,30 @@ def _branch_to_pr_title(branch: str) -> str:
         slug = slug[len("remote-"):]
     slug = re.sub(r"-\d{8}-\d{6}$", "", slug)
     return slug.replace("-", " ").strip() or branch
+
+
+class PullCommand(TelegramCommand):
+    """현재 프로젝트의 모든 브랜치를 pull 합니다."""
+
+    name = "/pull"
+    menu_text = "원격 저장소의 모든 브랜치 pull"
+
+    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return "등록된 프로젝트가 없습니다. /projects 로 등록하세요."
+
+        entry = ctx.project_registry.get(project_name)
+        if not entry or not entry.enabled:
+            return f"프로젝트를 찾을 수 없거나 비활성화되어 있습니다: {project_name}"
+
+        try:
+            summary = ctx.git_service.pull_repository(entry.root_path, ctx.git_remote_name)
+            _cmd_evt.info("pull success project=%s", project_name, chat_id=message.chat_id)
+            return f"✅ {project_name}: {summary}"
+        except RuntimeError as exc:
+            _cmd_evt.error("pull failed project=%s err=%s", project_name, str(exc), chat_id=message.chat_id)
+            return f"❌ {project_name} pull 실패: {exc}"
 
 
 class PrCommand(TelegramCommand):

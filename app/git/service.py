@@ -431,7 +431,60 @@ class GitWorktreeService:
             if result.returncode != 0:
                 raise RuntimeError(f"failed to delete remote branch {name}: {result.stderr.strip()}")
 
+    def pull_repository(self, project_path: Path, remote: str) -> str:
+        """
+        원격 저장소에서 모든 브랜치 정보를 가져오고(fetch), 현재 브랜치를 pull 합니다.
+        충돌 발생 시 merge를 abort하고 에러를 발생시킵니다.
+        또한 체크아웃되지 않은 다른 로컬 브랜치(main 포함)들에 대해 fast-forward 업데이트를 시도합니다.
+        """
+        _gitlog.info("pull_repository start remote=%s", remote)
+
+        # 1. Fetch all with prune
+        fetch_res = self._run_git(project_path, ["fetch", remote, "--prune"])
+        if fetch_res.returncode != 0:
+            raise RuntimeError(f"git fetch {remote} 실패: {fetch_res.stderr.strip()}")
+
+        # 2. Current branch pull
+        current = self.get_current_branch(project_path)
+        if not current.startswith("("):  # detached HEAD가 아닌 경우
+            pull_res = self._run_git(project_path, ["pull", remote, current])
+            if pull_res.returncode != 0:
+                # 충돌 가능성이 있으므로 merge abort 시도
+                self._run_git(project_path, ["merge", "--abort"])
+                raise RuntimeError(f"git pull {remote} {current} 실패 (충돌 가능성): {pull_res.stderr.strip()}")
+        else:
+            _gitlog.info("pull_repository: detached HEAD, skipping pull for current branch")
+
+        # 3. Update other local branches (including main) if not checked out elsewhere
+        wt_entries = self.list_worktree_entries(project_path)
+        local_branches = self.list_local_branches(project_path)
+
+        updated_count = 0
+        for branch in local_branches:
+            if branch == current:
+                continue
+
+            # 다른 worktree(메인 포함)에 체크아웃되어 있는지 확인
+            if any(b == branch for _, b in wt_entries):
+                continue
+
+            # Fast-forward 시도 (fetch remote branch:local branch)
+            # 이 명령은 로컬 브랜치가 원격 브랜치의 조상인 경우에만 성공함 (FF)
+            ff_res = self._run_git(project_path, ["fetch", remote, f"{branch}:{branch}"])
+            if ff_res.returncode == 0:
+                updated_count += 1
+
+        summary = f"원격({remote})에서 모든 정보를 가져왔습니다."
+        if not current.startswith("("):
+            summary += f" 현재 브랜치({current})를 업데이트했습니다."
+        if updated_count > 0:
+            summary += f" 추가로 {updated_count}개의 로컬 브랜치를 fast-forward 업데이트했습니다."
+
+        _gitlog.info("pull_repository done: %s", summary)
+        return summary
+
     def rebase_branch_onto_main_and_merge(
+
         self,
         project_path: Path,
         branch: str,
