@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -115,7 +116,22 @@ job_manager = JobManager(
 )
 command_context.job_manager = job_manager
 
-app = FastAPI(title="Remote AI Coder")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    for chat_id in settings.telegram_allowed_chat_ids:
+        try:
+            notifier.send_text(chat_id, "✅ Remote AI Coder 서버가 시작되었습니다.")
+        except Exception:
+            pass
+    yield
+    for chat_id in settings.telegram_allowed_chat_ids:
+        try:
+            notifier.send_text(chat_id, "🔴 Remote AI Coder 서버 연결이 종료되었습니다.")
+        except Exception:
+            pass
+
+
+app = FastAPI(title="Remote AI Coder", lifespan=lifespan)
 app.include_router(
     create_admin_router(
         settings,
