@@ -55,11 +55,20 @@ class CommitMessageFormatter:
     )
 
     @classmethod
-    def format(cls, job_id: str, instruction: str, changed_files: list[str]) -> str:
+    def format(
+        cls,
+        job_id: str,
+        instruction: str,
+        changed_files: list[str],
+        ai_body: str | None = None,
+    ) -> str:
         commit_type = cls._infer_type(instruction, changed_files)
         title = cls._build_title(instruction, changed_files)
-        bullets = cls._build_bullets(commit_type, changed_files)
-        body = "\n".join(f"- {bullet}" for bullet in bullets)
+        if ai_body:
+            body = ai_body
+        else:
+            bullets = cls._build_bullets(commit_type, changed_files)
+            body = "\n".join(f"- {bullet}" for bullet in bullets)
         return f"{commit_type}: {title}\n{body}\n\ncommitted by remote-coder: {job_id}"
 
     @classmethod

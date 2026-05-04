@@ -9,6 +9,7 @@ from app.admin.advanced_settings import FileAdvancedSettingsStore
 from app.ai.base import RunnerInput
 from app.ai.factory import AiRunnerFactory
 from app.config import Settings
+from app.git.ai_commit import AiCommitBodyGenerator
 from app.git.branch_naming import BranchNamingStrategy
 from app.git.commit_message import CommitMessageFormatter
 from app.git.service import GitWorktreeService
@@ -39,6 +40,7 @@ class JobManager:
         notifier: TelegramNotifier,
         project_registry: ProjectRegistry,
         advanced_settings_store: FileAdvancedSettingsStore | None = None,
+        ai_commit_body_generator: AiCommitBodyGenerator | None = None,
     ) -> None:
         self._settings = settings
         self._job_store = job_store
@@ -48,6 +50,7 @@ class JobManager:
         self._notifier = notifier
         self._project_registry = project_registry
         self._advanced_settings_store = advanced_settings_store
+        self._ai_commit_body_generator = ai_commit_body_generator
 
     def submit(self, request: JobRequest) -> Job:
         job = Job(id=self._make_job_id(), request=request)
@@ -207,10 +210,17 @@ class JobManager:
                 job.changed_files = self._git_service.collect_changes(worktree_path)
 
                 if job.request.commit:
+                    ai_body = None
+                    if self._ai_commit_body_generator is not None:
+                        ai_body = self._ai_commit_body_generator.generate(
+                            instruction=job.request.instruction,
+                            changed_files=job.changed_files,
+                        )
                     commit_message = CommitMessageFormatter.format(
                         job_id=job.id,
                         instruction=job.request.instruction,
                         changed_files=job.changed_files,
+                        ai_body=ai_body,
                     )
                     job.commit_hash = self._git_service.commit_all(worktree_path, commit_message)
                 else:

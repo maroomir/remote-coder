@@ -6,6 +6,7 @@ from app.admin.advanced_settings import FileAdvancedSettingsStore, advanced_sett
 from app.admin.router import create_admin_router
 from app.ai.factory import AiRunnerFactory
 from app.config import get_settings
+from app.git.ai_commit import AiCommitBodyGenerator
 from app.git.branch_naming import TimestampSlugStrategy
 from app.git.service import GitWorktreeService
 from app.jobs.manager import JobManager
@@ -110,6 +111,7 @@ job_manager = JobManager(
     notifier=notifier,
     project_registry=project_registry,
     advanced_settings_store=advanced_settings_store,
+    ai_commit_body_generator=AiCommitBodyGenerator(),
 )
 
 app = FastAPI(title="Remote AI Coder")
