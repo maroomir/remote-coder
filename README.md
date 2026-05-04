@@ -120,12 +120,13 @@ ngrok version
 
 ## 4) 지원 명령어 (MVP)
 
-- `/start` : 봇 사용 안내
-- `/help` : 명령어 도움말
-- `/model` : 기본 모델 확인
+- `/start` : 인라인 메뉴 허브 (모델·모니터·정리·관리 항목별 버튼 바로가기)
+- `/help` : 명령어 도움말 (model·monitor·clear 항목별 인라인 버튼 제공)
+- `/model` : 기본 모델 확인 (인라인 버튼으로 선택)
 - `/model claude` : 현재 chat의 기본 모델을 claude로 변경
 - `/model codex` : 현재 chat의 기본 모델을 codex로 변경
 - `/model gemini` : 현재 chat의 기본 모델을 gemini로 변경
+- `/status` : 최근 Job 목록에서 인라인 버튼으로 선택
 - `/status <job_id>` : 작업 상태 조회
 - `/projects` : 등록 프로젝트 목록 및 이 채팅의 현재 적용 프로젝트
 - `/project` : 이 채팅의 현재 작업 프로젝트(인메모리) 확인
@@ -134,21 +135,25 @@ ngrok version
 - `/reports` : 현재 채팅·현재 작업 프로젝트 기준으로 SQLite 대화 기억을 SQL 집계해 요약 리포트
 - `/branch` : 이 채팅 **적용 프로젝트** 저장소의 현재 checkout 브랜치 표시
 - `/branch <이름>` : 적용 프로젝트에서 로컬 브랜치가 있을 때만 `git switch` (없으면 오류, 원격만 있는 브랜치는 자동 생성하지 않음)
-- `/rebase` 또는 `/rebase <branch>` : 적용 프로젝트에서 해당 브랜치를 `main`(또는 `master`) 기준으로 rebase한 뒤 `main`에 fast-forward 병합 후 원격에 push (인자 생략 시 이 채팅의 최근 성공 Job 브랜치)
+- `/rebase` : 인라인 버튼으로 로컬 브랜치 선택 (main/master 제외) 후 `main`(또는 `master`) 기준으로 rebase → fast-forward 병합 → 원격 push
+- `/rebase <branch>` : 직접 브랜치를 지정해 rebase
 - `/clear branch` : 등록된 enabled 프로젝트마다 `remote-*` 로컬·원격 브랜치와 연결된 linked worktree 정리
 - `/clear worktrees` : 등록된 enabled 프로젝트마다 관리 대상 worktree(`WORKTREE_BASE_DIR` 하위 및 `remote-*` checkout linked worktree) 정리 + stale entry prune
 - `/clear memory` : 대화 기억 SQLite 데이터베이스 초기화
+- `/stop` : 진행 중인 Job 목록에서 인라인 버튼으로 선택해 중단
+- `/stop <job_id>` : 지정한 Job 강제 중단 (queued/running 상태만 가능)
 - `/monitor model` : 현재 채팅 기본 모델 기준 Claude(`claude auth status`) / Codex(`codex --version`) / Gemini(`gemini --version`) 등 CLI Probe + 최근 Job 로그에서 관측된 세부 모델명·토큰 사용량 요약 — 플랜·크레딧 남은량은 공급자 대시보드·안내 문구 참고
 - `/monitor memory` : 이 채팅·현재 **적용 프로젝트** 기준 SQLite 대화 기억 행 수·역할별 행 수·DB 파일 크기
 - `/monitor branch` : 적용 프로젝트 저장소의 브랜치 요약(로컬/원격 개수 및 목록)
 - `/monitor worktrees` : linked worktree 목록·detached 개수·Remote Coder managed 후보 요약
 - `/monitor code` : 적용 프로젝트 루트 기준 코드 파일 수·줄 수 추정(확장자 화이트리스트, `.git`·`node_modules` 등 제외)
+- `/monitor project` : 등록 프로젝트 목록 및 이 채팅 적용 프로젝트 확인 (`/projects`와 동일)
 - 자연어 메시지: AI 작업 요청 생성
 
 참고:
 
 - `/model`로 변경한 기본 모델은 MVP에서는 인메모리 저장입니다. 서버 재시작 시 초기화됩니다.
-- `/project`로 선택한 작업 프로젝트도 채팅별 인메모리이며, 서버 재시작 시 초기화됩니다. `project:` 옵션이 있으면 그 값이 우선합니다. **`/branch`, `/rebase`, `/monitor memory|branch|worktrees|code`는 모두 이 채팅의 적용 프로젝트(없으면 등록 파일의 폴백 기본값)를 기준으로 합니다.**
+- `/project`로 선택한 작업 프로젝트도 채팅별 인메모리이며, 서버 재시작 시 초기화됩니다. `project:` 옵션이 있으면 그 값이 우선합니다. **`/branch`, `/rebase`, `/monitor memory|branch|worktrees|code|project`는 모두 이 채팅의 적용 프로젝트(없으면 등록 파일의 폴백 기본값)를 기준으로 합니다.**
 - `/init`으로 위 채팅별 설정과 `/clear` 확인 대기를 한 번에 되돌릴 수 있습니다(대화 기억 SQLite·Git 저장소는 건드리지 않음).
 - AI Job은 **요청에 사용된 프로젝트 저장소**의 **현재 `HEAD` 커밋**에서 detached worktree를 만든 뒤 실행합니다. **워킹 트리에 변경이 있을 때만** 작업 브랜치를 만들고 커밋합니다. 커밋이 있으면 `GIT_REMOTE_NAME`(기본 `origin`)으로 push합니다. 저장소 브랜치를 바꾸려면 먼저 `/branch <이름>`으로 로컬 브랜치를 전환하세요.
 - 자동 생성 커밋 메시지는 다음 형식을 사용합니다.

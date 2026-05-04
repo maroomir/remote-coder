@@ -79,7 +79,7 @@ HELP_TEXT = "\n".join(
         "/project <이름> - 작업 프로젝트 전환",
         "/branch [이름] - 브랜치 조회 또는 전환",
         "/rebase [브랜치] - 브랜치 리베이스",
-        "/monitor <model|memory|branch|worktrees|code> - 모니터링",
+        "/monitor <model|memory|branch|worktrees|code|project> - 모니터링",
         "/clear <branch|worktrees|memory> - 정리 (확인 필요)",
         "/reports [개수] - 대화 기억 리포트",
         "/init - 이 채팅 설정 초기화",
