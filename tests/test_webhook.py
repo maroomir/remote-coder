@@ -58,14 +58,14 @@ class CaptureJobManager:
 class DummyNotifier:
     def __init__(self):
         self.sent: list[tuple[int, str]] = []
-        self.sent_with_buttons: list[tuple[int, str]] = []
+        self.sent_with_buttons: list[tuple[int, str, object]] = []
         self.answered_callbacks: list[str] = []
 
     def send_text(self, chat_id: int, text: str) -> None:
         self.sent.append((chat_id, text))
 
     def send_with_buttons(self, chat_id: int, text: str, inline_buttons) -> None:
-        self.sent_with_buttons.append((chat_id, text))
+        self.sent_with_buttons.append((chat_id, text, inline_buttons))
 
     def answer_callback_query(self, callback_query_id: str) -> None:
         self.answered_callbacks.append(callback_query_id)
@@ -804,6 +804,58 @@ def test_webhook_callback_query_executes_model_change(project_registry):
     assert notifier.sent
     assert "codex로 변경" in notifier.sent[0][1]
     assert "cq_001" in notifier.answered_callbacks
+
+
+def test_webhook_callback_query_sends_help_submenu_buttons(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    app.include_router(
+        create_webhook_router(
+            auth_service=AllowlistAuthService({123}),
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=CommandRegistry([HelpCommand(), ModelCommand()]),
+            command_context=CommandContext(
+                job_store=store,
+                default_model=ModelName.CLAUDE,
+                project_registry=project_registry,
+                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+                project_preferences=InMemoryProjectPreferenceStore(),
+                git_service=Mock(),
+                git_remote_name="origin",
+                conversation_store=None,
+                confirmation_store=InMemoryConfirmationStore(),
+            ),
+            job_manager=DummyJobManager(),
+            job_store=store,
+            notifier=notifier,
+            webhook_secret=None,
+        )
+    )
+    client = TestClient(app)
+    payload = {
+        "update_id": 52,
+        "callback_query": {
+            "id": "cq_003",
+            "from": {"id": 999},
+            "message": {"chat": {"id": 123}},
+            "data": "/help model",
+        },
+    }
+    response = client.post("/telegram/webhook", json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert notifier.sent_with_buttons
+    assert notifier.sent_with_buttons[0][0] == 123
+    assert notifier.sent_with_buttons[0][1].startswith("model")
+    buttons = notifier.sent_with_buttons[0][2]
+    assert buttons[0][0].callback_data == "/model claude"
+    assert buttons[1][0].callback_data == "/help"
+    assert "cq_003" in notifier.answered_callbacks
 
 
 def test_webhook_callback_query_unauthorized_is_ignored(project_registry):

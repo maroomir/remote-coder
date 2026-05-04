@@ -105,11 +105,19 @@ def create_webhook_router(
                 background_tasks.add_task(notifier.answer_callback_query, cq.id)
                 return {"status": "ignored"}
             cq_message = TelegramMessage(chat_id=cq_chat_id, user_id=cq_user_id, text=cq.data)
-            cq_response = command_registry.dispatch(cq_message, command_context)
+            cq_response = command_registry.dispatch_rich(cq_message, command_context)
             background_tasks.add_task(notifier.answer_callback_query, cq.id)
             if cq_response:
                 _cmdlog.info("callback_query handled: %s", cq.data, chat_id=cq_chat_id, user_id=cq_user_id)
-                background_tasks.add_task(notifier.send_text, cq_chat_id, cq_response)
+                if cq_response.inline_buttons:
+                    background_tasks.add_task(
+                        notifier.send_with_buttons,
+                        cq_chat_id,
+                        cq_response.text,
+                        cq_response.inline_buttons,
+                    )
+                else:
+                    background_tasks.add_task(notifier.send_text, cq_chat_id, cq_response.text)
             return {"status": "ok"}
 
         if not update.message:

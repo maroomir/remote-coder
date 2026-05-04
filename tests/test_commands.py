@@ -93,6 +93,60 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert "옵션: project:, model:, branch:, no commit" in text
 
 
+def test_help_command_top_level_buttons_are_grouped(project_registry: ProjectRegistry):
+    registry = CommandRegistry([HelpCommand()])
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/help"), _ctx(project_registry))
+
+    assert response is not None
+    assert response.inline_buttons == [
+        [InlineButton("model", "/help model")],
+        [InlineButton("monitor", "/help monitor")],
+        [InlineButton("clear", "/help clear")],
+    ]
+
+
+def test_help_command_model_submenu_buttons(project_registry: ProjectRegistry):
+    registry = CommandRegistry([HelpCommand()])
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="/help model"),
+        _ctx(project_registry),
+    )
+
+    assert response is not None
+    assert response.text.startswith("model")
+    assert "/model <claude|codex|gemini>" in response.text
+    assert response.inline_buttons == [
+        [
+            InlineButton("claude", "/model claude"),
+            InlineButton("codex", "/model codex"),
+            InlineButton("gemini", "/model gemini"),
+        ],
+        [InlineButton("뒤로", "/help")],
+    ]
+
+
+def test_help_command_monitor_and_clear_submenus(project_registry: ProjectRegistry):
+    registry = CommandRegistry([HelpCommand()])
+
+    monitor = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="/help monitor"),
+        _ctx(project_registry),
+    )
+    clear = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="/help clear"),
+        _ctx(project_registry),
+    )
+
+    assert monitor is not None
+    assert monitor.text.startswith("monitor")
+    assert monitor.inline_buttons is not None
+    assert InlineButton("worktrees", "/monitor worktrees") in monitor.inline_buttons[1]
+    assert clear is not None
+    assert clear.text.startswith("clear")
+    assert clear.inline_buttons is not None
+    assert InlineButton("memory", "/clear memory") in clear.inline_buttons[0]
+
+
 def test_status_command_dispatch(project_registry: ProjectRegistry):
     registry = CommandRegistry([StatusCommand()])
     text = registry.dispatch(
@@ -523,11 +577,7 @@ def test_help_command_get_inline_buttons():
     flat = [btn for row in buttons for btn in row]
     assert all(isinstance(b, InlineButton) for b in flat)
     data = {btn.callback_data for btn in flat}
-    assert "/model claude" in data
-    assert "/model codex" in data
-    assert "/model gemini" in data
-    assert "/monitor model" in data
-    assert "/monitor memory" in data
+    assert data == {"/help model", "/help monitor", "/help clear"}
 
 
 def test_dispatch_rich_help_includes_buttons(project_registry: ProjectRegistry):

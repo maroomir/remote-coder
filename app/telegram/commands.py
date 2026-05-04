@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from app.git.service import GitWorktreeService
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
 from app.monitoring.code import count_project_code, format_code_monitor
@@ -16,6 +16,9 @@ from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirm
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.project_preferences import InMemoryProjectPreferenceStore
+
+if TYPE_CHECKING:
+    from app.git.service import GitWorktreeService
 
 _cmd_evt = EventLogger("app.telegram.command", "telegram.command")
 
@@ -136,7 +139,12 @@ class TelegramCommand(ABC):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         raise NotImplementedError
 
-    def get_inline_buttons(self) -> list[list[InlineButton]] | None:
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        _ = (message, ctx)
         return None
 
 
@@ -164,6 +172,13 @@ class HelpCommand(TelegramCommand):
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         _ = (message, ctx)
+        tokens = message.text.strip().split()
+        if len(tokens) == 2:
+            topic = tokens[1].lower()
+            topic_text = self._format_topic(topic)
+            if topic_text is not None:
+                return topic_text
+
         sections = [format_help_section(title, entries) for title, entries in HELP_SECTIONS]
         natural_language_help = (
             "자연어 작업 요청\n"
@@ -172,28 +187,83 @@ class HelpCommand(TelegramCommand):
         )
         return "\n\n".join(["도움말", *sections, natural_language_help])
 
-    def get_inline_buttons(self) -> list[list[InlineButton]] | None:
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        _ = ctx
+        tokens = message.text.strip().split() if message is not None else []
+        topic = tokens[1].lower() if len(tokens) == 2 else ""
+
+        if topic == "model":
+            return [
+                [
+                    InlineButton("claude", "/model claude"),
+                    InlineButton("codex", "/model codex"),
+                    InlineButton("gemini", "/model gemini"),
+                ],
+                [InlineButton("뒤로", "/help")],
+            ]
+        if topic == "monitor":
+            return [
+                [
+                    InlineButton("model", "/monitor model"),
+                    InlineButton("memory", "/monitor memory"),
+                    InlineButton("branch", "/monitor branch"),
+                ],
+                [
+                    InlineButton("worktrees", "/monitor worktrees"),
+                    InlineButton("code", "/monitor code"),
+                ],
+                [InlineButton("뒤로", "/help")],
+            ]
+        if topic == "clear":
+            return [
+                [
+                    InlineButton("branch", "/clear branch"),
+                    InlineButton("worktrees", "/clear worktrees"),
+                    InlineButton("memory", "/clear memory"),
+                ],
+                [InlineButton("뒤로", "/help")],
+            ]
         return [
-            [
-                InlineButton("모델: claude", "/model claude"),
-                InlineButton("모델: codex", "/model codex"),
-                InlineButton("모델: gemini", "/model gemini"),
-            ],
-            [
-                InlineButton("monitor: model", "/monitor model"),
-                InlineButton("monitor: memory", "/monitor memory"),
-                InlineButton("monitor: branch", "/monitor branch"),
-            ],
-            [
-                InlineButton("monitor: worktrees", "/monitor worktrees"),
-                InlineButton("monitor: code", "/monitor code"),
-            ],
-            [
-                InlineButton("clear: branch", "/clear branch"),
-                InlineButton("clear: worktrees", "/clear worktrees"),
-                InlineButton("clear: memory", "/clear memory"),
-            ],
+            [InlineButton("model", "/help model")],
+            [InlineButton("monitor", "/help monitor")],
+            [InlineButton("clear", "/help clear")],
         ]
+
+    @staticmethod
+    def _format_topic(topic: str) -> str | None:
+        if topic == "model":
+            return format_help_section(
+                "model",
+                [
+                    CommandHelpEntry("/model", "현재 기본 모델을 확인합니다."),
+                    CommandHelpEntry(f"/model {MODEL_USAGE}", "기본 모델을 변경합니다."),
+                ],
+            )
+        if topic == "monitor":
+            return format_help_section(
+                "monitor",
+                [
+                    CommandHelpEntry("/monitor model", "현재 모델·CLI 인증/버전·최근 Job 토큰 사용량 조회."),
+                    CommandHelpEntry("/monitor memory", "이 채팅·프로젝트 SQLite 대화 기억 행 수·DB 크기."),
+                    CommandHelpEntry("/monitor branch", "로컬·원격 브랜치 요약(개수·목록)."),
+                    CommandHelpEntry("/monitor worktrees", "linked worktree 목록·managed 후보 요약."),
+                    CommandHelpEntry("/monitor code", "코드 파일 수·줄 수 추정(확장자 기준)."),
+                ],
+            )
+        if topic == "clear":
+            return format_help_section(
+                "clear",
+                [
+                    CommandHelpEntry("/clear branch", "등록된 enabled 프로젝트의 remote-* 브랜치·연결 worktree 삭제."),
+                    CommandHelpEntry("/clear worktrees", "관리 대상 worktree 정리·stale prune."),
+                    CommandHelpEntry("/clear memory", "대화 기억 SQLite DB 전체 초기화."),
+                ],
+            )
+        return None
 
 
 class ModelCommand(TelegramCommand):
@@ -411,6 +481,8 @@ class BranchCommand(TelegramCommand):
             return f"프로젝트: {project_name}\n현재 브랜치: {current}"
 
         branch = tokens[1]
+        from app.git.service import GitWorktreeService
+
         err = GitWorktreeService.validate_branch_token(branch)
         if err:
             return err
@@ -676,5 +748,5 @@ class CommandRegistry:
         tokens = message.text.strip().split()
         head = tokens[0] if tokens else ""
         command = self._commands.get(head)
-        buttons = command.get_inline_buttons() if command is not None else None
+        buttons = command.get_inline_buttons(message, ctx) if command is not None else None
         return CommandResponse(text=text, inline_buttons=buttons)
