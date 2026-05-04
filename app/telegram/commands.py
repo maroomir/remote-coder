@@ -67,18 +67,25 @@ class CommandResponse:
 HELP_TEXT = "\n".join(
     [
         "도움말",
+        "",
         "작업 지시는 일반 메시지로 보내세요.",
         "옵션: project:, model:, branch:, no commit",
         "",
-        "주요 명령: /projects, /project, /branch, /status, /reports, /init, /rebase",
-        "아래 버튼에서 모델, 모니터링, 정리 명령을 선택할 수 있습니다.",
+        "명령어 목록:",
+        "/model <claude|codex|gemini> - 기본 모델 변경",
+        "/status <job_id> - 작업 상태 확인",
+        "/projects - 등록된 프로젝트 목록",
+        "/project <이름> - 작업 프로젝트 전환",
+        "/branch [이름] - 브랜치 조회 또는 전환",
+        "/rebase [브랜치] - 브랜치 리베이스",
+        "/monitor <model|memory|branch|worktrees|code> - 모니터링",
+        "/clear <branch|worktrees|memory> - 정리 (확인 필요)",
+        "/reports [개수] - 대화 기억 리포트",
+        "/init - 이 채팅 설정 초기화",
+        "/stop <job_id> - 진행 중인 작업 중단",
+        "/start - 인라인 메뉴",
     ]
 )
-HELP_TOPIC_TEXT: dict[str, str] = {
-    "model": "모델을 선택하세요.",
-    "monitor": "확인할 모니터링 항목을 선택하세요.",
-    "clear": "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다.",
-}
 
 
 def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | None:
@@ -120,24 +127,22 @@ class ConfirmableCommand(TelegramCommand):
 class StartCommand(TelegramCommand):
     name = "/start"
 
+    _TOPIC_TEXT: dict[str, str] = {
+        "model": "모델을 선택하세요.",
+        "monitor": "확인할 모니터링 항목을 선택하세요.",
+        "clear": "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다.",
+        "manage": "실행할 명령을 선택하세요.",
+    }
+
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        _ = (message, ctx)
-        return "Remote AI Coder에 오신 것을 환영합니다. /help 로 사용 가능한 명령어를 확인하세요."
-
-
-class HelpCommand(TelegramCommand):
-    name = "/help"
-
-    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        _ = (message, ctx)
+        _ = ctx
         tokens = message.text.strip().split()
         if len(tokens) == 2:
             topic = tokens[1].lower()
-            topic_text = HELP_TOPIC_TEXT.get(topic)
+            topic_text = self._TOPIC_TEXT.get(topic)
             if topic_text is not None:
                 return topic_text
-
-        return HELP_TEXT
+        return "Remote AI Coder에 오신 것을 환영합니다."
 
     def get_inline_buttons(
         self,
@@ -155,7 +160,7 @@ class HelpCommand(TelegramCommand):
                     InlineButton("codex", "/model codex"),
                     InlineButton("gemini", "/model gemini"),
                 ],
-                [InlineButton("뒤로", "/help")],
+                [InlineButton("뒤로", "/start")],
             ]
         if topic == "monitor":
             return [
@@ -168,7 +173,7 @@ class HelpCommand(TelegramCommand):
                     InlineButton("worktrees", "/monitor worktrees"),
                     InlineButton("code", "/monitor code"),
                 ],
-                [InlineButton("뒤로", "/help")],
+                [InlineButton("뒤로", "/start")],
             ]
         if topic == "clear":
             return [
@@ -177,13 +182,36 @@ class HelpCommand(TelegramCommand):
                     InlineButton("worktrees", "/clear worktrees"),
                     InlineButton("memory", "/clear memory"),
                 ],
-                [InlineButton("뒤로", "/help")],
+                [InlineButton("뒤로", "/start")],
+            ]
+        if topic == "manage":
+            return [
+                [
+                    InlineButton("프로젝트 목록", "/projects"),
+                    InlineButton("리포트", "/reports"),
+                    InlineButton("브랜치 확인", "/branch"),
+                ],
+                [
+                    InlineButton("초기화", "/init"),
+                    InlineButton("리베이스", "/rebase"),
+                ],
+                [InlineButton("뒤로", "/start")],
             ]
         return [
-            [InlineButton("model", "/help model")],
-            [InlineButton("monitor", "/help monitor")],
-            [InlineButton("clear", "/help clear")],
+            [InlineButton("모델", "/start model")],
+            [InlineButton("모니터", "/start monitor")],
+            [InlineButton("정리", "/start clear")],
+            [InlineButton("관리", "/start manage")],
         ]
+
+
+class HelpCommand(TelegramCommand):
+    name = "/help"
+
+    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
+        _ = (message, ctx)
+        return HELP_TEXT
+
 
 class ModelCommand(TelegramCommand):
     name = "/model"
