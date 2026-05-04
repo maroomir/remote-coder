@@ -15,7 +15,6 @@ from app.telegram.commands import (
     HelpCommand,
     ModelCommand,
     ProjectCommand,
-    ProjectsCommand,
     RebaseCommand,
     StartCommand,
     StatusCommand,
@@ -88,7 +87,6 @@ def test_webhook_accepts_natural_message(project_registry):
                     HelpCommand(),
                     ModelCommand(),
                     StatusCommand(),
-                    ProjectsCommand(),
                     ProjectCommand(),
                     BranchCommand(),
                     RebaseCommand(),
@@ -139,7 +137,6 @@ def test_webhook_sends_command_response_to_telegram(project_registry):
                     HelpCommand(),
                     ModelCommand(),
                     StatusCommand(),
-                    ProjectsCommand(),
                     ProjectCommand(),
                     BranchCommand(),
                     RebaseCommand(),
@@ -208,7 +205,6 @@ def test_webhook_executes_pending_clear_confirmation(project_registry):
                     HelpCommand(),
                     ModelCommand(),
                     StatusCommand(),
-                    ProjectsCommand(),
                     ProjectCommand(),
                     BranchCommand(),
                     RebaseCommand(),
@@ -277,7 +273,6 @@ def test_webhook_executes_pending_clear_worktrees_confirmation(project_registry)
                     HelpCommand(),
                     ModelCommand(),
                     StatusCommand(),
-                    ProjectsCommand(),
                     ProjectCommand(),
                     BranchCommand(),
                     RebaseCommand(),
@@ -345,7 +340,6 @@ def test_webhook_ambiguous_followup_uses_conversation_history(project_registry, 
                     HelpCommand(),
                     ModelCommand(),
                     StatusCommand(),
-                    ProjectsCommand(),
                     ProjectCommand(),
                     BranchCommand(),
                     RebaseCommand(),
@@ -405,7 +399,6 @@ def test_webhook_ambiguous_without_history_sends_guidance(project_registry, tmp_
                     HelpCommand(),
                     ModelCommand(),
                     StatusCommand(),
-                    ProjectsCommand(),
                     ProjectCommand(),
                     BranchCommand(),
                     RebaseCommand(),
@@ -467,7 +460,6 @@ def test_webhook_conversation_isolated_by_chat(project_registry, tmp_path):
                     HelpCommand(),
                     ModelCommand(),
                     StatusCommand(),
-                    ProjectsCommand(),
                     ProjectCommand(),
                     BranchCommand(),
                     RebaseCommand(),
@@ -534,7 +526,6 @@ def test_webhook_reply_reuses_bound_branch(project_registry, tmp_path):
                     HelpCommand(),
                     ModelCommand(),
                     StatusCommand(),
-                    ProjectsCommand(),
                     ProjectCommand(),
                     BranchCommand(),
                     RebaseCommand(),
@@ -603,7 +594,6 @@ def test_webhook_appends_user_message_with_telegram_ids(project_registry, tmp_pa
                     HelpCommand(),
                     ModelCommand(),
                     StatusCommand(),
-                    ProjectsCommand(),
                     ProjectCommand(),
                     BranchCommand(),
                     RebaseCommand(),
@@ -667,7 +657,6 @@ def _make_webhook_app(project_registry, *, allowed_chats: set[int] | None = None
                 HelpCommand(),
                 ModelCommand(),
                 StatusCommand(),
-                ProjectsCommand(),
                 ProjectCommand(),
                 BranchCommand(),
                 RebaseCommand(),
@@ -801,8 +790,8 @@ def test_webhook_callback_query_executes_model_change(project_registry):
     response = client.post("/telegram/webhook", json=payload)
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert notifier.sent
-    assert "codex로 변경" in notifier.sent[0][1]
+    assert notifier.sent_with_buttons
+    assert "codex로 변경" in notifier.sent_with_buttons[0][1]
     assert "cq_001" in notifier.answered_callbacks
 
 

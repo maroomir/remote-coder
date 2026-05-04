@@ -15,7 +15,6 @@ from app.telegram.commands import (
     ModelCommand,
     MonitorCommand,
     ProjectCommand,
-    ProjectsCommand,
     ReportsCommand,
     RebaseCommand,
     StartCommand,
@@ -68,7 +67,6 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
             HelpCommand(),
             ModelCommand(),
             StatusCommand(),
-            ProjectsCommand(),
             ProjectCommand(),
             InitCommand(),
             ReportsCommand(),
@@ -199,9 +197,9 @@ def test_model_command_returns_consistent_usage(project_registry: ProjectRegistr
     assert text == "사용법:\n/model\n/model <claude|codex|gemini>"
 
 
-def test_projects_command_lists_registry(project_registry: ProjectRegistry):
-    registry = CommandRegistry([ProjectsCommand()])
-    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/projects"), _ctx(project_registry))
+def test_monitor_project_lists_registry(project_registry: ProjectRegistry):
+    registry = CommandRegistry([MonitorCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/monitor project"), _ctx(project_registry))
     assert text is not None
     assert "remote-coder" in text
     assert "이 채팅 적용 프로젝트" in text
@@ -251,7 +249,7 @@ def test_project_command_switches_chat_preference(project_registry: ProjectRegis
             enabled=True,
         )
     )
-    registry = CommandRegistry([ProjectCommand(), ProjectsCommand()])
+    registry = CommandRegistry([ProjectCommand()])
     ctx = _ctx(project_registry)
     text = registry.dispatch(TelegramMessage(chat_id=88, user_id=1, text="/project other"), ctx)
     assert text is not None and "other" in text and "변경" in text

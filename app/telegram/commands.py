@@ -75,7 +75,6 @@ HELP_TEXT = "\n".join(
         "명령어 목록:",
         "/model <claude|codex|gemini> - 기본 모델 변경",
         "/status <job_id> - 작업 상태 확인",
-        "/projects - 등록된 프로젝트 목록",
         "/project <이름> - 작업 프로젝트 전환",
         "/branch [이름] - 브랜치 조회 또는 전환",
         "/rebase [브랜치] - 브랜치 리베이스",
@@ -350,21 +349,6 @@ class StatusCommand(TelegramCommand):
             [InlineButton(_job_button_label(job), f"/status {job.id}") for job in jobs],
             per_row=1,
         )
-
-
-class ProjectsCommand(TelegramCommand):
-    name = "/projects"
-
-    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        effective = effective_project_name_for_chat(ctx, message.chat_id)
-        lines = [
-            f"이 채팅 적용 프로젝트: {effective or '(없음)'}",
-            "등록된 프로젝트",
-        ]
-        for p in ctx.project_registry.list_projects():
-            state = "on" if p.enabled else "off"
-            lines.append(f"- {p.name} [{state}] root={p.root_path}")
-        return "\n".join(lines)
 
 
 class ProjectCommand(TelegramCommand):
