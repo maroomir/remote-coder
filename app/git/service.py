@@ -218,6 +218,18 @@ class GitWorktreeService:
         text = result.stdout.strip()
         return text if text else "(로컬 브랜치 없음)"
 
+    def list_local_branches(self, project_path: Path) -> list[str]:
+        """로컬 브랜치 이름 목록. 현재 브랜치/다른 worktree 마커는 제거합니다."""
+        result = self._run_git(project_path, ["branch", "--sort=refname"])
+        if result.returncode != 0:
+            raise RuntimeError(f"failed to list local branches: {result.stderr.strip()}")
+        branches: list[str] = []
+        for line in result.stdout.splitlines():
+            name = self._branch_name_from_git_branch_output_line(line)
+            if name:
+                branches.append(name)
+        return sorted(set(branches))
+
     def format_remote_branches_for_remote(self, project_path: Path, remote: str) -> str:
         """지정 원격(remote) 아래 추적 브랜치만 한 줄씩 정리."""
         result = self._run_git(project_path, ["branch", "-r", "--sort=refname"])

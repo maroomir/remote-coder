@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from app.jobs.store import InMemoryJobStore
+from app.jobs.schemas import Job, JobStatus
 from app.models import ModelName
 from app.monitoring.code import count_project_code, format_code_monitor
 from app.monitoring.events import EventLogger
@@ -86,6 +87,14 @@ HELP_TEXT = "\n".join(
         "/start - 인라인 메뉴",
     ]
 )
+
+
+def _button_rows(buttons: list[InlineButton], per_row: int = 2) -> list[list[InlineButton]]:
+    return [buttons[i : i + per_row] for i in range(0, len(buttons), per_row)]
+
+
+def _job_button_label(job: Job) -> str:
+    return f"{job.id} ({job.status.value})"
 
 
 def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | None:
@@ -188,12 +197,19 @@ class StartCommand(TelegramCommand):
         if topic == "manage":
             return [
                 [
+                    InlineButton("상태", "/status"),
+                    InlineButton("프로젝트", "/project"),
+                ],
+                [
                     InlineButton("리포트", "/reports"),
                     InlineButton("브랜치 확인", "/branch"),
                 ],
                 [
-                    InlineButton("초기화", "/init"),
                     InlineButton("리베이스", "/rebase"),
+                    InlineButton("중단", "/stop"),
+                ],
+                [
+                    InlineButton("초기화", "/init"),
                 ],
                 [InlineButton("뒤로", "/start")],
             ]
@@ -208,9 +224,68 @@ class StartCommand(TelegramCommand):
 class HelpCommand(TelegramCommand):
     name = "/help"
 
+    _TOPIC_TEXT: dict[str, str] = {
+        "model": "모델을 선택하세요.",
+        "monitor": "확인할 모니터링 항목을 선택하세요.",
+        "clear": "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다.",
+    }
+
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        _ = (message, ctx)
+        _ = ctx
+        tokens = message.text.strip().split()
+        if len(tokens) == 2:
+            topic = tokens[1].lower()
+            topic_text = self._TOPIC_TEXT.get(topic)
+            if topic_text is not None:
+                return topic_text
         return HELP_TEXT
+
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        _ = ctx
+        tokens = message.text.strip().split() if message is not None else []
+        topic = tokens[1].lower() if len(tokens) == 2 else ""
+
+        if topic == "model":
+            return [
+                [
+                    InlineButton("claude", "/model claude"),
+                    InlineButton("codex", "/model codex"),
+                    InlineButton("gemini", "/model gemini"),
+                ],
+                [InlineButton("뒤로", "/help")],
+            ]
+        if topic == "monitor":
+            return [
+                [
+                    InlineButton("model", "/monitor model"),
+                    InlineButton("memory", "/monitor memory"),
+                    InlineButton("branch", "/monitor branch"),
+                ],
+                [
+                    InlineButton("worktrees", "/monitor worktrees"),
+                    InlineButton("code", "/monitor code"),
+                    InlineButton("project", "/monitor project"),
+                ],
+                [InlineButton("뒤로", "/help")],
+            ]
+        if topic == "clear":
+            return [
+                [
+                    InlineButton("branch", "/clear branch"),
+                    InlineButton("worktrees", "/clear worktrees"),
+                    InlineButton("memory", "/clear memory"),
+                ],
+                [InlineButton("뒤로", "/help")],
+            ]
+        return [
+            [InlineButton("model", "/help model")],
+            [InlineButton("monitor", "/help monitor")],
+            [InlineButton("clear", "/help clear")],
+        ]
 
 
 class ModelCommand(TelegramCommand):
@@ -227,18 +302,54 @@ class ModelCommand(TelegramCommand):
             return f"기본 모델이 {selected.value}로 변경되었습니다."
         return format_usage("/model", f"/model {MODEL_USAGE}")
 
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        _ = (message, ctx)
+        return [
+            [
+                InlineButton("claude", "/model claude"),
+                InlineButton("codex", "/model codex"),
+                InlineButton("gemini", "/model gemini"),
+            ]
+        ]
+
 
 class StatusCommand(TelegramCommand):
     name = "/status"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
+        if len(tokens) == 1:
+            jobs = ctx.job_store.list_recent_for_chat(message.chat_id, 20)
+            if not jobs:
+                return "조회할 수 있는 Job이 없습니다."
+            return "조회할 Job을 선택하세요."
         if len(tokens) != 2:
             return format_usage("/status <job_id>")
         job = ctx.job_store.get(tokens[1])
         if not job:
             return "해당 Job ID를 찾을 수 없습니다."
         return f"Job {job.id} 상태: {job.status.value}"
+
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        if message is None or ctx is None:
+            return None
+        if len(message.text.strip().split()) != 1:
+            return None
+        jobs = ctx.job_store.list_recent_for_chat(message.chat_id, 20)
+        if not jobs:
+            return None
+        return _button_rows(
+            [InlineButton(_job_button_label(job), f"/status {job.id}") for job in jobs],
+            per_row=1,
+        )
 
 
 class ProjectsCommand(TelegramCommand):
@@ -282,6 +393,22 @@ class ProjectCommand(TelegramCommand):
             _cmd_evt.info("project switched to=%s", name, chat_id=message.chat_id, project=name)
             return f"작업 프로젝트가 {name}로 변경되었습니다."
         return format_usage("/project", "/project <프로젝트이름>")
+
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        if message is None or ctx is None:
+            return None
+        if len(message.text.strip().split()) != 1:
+            return None
+        buttons = [
+            InlineButton(p.name, f"/project {p.name}")
+            for p in ctx.project_registry.list_projects()
+            if p.enabled
+        ]
+        return _button_rows(buttons) if buttons else None
 
 
 class InitCommand(TelegramCommand):
@@ -443,6 +570,30 @@ class BranchCommand(TelegramCommand):
             return f"/branch 실패: {exc}"
         return f"프로젝트: {project_name}\n`{branch}` 로 전환했습니다 (git switch)."
 
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        if message is None or ctx is None:
+            return None
+        if len(message.text.strip().split()) != 1:
+            return None
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return None
+        entry = ctx.project_registry.get(project_name)
+        if not entry or not entry.enabled:
+            return None
+        try:
+            branches = ctx.git_service.list_local_branches(entry.root_path)
+        except RuntimeError:
+            return None
+        if not isinstance(branches, list):
+            return None
+        buttons = [InlineButton(branch, f"/branch {branch}") for branch in branches]
+        return _button_rows(buttons, per_row=1) if buttons else None
+
 
 class RebaseCommand(TelegramCommand):
     """적용 프로젝트 저장소에서 브랜치를 main 기준으로 rebase 후 main에 fast-forward 병합·push."""
@@ -456,9 +607,10 @@ class RebaseCommand(TelegramCommand):
         if len(tokens) == 2:
             branch = tokens[1]
         else:
-            branch = ctx.job_store.get_latest_succeeded_branch_for_chat(message.chat_id)
-            if not branch:
-                return "최근 성공한 Job의 브랜치가 없습니다. /rebase <branch> 로 지정하세요."
+            branches = self._list_rebase_candidates(message, ctx)
+            if not branches:
+                return "리베이스할 브랜치가 없습니다. /rebase <branch> 로 직접 지정할 수 있습니다."
+            return "리베이스할 브랜치를 선택하세요."
 
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
@@ -478,6 +630,36 @@ class RebaseCommand(TelegramCommand):
             return summary
         except RuntimeError as exc:
             return f"/rebase 실패: {exc}"
+
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        if message is None or ctx is None:
+            return None
+        if len(message.text.strip().split()) != 1:
+            return None
+        branches = self._list_rebase_candidates(message, ctx)
+        buttons = [InlineButton(branch, f"/rebase {branch}") for branch in branches]
+        return _button_rows(buttons, per_row=1) if buttons else None
+
+    def _list_rebase_candidates(self, message: TelegramMessage, ctx: CommandContext) -> list[str]:
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return []
+        entry = ctx.project_registry.get(project_name)
+        if not entry or not entry.enabled:
+            return []
+        try:
+            main_branch = ctx.git_service.resolve_integrate_branch(entry.root_path)
+            branches = ctx.git_service.list_local_branches(entry.root_path)
+        except RuntimeError:
+            return []
+        if not isinstance(branches, list):
+            return []
+        excluded = {main_branch, "main", "master"}
+        return [branch for branch in branches if branch not in excluded]
 
 
 class MonitorCommand(TelegramCommand):
@@ -676,7 +858,10 @@ class StopCommand(TelegramCommand):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split(maxsplit=1)
         if len(tokens) < 2:
-            return "사용법: /stop <job_id>"
+            jobs = self._list_cancellable_jobs(message, ctx)
+            if not jobs:
+                return "중단할 수 있는 진행 중 Job이 없습니다."
+            return "중단할 Job을 선택하세요."
         job_id = tokens[1].strip()
         if ctx.job_manager is None:
             return "작업 중단 기능을 사용할 수 없습니다."
@@ -687,6 +872,31 @@ class StopCommand(TelegramCommand):
         if not job:
             return f"Job을 찾을 수 없습니다: {job_id}"
         return f"작업을 중단할 수 없습니다: {job_id} (현재 상태: {job.status.value})"
+
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        if message is None or ctx is None:
+            return None
+        if len(message.text.strip().split()) != 1:
+            return None
+        jobs = self._list_cancellable_jobs(message, ctx)
+        if not jobs:
+            return None
+        return _button_rows(
+            [InlineButton(_job_button_label(job), f"/stop {job.id}") for job in jobs],
+            per_row=1,
+        )
+
+    @staticmethod
+    def _list_cancellable_jobs(message: TelegramMessage, ctx: CommandContext) -> list[Job]:
+        return [
+            job
+            for job in ctx.job_store.list_recent_for_chat(message.chat_id, 20)
+            if job.status in {JobStatus.QUEUED, JobStatus.RUNNING}
+        ]
 
 
 class CommandRegistry:

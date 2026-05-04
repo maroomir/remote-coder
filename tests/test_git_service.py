@@ -86,6 +86,19 @@ def test_format_local_branches(mock_run, tmp_path: Path):
 
 
 @patch("app.git.service.subprocess.run")
+def test_list_local_branches_strips_markers(mock_run, tmp_path: Path):
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stdout = "* main\n+ feature/a\n  release\n"
+    mock_run.return_value.stderr = ""
+    service = GitWorktreeService(base_dir=tmp_path)
+
+    assert service.list_local_branches(tmp_path) == ["feature/a", "main", "release"]
+    cmd = mock_run.call_args[0][0]
+    assert cmd[:2] == ["git", "branch"]
+    assert "--sort=refname" in cmd
+
+
+@patch("app.git.service.subprocess.run")
 def test_count_local_branches(mock_run, tmp_path: Path):
     mock_run.return_value.returncode = 0
     mock_run.return_value.stdout = "main\nfeature\n"

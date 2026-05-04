@@ -46,3 +46,33 @@ def test_get_latest_succeeded_branch_for_chat():
     store.create(new)
     assert store.get_latest_succeeded_branch_for_chat(5) == "remote-new"
     assert store.get_latest_succeeded_branch_for_chat(99) is None
+
+
+def test_list_recent_for_chat_filters_by_chat():
+    store = InMemoryJobStore()
+    old = Job(
+        id="old",
+        request=JobRequest(
+            project="p", model=ModelName.CLAUDE, instruction="i", chat_id=5, requested_by=5
+        ),
+        created_at=datetime.now(UTC),
+    )
+    other = Job(
+        id="other",
+        request=JobRequest(
+            project="p", model=ModelName.CLAUDE, instruction="i", chat_id=99, requested_by=99
+        ),
+        created_at=old.created_at + timedelta(seconds=1),
+    )
+    new = Job(
+        id="new",
+        request=JobRequest(
+            project="p", model=ModelName.CLAUDE, instruction="i", chat_id=5, requested_by=5
+        ),
+        created_at=old.created_at + timedelta(seconds=2),
+    )
+    store.create(old)
+    store.create(other)
+    store.create(new)
+
+    assert [job.id for job in store.list_recent_for_chat(5)] == ["new", "old"]

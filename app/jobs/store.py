@@ -22,6 +22,9 @@ class JobStore(Protocol):
     def get_latest_succeeded_branch_for_chat(self, chat_id: int) -> str | None:
         ...
 
+    def list_recent_for_chat(self, chat_id: int, limit: int = 20) -> list[Job]:
+        ...
+
 
 class InMemoryJobStore:
     def __init__(self) -> None:
@@ -43,6 +46,16 @@ class InMemoryJobStore:
     def list_recent(self, limit: int = 20) -> list[Job]:
         with self._lock:
             values = sorted(self._jobs.values(), key=lambda job: job.created_at, reverse=True)
+            return values[:limit]
+
+    def list_recent_for_chat(self, chat_id: int, limit: int = 20) -> list[Job]:
+        with self._lock:
+            values = [
+                job
+                for job in self._jobs.values()
+                if job.request.chat_id == chat_id
+            ]
+            values.sort(key=lambda job: job.created_at, reverse=True)
             return values[:limit]
 
     def get_latest_succeeded_branch_for_chat(self, chat_id: int) -> str | None:
