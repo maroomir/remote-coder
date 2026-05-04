@@ -172,6 +172,7 @@ class StartCommand(TelegramCommand):
                 [
                     InlineButton("worktrees", "/monitor worktrees"),
                     InlineButton("code", "/monitor code"),
+                    InlineButton("project", "/monitor project"),
                 ],
                 [InlineButton("뒤로", "/start")],
             ]
@@ -187,7 +188,6 @@ class StartCommand(TelegramCommand):
         if topic == "manage":
             return [
                 [
-                    InlineButton("프로젝트 목록", "/projects"),
                     InlineButton("리포트", "/reports"),
                     InlineButton("브랜치 확인", "/branch"),
                 ],
@@ -489,17 +489,28 @@ class MonitorCommand(TelegramCommand):
         tokens = message.text.strip().split()
         if len(tokens) < 2:
             return format_usage(
-                "/monitor <model|memory|branch|worktrees|code>",
+                "/monitor <model|memory|branch|worktrees|code|project>",
                 "예: /monitor model",
             )
 
         sub = tokens[1].lower()
-        valid = {"model", "memory", "branch", "worktrees", "code"}
+        valid = {"model", "memory", "branch", "worktrees", "code", "project"}
         if sub not in valid:
             return format_usage(
-                "/monitor <model|memory|branch|worktrees|code>",
+                "/monitor <model|memory|branch|worktrees|code|project>",
                 "예: /monitor memory",
             )
+
+        if sub == "project":
+            effective = effective_project_name_for_chat(ctx, message.chat_id)
+            lines = [
+                f"이 채팅 적용 프로젝트: {effective or '(없음)'}",
+                "등록된 프로젝트",
+            ]
+            for p in ctx.project_registry.list_projects():
+                state = "on" if p.enabled else "off"
+                lines.append(f"- {p.name} [{state}] root={p.root_path}")
+            return "\n".join(lines)
 
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
