@@ -136,6 +136,7 @@ class StartCommand(TelegramCommand):
     name = "/start"
 
     _TOPIC_TEXT: dict[str, str] = {
+        "project": "작업 프로젝트를 선택하세요.",
         "model": "모델을 선택하세요.",
         "monitor": "확인할 모니터링 항목을 선택하세요.",
         "clear": "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다.",
@@ -157,10 +158,19 @@ class StartCommand(TelegramCommand):
         message: TelegramMessage | None = None,
         ctx: CommandContext | None = None,
     ) -> list[list[InlineButton]] | None:
-        _ = ctx
         tokens = message.text.strip().split() if message is not None else []
         topic = tokens[1].lower() if len(tokens) == 2 else ""
 
+        if topic == "project":
+            if ctx is None:
+                return [[InlineButton("뒤로", "/start")]]
+            buttons = [
+                InlineButton(p.name, f"/project {p.name}")
+                for p in ctx.project_registry.list_projects()
+                if p.enabled
+            ]
+            rows = _button_rows(buttons, per_row=1) if buttons else []
+            return rows + [[InlineButton("뒤로", "/start")]]
         if topic == "model":
             return [
                 [
@@ -196,95 +206,31 @@ class StartCommand(TelegramCommand):
         if topic == "manage":
             return [
                 [
-                    InlineButton("상태", "/status"),
-                    InlineButton("프로젝트", "/project"),
-                ],
-                [
-                    InlineButton("리포트", "/reports"),
                     InlineButton("브랜치 확인", "/branch"),
+                    InlineButton("리베이스", "/rebase"),
                 ],
                 [
-                    InlineButton("리베이스", "/rebase"),
-                    InlineButton("중단", "/stop"),
+                    InlineButton("상태", "/status"),
+                    InlineButton("중단", "/stop")
                 ],
                 [
                     InlineButton("초기화", "/init"),
+                    InlineButton("뒤로", "/start")
                 ],
-                [InlineButton("뒤로", "/start")],
             ]
         return [
-            [InlineButton("모델", "/start model")],
-            [InlineButton("모니터", "/start monitor")],
-            [InlineButton("정리", "/start clear")],
-            [InlineButton("관리", "/start manage")],
+            [InlineButton("프로젝트", "/start project"), InlineButton("모델", "/start model")],
+            [InlineButton("모니터링", "/start monitor"), InlineButton("정리", "/start clear")],
+            [InlineButton("관리", "/start manage"), InlineButton("리포트", "/reports")],
         ]
 
 
 class HelpCommand(TelegramCommand):
     name = "/help"
 
-    _TOPIC_TEXT: dict[str, str] = {
-        "model": "모델을 선택하세요.",
-        "monitor": "확인할 모니터링 항목을 선택하세요.",
-        "clear": "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다.",
-    }
-
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        _ = ctx
-        tokens = message.text.strip().split()
-        if len(tokens) == 2:
-            topic = tokens[1].lower()
-            topic_text = self._TOPIC_TEXT.get(topic)
-            if topic_text is not None:
-                return topic_text
+        _ = (message, ctx)
         return HELP_TEXT
-
-    def get_inline_buttons(
-        self,
-        message: TelegramMessage | None = None,
-        ctx: CommandContext | None = None,
-    ) -> list[list[InlineButton]] | None:
-        _ = ctx
-        tokens = message.text.strip().split() if message is not None else []
-        topic = tokens[1].lower() if len(tokens) == 2 else ""
-
-        if topic == "model":
-            return [
-                [
-                    InlineButton("claude", "/model claude"),
-                    InlineButton("codex", "/model codex"),
-                    InlineButton("gemini", "/model gemini"),
-                ],
-                [InlineButton("뒤로", "/help")],
-            ]
-        if topic == "monitor":
-            return [
-                [
-                    InlineButton("model", "/monitor model"),
-                    InlineButton("memory", "/monitor memory"),
-                    InlineButton("branch", "/monitor branch"),
-                ],
-                [
-                    InlineButton("worktrees", "/monitor worktrees"),
-                    InlineButton("code", "/monitor code"),
-                    InlineButton("project", "/monitor project"),
-                ],
-                [InlineButton("뒤로", "/help")],
-            ]
-        if topic == "clear":
-            return [
-                [
-                    InlineButton("branch", "/clear branch"),
-                    InlineButton("worktrees", "/clear worktrees"),
-                    InlineButton("memory", "/clear memory"),
-                ],
-                [InlineButton("뒤로", "/help")],
-            ]
-        return [
-            [InlineButton("model", "/help model")],
-            [InlineButton("monitor", "/help monitor")],
-            [InlineButton("clear", "/help clear")],
-        ]
 
 
 class ModelCommand(TelegramCommand):

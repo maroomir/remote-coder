@@ -85,57 +85,13 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert "/clear branch:" not in text
 
 
-def test_help_command_top_level_buttons_are_grouped(project_registry: ProjectRegistry):
+def test_help_command_returns_text_with_no_buttons(project_registry: ProjectRegistry):
     registry = CommandRegistry([HelpCommand()])
     response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/help"), _ctx(project_registry))
 
     assert response is not None
-    assert response.inline_buttons == [
-        [InlineButton("model", "/help model")],
-        [InlineButton("monitor", "/help monitor")],
-        [InlineButton("clear", "/help clear")],
-    ]
-
-
-def test_help_command_model_submenu_buttons(project_registry: ProjectRegistry):
-    registry = CommandRegistry([HelpCommand()])
-    response = registry.dispatch_rich(
-        TelegramMessage(chat_id=1, user_id=1, text="/help model"),
-        _ctx(project_registry),
-    )
-
-    assert response is not None
-    assert response.text == "모델을 선택하세요."
-    assert response.inline_buttons == [
-        [
-            InlineButton("claude", "/model claude"),
-            InlineButton("codex", "/model codex"),
-            InlineButton("gemini", "/model gemini"),
-        ],
-        [InlineButton("뒤로", "/help")],
-    ]
-
-
-def test_help_command_monitor_and_clear_submenus(project_registry: ProjectRegistry):
-    registry = CommandRegistry([HelpCommand()])
-
-    monitor = registry.dispatch_rich(
-        TelegramMessage(chat_id=1, user_id=1, text="/help monitor"),
-        _ctx(project_registry),
-    )
-    clear = registry.dispatch_rich(
-        TelegramMessage(chat_id=1, user_id=1, text="/help clear"),
-        _ctx(project_registry),
-    )
-
-    assert monitor is not None
-    assert monitor.text == "확인할 모니터링 항목을 선택하세요."
-    assert monitor.inline_buttons is not None
-    assert InlineButton("worktrees", "/monitor worktrees") in monitor.inline_buttons[1]
-    assert clear is not None
-    assert clear.text == "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다."
-    assert clear.inline_buttons is not None
-    assert InlineButton("memory", "/clear memory") in clear.inline_buttons[0]
+    assert response.text.startswith("도움말")
+    assert response.inline_buttons is None
 
 
 def test_status_command_dispatch(project_registry: ProjectRegistry):
@@ -641,17 +597,12 @@ def test_monitor_code_counts_lines(project_registry: ProjectRegistry, tmp_path):
     assert "스캔한 코드 파일 수: 1" in text
 
 
-def test_help_command_get_inline_buttons():
+def test_help_command_get_inline_buttons_returns_none():
     cmd = HelpCommand()
-    buttons = cmd.get_inline_buttons()
-    assert buttons is not None
-    flat = [btn for row in buttons for btn in row]
-    assert all(isinstance(b, InlineButton) for b in flat)
-    data = {btn.callback_data for btn in flat}
-    assert data == {"/help model", "/help monitor", "/help clear"}
+    assert cmd.get_inline_buttons() is None
 
 
-def test_dispatch_rich_help_includes_buttons(project_registry: ProjectRegistry):
+def test_dispatch_rich_help_has_no_buttons(project_registry: ProjectRegistry):
     registry = CommandRegistry([HelpCommand()])
     response = registry.dispatch_rich(
         TelegramMessage(chat_id=1, user_id=1, text="/help"),
@@ -659,7 +610,7 @@ def test_dispatch_rich_help_includes_buttons(project_registry: ProjectRegistry):
     )
     assert response is not None
     assert response.text.startswith("도움말")
-    assert response.inline_buttons is not None
+    assert response.inline_buttons is None
 
 
 def test_dispatch_rich_non_help_has_no_buttons(project_registry: ProjectRegistry):
