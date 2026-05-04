@@ -32,6 +32,7 @@ from app.telegram.commands import (
     StartCommand,
     StatusCommand,
     StopCommand,
+    TelegramMessage,
 )
 from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
@@ -124,7 +125,16 @@ command_context.job_manager = job_manager
 async def lifespan(_app: FastAPI):
     for chat_id in settings.telegram_allowed_chat_ids:
         try:
-            notifier.send_text(chat_id, "✅ Remote AI Coder 서버가 시작되었습니다.")
+            response = command_registry.dispatch_rich(
+                TelegramMessage(chat_id=chat_id, user_id=None, text="/start"),
+                command_context,
+            )
+            if response:
+                text = f"✅ Remote AI Coder 서버가 시작되었습니다.\n{response.text}"
+                if response.inline_buttons:
+                    notifier.send_with_buttons(chat_id, text, response.inline_buttons)
+                else:
+                    notifier.send_text(chat_id, text)
         except Exception:
             pass
     yield
