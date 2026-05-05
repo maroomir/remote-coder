@@ -50,9 +50,17 @@ class GitWorktreeService:
         base = worktree_base_dir if worktree_base_dir is not None else self._base_dir
         base.mkdir(parents=True, exist_ok=True)
         worktree_path = base / job_id
+        _gitlog.info("prepare_worktree start branch=%s", branch_name, job_id=job_id)
         result = self._run_git(project_path, ["worktree", "add", "-b", branch_name, str(worktree_path)])
         if result.returncode != 0:
+            _gitlog.warning(
+                "prepare_worktree failed branch=%s stderr_len=%d",
+                branch_name,
+                len(result.stderr),
+                job_id=job_id,
+            )
             raise RuntimeError(f"failed to create worktree: {result.stderr.strip()}")
+        _gitlog.info("prepare_worktree ok branch=%s", branch_name, job_id=job_id)
         return worktree_path
 
     def prepare_detached_worktree(
@@ -66,13 +74,20 @@ class GitWorktreeService:
         base = worktree_base_dir if worktree_base_dir is not None else self._base_dir
         base.mkdir(parents=True, exist_ok=True)
         worktree_path = base / job_id
+        _gitlog.info("prepare_detached_worktree start ref=%s", ref, job_id=job_id)
         result = self._run_git(
             project_path,
             ["worktree", "add", "--detach", str(worktree_path), ref],
         )
         if result.returncode != 0:
+            _gitlog.warning(
+                "prepare_detached_worktree failed ref=%s stderr_len=%d",
+                ref,
+                len(result.stderr),
+                job_id=job_id,
+            )
             raise RuntimeError(f"failed to create detached worktree: {result.stderr.strip()}")
-        _gitlog.info("prepare_detached_worktree ok job_id=%s ref=%s", job_id, ref)
+        _gitlog.info("prepare_detached_worktree ok ref=%s", ref, job_id=job_id)
         return worktree_path
 
     def prepare_branch_worktree(
@@ -85,10 +100,17 @@ class GitWorktreeService:
         base = worktree_base_dir if worktree_base_dir is not None else self._base_dir
         base.mkdir(parents=True, exist_ok=True)
         worktree_path = base / job_id
+        _gitlog.info("prepare_branch_worktree start branch=%s", branch_name, job_id=job_id)
         result = self._run_git(project_path, ["worktree", "add", str(worktree_path), branch_name])
         if result.returncode != 0:
+            _gitlog.warning(
+                "prepare_branch_worktree failed branch=%s stderr_len=%d",
+                branch_name,
+                len(result.stderr),
+                job_id=job_id,
+            )
             raise RuntimeError(f"failed to create branch worktree: {result.stderr.strip()}")
-        _gitlog.info("prepare_branch_worktree ok job_id=%s branch=%s", job_id, branch_name)
+        _gitlog.info("prepare_branch_worktree ok branch=%s", branch_name, job_id=job_id)
         return worktree_path
 
     @staticmethod
@@ -122,6 +144,7 @@ class GitWorktreeService:
 
     def local_branch_exists(self, project_path: Path, branch: str) -> bool:
         result = self._run_git(project_path, ["show-ref", "--verify", f"refs/heads/{branch}"])
+        _gitlog.info("local_branch_exists branch=%s exists=%s", branch, result.returncode == 0)
         return result.returncode == 0
 
     def switch_branch(self, project_path: Path, branch: str) -> None:
@@ -132,14 +155,22 @@ class GitWorktreeService:
             raise RuntimeError(f"git switch failed: {result.stderr.strip()}")
 
     def create_branch_in_worktree(self, worktree_path: Path, branch_name: str) -> None:
+        _gitlog.info("create_branch_in_worktree start branch=%s", branch_name)
         result = self._run_git(worktree_path, ["switch", "-c", branch_name])
         if result.returncode != 0:
+            _gitlog.warning("create_branch_in_worktree failed branch=%s stderr_len=%d", branch_name, len(result.stderr))
             raise RuntimeError(f"failed to create branch in worktree: {result.stderr.strip()}")
         _gitlog.info("create_branch_in_worktree ok branch=%s", branch_name)
 
     def find_linked_worktree_for_branch(self, project_path: Path, branch_name: str) -> Path | None:
+        _gitlog.info("find_linked_worktree_for_branch start branch=%s", branch_name)
         result = self._run_git(project_path, ["worktree", "list", "--porcelain"])
         if result.returncode != 0:
+            _gitlog.warning(
+                "find_linked_worktree_for_branch failed branch=%s stderr_len=%d",
+                branch_name,
+                len(result.stderr),
+            )
             raise RuntimeError(f"failed to list worktrees: {result.stderr.strip()}")
         root = project_path.resolve()
         for worktree_path, branch in self._parse_worktree_list_porcelain(result.stdout):
@@ -147,49 +178,65 @@ class GitWorktreeService:
                 continue
             if worktree_path.resolve() == root:
                 continue
+            _gitlog.info("find_linked_worktree_for_branch hit branch=%s", branch_name)
             return worktree_path
+        _gitlog.info("find_linked_worktree_for_branch miss branch=%s", branch_name)
         return None
 
     def collect_changes(self, worktree_path: Path) -> list[str]:
         result = self._run_git(worktree_path, ["status", "--porcelain"])
         if result.returncode != 0:
+            _gitlog.warning("collect_changes failed stderr_len=%d", len(result.stderr))
             raise RuntimeError(f"failed to collect changes: {result.stderr.strip()}")
         files: list[str] = []
         for line in result.stdout.splitlines():
             if len(line) > 3:
                 files.append(line[3:].strip())
+        _gitlog.info("collect_changes count=%d", len(files))
         return files
 
     def commit_all(self, worktree_path: Path, message: str) -> str | None:
+        _gitlog.info("commit_all start message_len=%d", len(message))
         add_result = self._run_git(worktree_path, ["add", "."])
         if add_result.returncode != 0:
+            _gitlog.warning("commit_all stage failed stderr_len=%d", len(add_result.stderr))
             raise RuntimeError(f"failed to stage changes: {add_result.stderr.strip()}")
         diff_result = self._run_git(worktree_path, ["diff", "--cached", "--name-only"])
         if diff_result.returncode != 0:
+            _gitlog.warning("commit_all inspect staged failed stderr_len=%d", len(diff_result.stderr))
             raise RuntimeError(f"failed to inspect staged files: {diff_result.stderr.strip()}")
         if not diff_result.stdout.strip():
+            _gitlog.info("commit_all skipped no staged files")
             return None
+        staged_count = len([ln for ln in diff_result.stdout.splitlines() if ln.strip()])
+        _gitlog.info("commit_all staged_count=%d", staged_count)
         commit_result = self._run_git(worktree_path, ["commit", "-m", message])
         if commit_result.returncode != 0:
+            _gitlog.warning("commit_all commit failed stderr_len=%d", len(commit_result.stderr))
             raise RuntimeError(f"failed to commit: {commit_result.stderr.strip()}")
         hash_result = self._run_git(worktree_path, ["rev-parse", "--short", "HEAD"])
         if hash_result.returncode != 0:
+            _gitlog.warning("commit_all hash failed stderr_len=%d", len(hash_result.stderr))
             raise RuntimeError(f"failed to resolve commit hash: {hash_result.stderr.strip()}")
         short_hash = hash_result.stdout.strip()
         _gitlog.info("commit_all ok hash=%s", short_hash)
         return short_hash
 
     def push_branch(self, project_path: Path, remote: str, branch: str) -> None:
+        _gitlog.info("push_branch start remote=%s branch=%s", remote, branch)
         result = self._run_git(project_path, ["push", "-u", remote, branch])
         if result.returncode != 0:
+            _gitlog.warning("push_branch failed remote=%s branch=%s stderr_len=%d", remote, branch, len(result.stderr))
             raise RuntimeError(f"git push failed: {result.stderr.strip()}")
         _gitlog.info("push_branch ok remote=%s branch=%s", remote, branch)
 
     def cleanup_worktree(self, project_path: Path, worktree_path: Path) -> None:
+        _gitlog.info("cleanup_worktree start worktree=%s", worktree_path.name)
         result = self._run_git(project_path, ["worktree", "remove", "--force", str(worktree_path)])
         if result.returncode != 0:
+            _gitlog.warning("cleanup_worktree failed worktree=%s stderr_len=%d", worktree_path.name, len(result.stderr))
             raise RuntimeError(f"failed to cleanup worktree: {result.stderr.strip()}")
-        _gitlog.info("cleanup_worktree ok")
+        _gitlog.info("cleanup_worktree ok worktree=%s", worktree_path.name)
 
     def checkout_integrate_branch(self, project_path: Path) -> str:
         name = self.resolve_integrate_branch(project_path)

@@ -21,6 +21,7 @@ class TelegramNotifier:
     def send_text(self, chat_id: int, text: str) -> None:
         payload = {"chat_id": chat_id, "text": text}
         max_attempts = 3
+        _outbound.info("sendMessage start len=%d", len(text), chat_id=chat_id)
         for attempt in range(1, max_attempts + 1):
             try:
                 response = httpx.post(
@@ -30,13 +31,21 @@ class TelegramNotifier:
                 )
                 response.raise_for_status()
                 _outbound.info(
-                    "sent text len=%d attempt=%d",
+                    "sent text len=%d attempt=%d status=%d",
                     len(text),
                     attempt,
+                    response.status_code,
                     chat_id=chat_id,
                 )
                 return
             except httpx.HTTPError as exc:
+                _outbound.warning(
+                    "sendMessage attempt failed attempt=%d/%d err=%s",
+                    attempt,
+                    max_attempts,
+                    type(exc).__name__,
+                    chat_id=chat_id,
+                )
                 if attempt == max_attempts:
                     _outbound.warning(
                         "sendMessage failed after %s attempts: %s",
@@ -58,6 +67,14 @@ class TelegramNotifier:
             "reply_markup": {"inline_keyboard": keyboard},
         }
         max_attempts = 3
+        button_count = sum(len(row) for row in inline_buttons)
+        _outbound.info(
+            "sendMessage buttons start len=%d rows=%d buttons=%d",
+            len(text),
+            len(inline_buttons),
+            button_count,
+            chat_id=chat_id,
+        )
         for attempt in range(1, max_attempts + 1):
             try:
                 response = httpx.post(
@@ -67,13 +84,21 @@ class TelegramNotifier:
                 )
                 response.raise_for_status()
                 _outbound.info(
-                    "sent message with buttons len=%d attempt=%d",
+                    "sent message with buttons len=%d attempt=%d status=%d",
                     len(text),
                     attempt,
+                    response.status_code,
                     chat_id=chat_id,
                 )
                 return
             except httpx.HTTPError as exc:
+                _outbound.warning(
+                    "sendMessage buttons attempt failed attempt=%d/%d err=%s",
+                    attempt,
+                    max_attempts,
+                    type(exc).__name__,
+                    chat_id=chat_id,
+                )
                 if attempt == max_attempts:
                     _outbound.warning(
                         "sendMessage (buttons) failed after %s attempts: %s",
@@ -87,6 +112,7 @@ class TelegramNotifier:
     def answer_callback_query(self, callback_query_id: str) -> None:
         payload = {"callback_query_id": callback_query_id}
         max_attempts = 3
+        _outbound.info("answerCallbackQuery start")
         for attempt in range(1, max_attempts + 1):
             try:
                 response = httpx.post(
@@ -95,9 +121,17 @@ class TelegramNotifier:
                     timeout=httpx.Timeout(10.0, connect=5.0),
                 )
                 response.raise_for_status()
+                _outbound.info("answerCallbackQuery sent attempt=%d status=%d", attempt, response.status_code)
                 return
-            except httpx.HTTPError:
+            except httpx.HTTPError as exc:
+                _outbound.warning(
+                    "answerCallbackQuery attempt failed attempt=%d/%d err=%s",
+                    attempt,
+                    max_attempts,
+                    type(exc).__name__,
+                )
                 if attempt == max_attempts:
+                    _outbound.warning("answerCallbackQuery failed after %s attempts", max_attempts)
                     return
                 time.sleep(attempt)
 
@@ -178,7 +212,21 @@ class TelegramNotifier:
 
     def send_long_text(self, chat_id: int, text: str) -> None:
         """Telegram 단일 메시지 한도(4096자)를 넘으면 여러 메시지로 나눠 전송합니다."""
-        for chunk in self._chunk_text(text, self._TELEGRAM_TEXT_LIMIT):
+        chunks = self._chunk_text(text, self._TELEGRAM_TEXT_LIMIT)
+        _outbound.info(
+            "send_long_text chunks=%d total_len=%d",
+            len(chunks),
+            len(text),
+            chat_id=chat_id,
+        )
+        for idx, chunk in enumerate(chunks, 1):
+            _outbound.info(
+                "send_long_text chunk=%d/%d len=%d",
+                idx,
+                len(chunks),
+                len(chunk),
+                chat_id=chat_id,
+            )
             self.send_text(chat_id, chunk)
 
     @staticmethod

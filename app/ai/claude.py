@@ -15,7 +15,12 @@ class ClaudeRunner(AiRunner):
 
     def run(self, runner_input: RunnerInput) -> RunnerResult:
         cwd_name = runner_input.cwd.name
-        _log.info("start cwd=%s timeout=%d", cwd_name, runner_input.timeout_seconds)
+        _log.info(
+            "start cwd=%s timeout=%d instruction_len=%d",
+            cwd_name,
+            runner_input.timeout_seconds,
+            len(runner_input.instruction),
+        )
         started_at = datetime.now(UTC)
         proc = subprocess.Popen(
             ["claude", "-p", runner_input.instruction, "--dangerously-skip-permissions"],
@@ -25,6 +30,7 @@ class ClaudeRunner(AiRunner):
             stderr=subprocess.PIPE,
             text=True,
         )
+        _log.info("process spawned pid=%s cwd=%s", proc.pid, cwd_name)
         cancelled = threading.Event()
         if runner_input.cancel_event is not None:
             cancel_event = runner_input.cancel_event
@@ -32,6 +38,7 @@ class ClaudeRunner(AiRunner):
             def _watch() -> None:
                 cancel_event.wait()
                 if proc.poll() is None:
+                    _log.warning("cancel requested pid=%s", proc.pid)
                     proc.terminate()
                 cancelled.set()
 
@@ -41,13 +48,24 @@ class ClaudeRunner(AiRunner):
         except subprocess.TimeoutExpired:
             proc.kill()
             stdout_data, stderr_data = proc.communicate()
-            _log.warning("timeout after %ds", runner_input.timeout_seconds)
+            _log.warning(
+                "timeout after %ds stdout_len=%d stderr_len=%d",
+                runner_input.timeout_seconds,
+                len(stdout_data),
+                len(stderr_data),
+            )
             raise
         finished_at = datetime.now(UTC)
         if cancelled.is_set():
             raise RuntimeError("작업이 취소되었습니다.")
         dur_ms = int((finished_at - started_at).total_seconds() * 1000)
-        _log.info("done exit=%d dur_ms=%d", proc.returncode, dur_ms)
+        _log.info(
+            "done exit=%d dur_ms=%d stdout_len=%d stderr_len=%d",
+            proc.returncode,
+            dur_ms,
+            len(stdout_data),
+            len(stderr_data),
+        )
         return RunnerResult(
             exit_code=proc.returncode,
             stdout=stdout_data,

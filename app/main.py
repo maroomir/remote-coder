@@ -1,7 +1,8 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from app.admin.advanced_settings import FileAdvancedSettingsStore, advanced_settings_path_for_project_root
 from app.admin.router import create_admin_router
@@ -13,6 +14,7 @@ from app.git.service import GitWorktreeService
 from app.jobs.manager import JobManager
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.log_buffer import InMemoryLogBuffer, attach_app_memory_log_handler
+from app.monitoring.events import EventLogger
 from app.projects.registry import ProjectRegistry, projects_config_path_for_settings
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import (
@@ -55,6 +57,8 @@ attach_app_memory_log_handler(log_buffer)
 logging.getLogger("app").info(
     "Remote AI Coder server (re)loaded — log buffer ready"
 )
+_systemlog = EventLogger("app.system", "system.lifecycle")
+_httplog = EventLogger("app.http", "http.request")
 
 job_store = InMemoryJobStore()
 auth_service = AllowlistAuthService(
@@ -124,6 +128,12 @@ command_context.job_manager = job_manager
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    _systemlog.info(
+        "lifespan startup notifying allowed chats count=%d projects=%d default_model=%s",
+        len(settings.telegram_allowed_chat_ids),
+        len(project_registry.list_projects()),
+        settings.default_model.value,
+    )
     for chat_id in settings.telegram_allowed_chat_ids:
         try:
             response = command_registry.dispatch_rich(
@@ -136,17 +146,51 @@ async def lifespan(_app: FastAPI):
                     notifier.send_with_buttons(chat_id, text, response.inline_buttons)
                 else:
                     notifier.send_text(chat_id, text)
+                _systemlog.info("startup notification sent", chat_id=chat_id)
         except Exception:
-            pass
+            _systemlog.exception("startup notification failed", chat_id=chat_id)
     yield
+    _systemlog.info("lifespan shutdown notifying allowed chats count=%d", len(settings.telegram_allowed_chat_ids))
     for chat_id in settings.telegram_allowed_chat_ids:
         try:
             notifier.send_text(chat_id, "🔴 Remote AI Coder 서버 연결이 종료되었습니다.")
+            _systemlog.info("shutdown notification sent", chat_id=chat_id)
         except Exception:
-            pass
+            _systemlog.exception("shutdown notification failed", chat_id=chat_id)
 
 
 app = FastAPI(title="Remote AI Coder", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def log_http_request(request: Request, call_next):
+    start = time.perf_counter()
+    path = request.url.path
+    method = request.method
+    client_host = request.client.host if request.client else "-"
+    _httplog.info("request start method=%s path=%s client=%s", method, path, client_host)
+    try:
+        response = await call_next(request)
+    except Exception:
+        dur_ms = int((time.perf_counter() - start) * 1000)
+        _httplog.exception(
+            "request failed method=%s path=%s client=%s dur_ms=%d",
+            method,
+            path,
+            client_host,
+            dur_ms,
+        )
+        raise
+    dur_ms = int((time.perf_counter() - start) * 1000)
+    _httplog.info(
+        "request done method=%s path=%s status=%d dur_ms=%d client=%s",
+        method,
+        path,
+        response.status_code,
+        dur_ms,
+        client_host,
+    )
+    return response
 app.include_router(
     create_admin_router(
         settings,

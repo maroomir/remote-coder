@@ -878,6 +878,7 @@ class MonitorCommand(TelegramCommand):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
         if len(tokens) < 2:
+            _cmd_evt.info("monitor usage requested", chat_id=message.chat_id, user_id=message.user_id)
             return format_usage(
                 "/monitor <model|memory|branch|worktrees|code|project>",
                 "예: /monitor model",
@@ -886,6 +887,12 @@ class MonitorCommand(TelegramCommand):
         sub = tokens[1].lower()
         valid = {"model", "memory", "branch", "worktrees", "code", "project"}
         if sub not in valid:
+            _cmd_evt.warning(
+                "monitor invalid subcommand sub=%s",
+                sub,
+                chat_id=message.chat_id,
+                user_id=message.user_id,
+            )
             return format_usage(
                 "/monitor <model|memory|branch|worktrees|code|project>",
                 "예: /monitor memory",
@@ -893,17 +900,32 @@ class MonitorCommand(TelegramCommand):
 
         if sub == "project":
             effective = effective_project_name_for_chat(ctx, message.chat_id)
+            projects = ctx.project_registry.list_projects()
+            _cmd_evt.info(
+                "monitor project requested effective=%s count=%d",
+                effective or "-",
+                len(projects),
+                chat_id=message.chat_id,
+                user_id=message.user_id,
+                project=effective,
+            )
             lines = [
                 f"이 채팅 적용 프로젝트: {effective or '(없음)'}",
                 "등록된 프로젝트",
             ]
-            for p in ctx.project_registry.list_projects():
+            for p in projects:
                 state = "on" if p.enabled else "off"
                 lines.append(f"- {p.name} [{state}] root={p.root_path}")
             return "\n".join(lines)
 
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
+            _cmd_evt.warning(
+                "monitor requested with no project sub=%s",
+                sub,
+                chat_id=message.chat_id,
+                user_id=message.user_id,
+            )
             return (
                 "등록된 프로젝트가 없습니다. "
                 "브라우저에서 http://127.0.0.1:8000/projects 로 프로젝트를 등록하세요."
@@ -911,10 +933,31 @@ class MonitorCommand(TelegramCommand):
 
         entry = ctx.project_registry.get(project_name)
         if not entry:
+            _cmd_evt.warning(
+                "monitor unknown project sub=%s",
+                sub,
+                chat_id=message.chat_id,
+                user_id=message.user_id,
+                project=project_name,
+            )
             return f"알 수 없는 프로젝트: {project_name}"
         if not entry.enabled:
+            _cmd_evt.warning(
+                "monitor disabled project sub=%s",
+                sub,
+                chat_id=message.chat_id,
+                user_id=message.user_id,
+                project=project_name,
+            )
             return f"비활성화된 프로젝트: {project_name}"
 
+        _cmd_evt.info(
+            "monitor requested sub=%s",
+            sub,
+            chat_id=message.chat_id,
+            user_id=message.user_id,
+            project=project_name,
+        )
         if sub == "model":
             current = ctx.model_preferences.get(message.chat_id)
             body = format_model_monitor(
@@ -950,6 +993,15 @@ class MonitorCommand(TelegramCommand):
         stats = count_project_code(
             entry.root_path,
             worktree_base_dir=entry.worktree_base_dir,
+        )
+        _cmd_evt.info(
+            "monitor code counted files=%d lines=%d skipped=%d",
+            stats.files_scanned,
+            stats.total_lines,
+            stats.skipped_binary_or_error,
+            chat_id=message.chat_id,
+            user_id=message.user_id,
+            project=project_name,
         )
         return format_code_monitor(stats, project_name, entry.root_path)
 

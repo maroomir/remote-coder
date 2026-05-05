@@ -104,26 +104,54 @@ def create_webhook_router(
         background_tasks: BackgroundTasks,
         x_telegram_bot_api_secret_token: str | None = Header(default=None),
     ) -> dict[str, str]:
+        _inbound.info("update received id=%s", update.update_id)
         if webhook_secret and x_telegram_bot_api_secret_token != webhook_secret:
-            _authlog.warning("webhook secret mismatch")
+            _authlog.warning("webhook secret mismatch update_id=%s", update.update_id)
             return {"status": "ignored"}
 
         if update.callback_query:
             cq = update.callback_query
             if cq.message is None or not cq.data:
+                _inbound.info(
+                    "callback_query skipped missing message/data update_id=%s has_message=%s has_data=%s",
+                    update.update_id,
+                    cq.message is not None,
+                    bool(cq.data),
+                )
                 background_tasks.add_task(notifier.answer_callback_query, cq.id)
                 return {"status": "ignored"}
             cq_chat_id = cq.message.chat.id
             cq_user_id = cq.from_user.id
+            cq_preview = _telegram_text_preview(cq.data)
+            _inbound.info(
+                "callback_query received update_id=%s data=%s",
+                update.update_id,
+                cq_preview or "(empty)",
+                chat_id=cq_chat_id,
+                user_id=cq_user_id,
+            )
             if not auth_service.is_allowed(chat_id=cq_chat_id, user_id=cq_user_id):
-                _authlog.warning("unauthorized callback_query", chat_id=cq_chat_id, user_id=cq_user_id)
+                _authlog.warning(
+                    "unauthorized callback_query update_id=%s",
+                    update.update_id,
+                    chat_id=cq_chat_id,
+                    user_id=cq_user_id,
+                )
                 background_tasks.add_task(notifier.answer_callback_query, cq.id)
                 return {"status": "ignored"}
             cq_message = TelegramMessage(chat_id=cq_chat_id, user_id=cq_user_id, text=cq.data)
             cq_response = command_registry.dispatch_rich(cq_message, command_context)
             background_tasks.add_task(notifier.answer_callback_query, cq.id)
             if cq_response:
-                _cmdlog.info("callback_query handled: %s", cq.data, chat_id=cq_chat_id, user_id=cq_user_id)
+                button_rows = len(cq_response.inline_buttons or [])
+                _cmdlog.info(
+                    "callback_query handled cmd=%s response_len=%d button_rows=%d",
+                    cq_preview or "(empty)",
+                    len(cq_response.text),
+                    button_rows,
+                    chat_id=cq_chat_id,
+                    user_id=cq_user_id,
+                )
                 if cq_response.inline_buttons:
                     background_tasks.add_task(
                         notifier.send_with_buttons,
@@ -133,23 +161,55 @@ def create_webhook_router(
                     )
                 else:
                     background_tasks.add_task(notifier.send_text, cq_chat_id, cq_response.text)
+            else:
+                _cmdlog.info(
+                    "callback_query no command response cmd=%s",
+                    cq_preview or "(empty)",
+                    chat_id=cq_chat_id,
+                    user_id=cq_user_id,
+                )
             return {"status": "ok"}
 
         if not update.message:
-            _inbound.info("update without message skipped")
+            _inbound.info("update without message skipped update_id=%s", update.update_id)
             return {"status": "ignored"}
         if not update.message.text:
             chat_only = update.message.chat.id
             user_only = update.message.from_user.id if update.message.from_user else None
-            _inbound.info("empty text skipped", chat_id=chat_only, user_id=user_only)
+            _inbound.info(
+                "empty text skipped update_id=%s message_id=%s",
+                update.update_id,
+                update.message.message_id,
+                chat_id=chat_only,
+                user_id=user_only,
+            )
             return {"status": "ignored"}
 
         chat_id = update.message.chat.id
         user_id = update.message.from_user.id if update.message.from_user else None
         preview = _telegram_text_preview(update.message.text)
-        _inbound.info("received: %s", preview or "(empty)", chat_id=chat_id, user_id=user_id)
+        _inbound.info(
+            "message received update_id=%s message_id=%s len=%d reply_to=%s preview=%s",
+            update.update_id,
+            update.message.message_id,
+            len(update.message.text),
+            (
+                update.message.reply_to_message.message_id
+                if update.message.reply_to_message is not None
+                else "-"
+            ),
+            preview or "(empty)",
+            chat_id=chat_id,
+            user_id=user_id,
+        )
         if not auth_service.is_allowed(chat_id=chat_id, user_id=user_id):
-            _authlog.warning("unauthorized chat/user", chat_id=chat_id, user_id=user_id)
+            _authlog.warning(
+                "unauthorized chat/user update_id=%s message_id=%s",
+                update.update_id,
+                update.message.message_id,
+                chat_id=chat_id,
+                user_id=user_id,
+            )
             return {"status": "ignored"}
 
         message = TelegramMessage(chat_id=chat_id, user_id=user_id, text=update.message.text)
@@ -157,7 +217,14 @@ def create_webhook_router(
         if command_response:
             raw_cmd = message.text.strip()
             cmd_token = raw_cmd.split(maxsplit=1)[0] if raw_cmd else ""
-            _cmdlog.info("command handled: %s", cmd_token, chat_id=chat_id, user_id=user_id)
+            _cmdlog.info(
+                "command handled cmd=%s response_len=%d button_rows=%d",
+                cmd_token,
+                len(command_response.text),
+                len(command_response.inline_buttons or []),
+                chat_id=chat_id,
+                user_id=user_id,
+            )
             if command_response.inline_buttons:
                 background_tasks.add_task(
                     notifier.send_with_buttons,
@@ -182,9 +249,27 @@ def create_webhook_router(
                 ),
             )
         except CommandParseError as exc:
-            _cmdlog.warning("parse error: %s", str(exc)[:120], chat_id=chat_id, user_id=user_id)
+            _cmdlog.warning(
+                "parse error message_id=%s err=%s",
+                update.message.message_id,
+                str(exc)[:120],
+                chat_id=chat_id,
+                user_id=user_id,
+            )
             background_tasks.add_task(notifier.send_text, chat_id, str(exc))
             return {"status": "ignored"}
+
+        _cmdlog.info(
+            "natural request parsed model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
+            request.model.value,
+            request.branch or "-",
+            request.commit,
+            len(request.instruction),
+            request.reply_to_message_id or "-",
+            chat_id=chat_id,
+            user_id=user_id,
+            project=request.project,
+        )
 
         if conversation_store is not None:
             conversation_store.append(
@@ -199,10 +284,17 @@ def create_webhook_router(
                     else None
                 ),
             )
+            _cmdlog.info(
+                "conversation user message recorded message_id=%s",
+                update.message.message_id,
+                chat_id=chat_id,
+                user_id=user_id,
+                project=request.project,
+            )
 
         job = job_manager.submit(request)
         _cmdlog.info(
-            "job accepted",
+            "job accepted background scheduled",
             chat_id=chat_id,
             user_id=user_id,
             project=request.project,
@@ -230,12 +322,21 @@ def create_webhook_router(
                 text=f"Job 접수: {job.id}",
                 job_id=job.id,
             )
+            _cmdlog.info(
+                "conversation job_accepted recorded",
+                chat_id=chat_id,
+                user_id=user_id,
+                project=request.project,
+                job_id=job.id,
+            )
 
         if conversation_store is not None:
 
             def run_and_record(jid: str) -> None:
+                _cmdlog.info("background job run start", job_id=jid)
                 final_job = job_manager.run(jid)
                 if final_job is None:
+                    _cmdlog.warning("background job run returned none", job_id=jid)
                     return
                 summary = format_job_result_memory_summary(final_job)
                 conversation_store.append(
@@ -245,12 +346,28 @@ def create_webhook_router(
                     text=summary,
                     job_id=final_job.id,
                 )
+                _cmdlog.info(
+                    "conversation job_result recorded status=%s",
+                    final_job.status.value,
+                    chat_id=final_job.request.chat_id,
+                    user_id=final_job.request.requested_by,
+                    project=final_job.request.project,
+                    job_id=final_job.id,
+                )
                 if final_job.request.message_id is not None and final_job.branch is not None:
                     conversation_store.bind_message_branch(
                         project=final_job.request.project,
                         chat_id=final_job.request.chat_id,
                         message_id=final_job.request.message_id,
                         branch=final_job.branch,
+                        job_id=final_job.id,
+                    )
+                    _cmdlog.info(
+                        "conversation branch binding recorded branch=%s",
+                        final_job.branch,
+                        chat_id=final_job.request.chat_id,
+                        user_id=final_job.request.requested_by,
+                        project=final_job.request.project,
                         job_id=final_job.id,
                     )
 

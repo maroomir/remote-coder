@@ -12,9 +12,13 @@ from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsSt
 from app.admin.database_browser import ConversationDatabaseBrowser
 from app.config import Settings
 from app.models import ModelName
+from app.monitoring.events import EventLogger
 from app.monitoring.log_buffer import InMemoryLogBuffer
 from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.conversation import SQLiteConversationStore
+
+_adminlog = EventLogger("app.admin", "admin.ui")
+_monitorlog = EventLogger("app.admin.monitoring", "monitoring.ui")
 
 
 def _client_host(request: Request) -> str:
@@ -75,28 +79,35 @@ def create_admin_router(
 
     @router.get("/", response_class=HTMLResponse)
     def admin_hub(_: LocalhostOnly) -> str:
+        _adminlog.info("page served path=/")
         return _load_template_html("admin.html")
 
     @router.get("/projects", response_class=HTMLResponse)
     def admin_projects(_: LocalhostOnly) -> str:
+        _adminlog.info("page served path=/projects")
         return _load_template_html("projects.html")
 
     @router.get("/advanced", response_class=HTMLResponse)
     def admin_advanced(_: LocalhostOnly) -> str:
+        _adminlog.info("page served path=/advanced")
         return _load_template_html("advanced.html")
 
     @router.get("/logs", response_class=HTMLResponse)
     def admin_logs(_: LocalhostOnly) -> str:
+        _adminlog.info("page served path=/logs")
         return _load_template_html("logs.html")
 
     @router.get("/database", response_class=HTMLResponse)
     def admin_database(_: LocalhostOnly) -> str:
+        _adminlog.info("page served path=/database")
         return _load_template_html("database.html")
 
     @router.get("/api/database/tables")
     def api_database_tables(_: LocalhostOnly) -> dict[str, object]:
         browser = ConversationDatabaseBrowser(conversation_store.db_path)
-        return browser.tables_payload()
+        payload = browser.tables_payload()
+        _monitorlog.info("database tables queried count=%d", len(payload.get("tables", [])))
+        return payload
 
     @router.get("/api/database/filter-options")
     def api_database_filter_options(
@@ -105,8 +116,11 @@ def create_admin_router(
     ) -> dict[str, object]:
         browser = ConversationDatabaseBrowser(conversation_store.db_path)
         try:
-            return browser.distinct_filter_options(table)
+            payload = browser.distinct_filter_options(table)
+            _monitorlog.info("database filter options queried table=%s", table)
+            return payload
         except ValueError as exc:
+            _monitorlog.warning("database filter options failed table=%s err=%s", table, exc)
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @router.get("/api/database/rows")
@@ -127,7 +141,7 @@ def create_admin_router(
             raise HTTPException(status_code=422, detail="order는 asc 또는 desc 여야 합니다.")
         browser = ConversationDatabaseBrowser(conversation_store.db_path)
         try:
-            return browser.query_rows(
+            payload = browser.query_rows(
                 table,
                 project=project,
                 chat_id=chat_id,
@@ -139,7 +153,20 @@ def create_admin_router(
                 limit=limit,
                 offset=offset,
             )
+            _monitorlog.info(
+                "database rows queried table=%s rows=%d limit=%d offset=%d filters=%d",
+                table,
+                len(payload.get("rows", [])),
+                limit,
+                offset,
+                sum(v is not None for v in (project, chat_id, role, job_id, q)),
+                chat_id=chat_id,
+                job_id=job_id,
+                project=project,
+            )
+            return payload
         except ValueError as exc:
+            _monitorlog.warning("database rows query failed table=%s err=%s", table, exc)
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @router.get("/api/database/export.csv")
@@ -171,8 +198,18 @@ def create_admin_router(
                 max_rows=max_rows,
             )
         except ValueError as exc:
+            _monitorlog.warning("database export failed table=%s err=%s", table, exc)
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         safe_name = table.replace("/", "_").replace("\\", "_")[:80] or "export"
+        _monitorlog.info(
+            "database export started table=%s max_rows=%d filters=%d",
+            table,
+            max_rows,
+            sum(v is not None for v in (project, chat_id, role, job_id, q)),
+            chat_id=chat_id,
+            job_id=job_id,
+            project=project,
+        )
         return StreamingResponse(
             stream,
             media_type="text/csv; charset=utf-8",
@@ -227,7 +264,22 @@ def create_admin_router(
                 category=category_clean,
             )
         except ValueError as exc:
+            _monitorlog.warning("logs query failed err=%s", exc)
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        _monitorlog.info(
+            "logs queried entries=%d max_id=%d after_id=%s limit=%d level=%s logger=%s category=%s",
+            len(entries),
+            max_seen,
+            after_id or "-",
+            limit,
+            level_clean or "-",
+            logger_clean or "-",
+            category_clean or "-",
+            chat_id=chat_id,
+            user_id=user_id,
+            job_id=job_id_clean,
+            project=project_clean,
+        )
         return {
             "entries": entries,
             "max_id": max_seen,
@@ -237,6 +289,13 @@ def create_admin_router(
     @router.get("/api/settings")
     def api_settings(_: LocalhostOnly) -> dict:
         token = settings.telegram_bot_token.get_secret_value()
+        _adminlog.info(
+            "settings queried allowed_chats=%d allowed_users=%d webhook_secret_set=%s default_model=%s",
+            len(settings.telegram_allowed_chat_ids),
+            len(settings.telegram_allowed_user_ids),
+            bool(settings.telegram_webhook_secret),
+            settings.default_model.value,
+        )
         return {
             "telegram_bot_token_masked": _mask_bot_token(token),
             "telegram_allowed_chat_ids": settings.telegram_allowed_chat_ids,
@@ -250,6 +309,7 @@ def create_admin_router(
 
     @router.get("/api/projects")
     def api_projects_get(_: LocalhostOnly) -> JSONResponse:
+        _adminlog.info("projects queried count=%d", len(registry.list_projects()))
         return JSONResponse(registry.to_public_dict())
 
     @router.post("/api/projects")
@@ -264,7 +324,9 @@ def create_admin_router(
         try:
             registry.add_project(record)
         except ValueError as exc:
+            _adminlog.warning("project create failed name=%s err=%s", body.name, exc, project=body.name)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _adminlog.info("project created name=%s enabled=%s", body.name, body.enabled, project=body.name)
         return JSONResponse(registry.to_public_dict())
 
     @router.put("/api/projects/{name}")
@@ -279,7 +341,21 @@ def create_admin_router(
         try:
             registry.update_project(name, record)
         except ValueError as exc:
+            _adminlog.warning(
+                "project update failed old_name=%s new_name=%s err=%s",
+                name,
+                body.name,
+                exc,
+                project=name,
+            )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _adminlog.info(
+            "project updated old_name=%s new_name=%s enabled=%s",
+            name,
+            body.name,
+            body.enabled,
+            project=body.name,
+        )
         return JSONResponse(registry.to_public_dict())
 
     @router.delete("/api/projects/{name}")
@@ -287,7 +363,9 @@ def create_admin_router(
         try:
             registry.remove_project(name)
         except ValueError as exc:
+            _adminlog.warning("project delete failed name=%s err=%s", name, exc, project=name)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _adminlog.info("project deleted name=%s", name, project=name)
         return JSONResponse(registry.to_public_dict())
 
     @router.post("/api/projects/default")
@@ -295,16 +373,26 @@ def create_admin_router(
         try:
             registry.set_default_project(body.name)
         except ValueError as exc:
+            _adminlog.warning("default project update failed name=%s err=%s", body.name, exc, project=body.name)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _adminlog.info("default project updated name=%s", body.name, project=body.name)
         return JSONResponse(registry.to_public_dict())
 
     @router.get("/api/advanced-settings")
     def api_advanced_settings_get(_: LocalhostOnly) -> dict:
+        _adminlog.info("advanced settings queried")
         return advanced_settings_store.get().model_dump(mode="json")
 
     @router.put("/api/advanced-settings")
     def api_advanced_settings_put(body: AdvancedSettings, _: LocalhostOnly) -> dict:
-        return advanced_settings_store.save(body).model_dump(mode="json")
+        saved = advanced_settings_store.save(body)
+        _adminlog.info(
+            "advanced settings updated auto_pull=%s auto_merge=%s status_limit=%d",
+            saved.auto_pull_on_project_switch,
+            saved.auto_merge_to_main_enabled,
+            saved.status_recent_job_limit,
+        )
+        return saved.model_dump(mode="json")
 
     @router.get("/admin-static/icons/{filename}")
     def admin_icon(filename: str, _: LocalhostOnly) -> FileResponse:
