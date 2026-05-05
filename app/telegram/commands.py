@@ -460,7 +460,20 @@ class ProjectCommand(TelegramCommand):
                 return f"비활성화된 프로젝트: {name}"
             ctx.project_preferences.set(message.chat_id, name)
             _cmd_evt.info("project switched to=%s", name, chat_id=message.chat_id, project=name)
-            return f"작업 프로젝트가 {name}로 변경되었습니다."
+            msg = f"작업 프로젝트가 {name}로 변경되었습니다."
+            settings = ctx.advanced_settings_store.get() if ctx.advanced_settings_store else None
+            if settings and settings.auto_pull_on_project_switch:
+                try:
+                    pull_summary = ctx.git_service.pull_repository(entry.root_path, ctx.git_remote_name)
+                    msg += f"\n\n{pull_summary}"
+                    _cmd_evt.info("auto pull on project switch done", chat_id=message.chat_id, project=name)
+                except Exception as exc:
+                    msg += f"\n\n⚠️ git pull 실패: {exc}"
+                    _cmd_evt.warning(
+                        "auto pull on project switch failed: %s", exc,
+                        chat_id=message.chat_id, project=name,
+                    )
+            return msg
         return format_usage("/project", "/project <프로젝트이름>")
 
     def get_inline_buttons(

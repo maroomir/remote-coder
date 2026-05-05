@@ -645,3 +645,70 @@ def test_dispatch_rich_returns_none_for_natural_language(project_registry: Proje
         _ctx(project_registry),
     )
     assert response is None
+
+
+def _ctx_with_auto_pull(project_registry: ProjectRegistry, *, enabled: bool) -> CommandContext:
+    from app.admin.advanced_settings import AdvancedSettings
+
+    settings_store = Mock()
+    settings_store.get.return_value = AdvancedSettings(auto_pull_on_project_switch=enabled)
+    ctx = _ctx(project_registry)
+    ctx.advanced_settings_store = settings_store
+    return ctx
+
+
+def test_project_command_auto_pull_enabled(project_registry: ProjectRegistry):
+    root = project_registry.config_path.parent / "pull_repo"
+    root.mkdir()
+    wt = project_registry.config_path.parent / "pull_wt"
+    wt.mkdir()
+    project_registry.add_project(
+        ProjectRecord(name="pullproj", root_path=root, worktree_base_dir=wt, enabled=True)
+    )
+    ctx = _ctx_with_auto_pull(project_registry, enabled=True)
+    ctx.git_service.pull_repository.return_value = "원격(origin)에서 모든 정보를 가져왔습니다."
+
+    registry = CommandRegistry([ProjectCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=10, user_id=1, text="/project pullproj"), ctx)
+
+    assert text is not None
+    assert "변경" in text
+    assert "원격(origin)" in text
+    ctx.git_service.pull_repository.assert_called_once_with(root, "origin")
+
+
+def test_project_command_auto_pull_disabled(project_registry: ProjectRegistry):
+    root = project_registry.config_path.parent / "nopull_repo"
+    root.mkdir()
+    wt = project_registry.config_path.parent / "nopull_wt"
+    wt.mkdir()
+    project_registry.add_project(
+        ProjectRecord(name="nopullproj", root_path=root, worktree_base_dir=wt, enabled=True)
+    )
+    ctx = _ctx_with_auto_pull(project_registry, enabled=False)
+
+    registry = CommandRegistry([ProjectCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=11, user_id=1, text="/project nopullproj"), ctx)
+
+    assert text is not None and "변경" in text
+    ctx.git_service.pull_repository.assert_not_called()
+
+
+def test_project_command_auto_pull_failure_still_switches(project_registry: ProjectRegistry):
+    root = project_registry.config_path.parent / "failpull_repo"
+    root.mkdir()
+    wt = project_registry.config_path.parent / "failpull_wt"
+    wt.mkdir()
+    project_registry.add_project(
+        ProjectRecord(name="failpull", root_path=root, worktree_base_dir=wt, enabled=True)
+    )
+    ctx = _ctx_with_auto_pull(project_registry, enabled=True)
+    ctx.git_service.pull_repository.side_effect = RuntimeError("network error")
+
+    registry = CommandRegistry([ProjectCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=12, user_id=1, text="/project failpull"), ctx)
+
+    assert text is not None
+    assert "변경" in text
+    assert "git pull 실패" in text
+    assert ctx.project_preferences.get(12) == "failpull"
