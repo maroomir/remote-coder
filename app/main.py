@@ -104,6 +104,7 @@ command_context = CommandContext(
     git_remote_name=settings.git_remote_name,
     conversation_store=conversation_store,
     confirmation_store=confirmation_store,
+    advanced_settings_store=advanced_settings_store,
 )
 runner_factory = AiRunnerFactory(codex_sandbox=settings.codex_sandbox)
 branch_strategy = TimestampSlugStrategy()

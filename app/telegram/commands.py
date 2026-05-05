@@ -21,6 +21,7 @@ from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
 if TYPE_CHECKING:
+    from app.admin.advanced_settings import FileAdvancedSettingsStore
     from app.git.service import GitWorktreeService
     from app.jobs.manager import JobManager
 
@@ -46,6 +47,7 @@ class CommandContext:
     confirmation_store: InMemoryConfirmationStore
     conversation_store: SQLiteConversationStore | None = None
     job_manager: JobManager | None = None
+    advanced_settings_store: FileAdvancedSettingsStore | None = None
 
 
 def format_usage(*lines: str) -> str:
@@ -321,7 +323,8 @@ class StatusCommand(TelegramCommand):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
         if len(tokens) == 1:
-            jobs = ctx.job_store.list_recent_for_chat(message.chat_id, 20)
+            limit = self._job_limit(ctx)
+            jobs = ctx.job_store.list_recent_for_chat(message.chat_id, limit)
             if not jobs:
                 return "조회할 수 있는 Job이 없습니다."
             return "조회할 Job을 선택하세요."
@@ -410,6 +413,12 @@ class StatusCommand(TelegramCommand):
 
         return "\n".join(lines)
 
+    @staticmethod
+    def _job_limit(ctx: CommandContext) -> int:
+        if ctx.advanced_settings_store is None:
+            return 10
+        return ctx.advanced_settings_store.get().status_recent_job_limit
+
     def get_inline_buttons(
         self,
         message: TelegramMessage | None = None,
@@ -419,7 +428,8 @@ class StatusCommand(TelegramCommand):
             return None
         if len(message.text.strip().split()) != 1:
             return None
-        jobs = ctx.job_store.list_recent_for_chat(message.chat_id, 20)
+        limit = self._job_limit(ctx)
+        jobs = ctx.job_store.list_recent_for_chat(message.chat_id, limit)
         if not jobs:
             return None
         return _button_rows(

@@ -377,7 +377,11 @@
       </p>
 
       <form id="adv-form">
-        <label class="checkbox">
+        <label class="field" for="adv-status-job-limit">/status 최근 Job 표시 개수</label>
+        <p class="hint">/status 명령에서 인라인 버튼으로 선택할 수 있는 최근 Job의 최대 개수입니다. 기본값: 10</p>
+        <input type="number" id="adv-status-job-limit" name="status_recent_job_limit" min="1" max="50" step="1" placeholder="예: 10" autocomplete="off" />
+
+        <label class="checkbox" style="margin-top:1.1rem">
           <input type="checkbox" id="adv-merge-main" name="auto_merge_to_main_enabled" />
           요청 결과를 즉시 <code>main</code>/<code>master</code>에 반영한 뒤 원격에 push
         </label>
@@ -508,6 +512,8 @@
         return false;
       }
       const d = JSON.parse(t);
+      $("#adv-status-job-limit").value =
+        d.status_recent_job_limit != null ? String(d.status_recent_job_limit) : "10";
       $("#adv-merge-main").checked = !!d.auto_merge_to_main_enabled;
       $("#adv-memory-enabled").checked = !!d.conversation_memory_limit_enabled;
       $("#adv-max-rows").value =
@@ -537,7 +543,9 @@
     $("#adv-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       if (busy) return;
+      const jobLimitRaw = parseInt($("#adv-status-job-limit").value, 10);
       const body = {
+        status_recent_job_limit: Number.isFinite(jobLimitRaw) && jobLimitRaw >= 1 ? jobLimitRaw : 10,
         auto_merge_to_main_enabled: $("#adv-merge-main").checked,
         conversation_memory_limit_enabled: $("#adv-memory-enabled").checked,
         conversation_memory_max_rows: parseOptionalPositiveInt($("#adv-max-rows").value),
