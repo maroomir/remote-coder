@@ -50,6 +50,10 @@ class CaptureJobManager:
         self.last_request = request
         return DummyJob()
 
+    def run(self, job_id: str):
+        _ = job_id
+        return None
+
 
 def test_format_job_result_memory_summary_includes_usage():
     job = Job(
@@ -71,10 +75,6 @@ def test_format_job_result_memory_summary_includes_usage():
     assert "status=succeeded" in summary
     assert "model=ChatGPT 5.5" in summary
     assert "tokens=1,500" in summary
-
-    def run(self, job_id: str):
-        _ = job_id
-        return None
 
 
 class DummyNotifier:

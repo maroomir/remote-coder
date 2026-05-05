@@ -260,7 +260,7 @@ class HelpCommand(TelegramCommand):
         if len(tokens) >= 2:
             subcmd = self._registry.get("/" + tokens[1])
             if subcmd is not None:
-                sub_buttons = subcmd.get_inline_buttons(message, ctx) or []
+                sub_buttons = subcmd.get_inline_buttons(None, ctx) or []
                 return sub_buttons + [[InlineButton("← 뒤로", "/help")]]
         menu_cmds = [
             cmd for name, cmd in self._registry.items()
@@ -293,10 +293,7 @@ class ModelCommand(TelegramCommand):
         ctx: CommandContext | None = None,
     ) -> list[list[InlineButton]] | None:
         _ = ctx
-        if message is not None:
-            tokens = message.text.strip().split()
-            if len(tokens) >= 2:
-                return None
+        _ = message
         return [
             [
                 InlineButton("claude", "/model claude"),
