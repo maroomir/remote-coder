@@ -3,7 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, BackgroundTasks, Header
 from pydantic import BaseModel, Field
 
+from app.ai.usage import format_token_usage
 from app.jobs.manager import JobManager
+from app.jobs.schemas import Job
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.events import EventLogger
 from app.security.auth import AllowlistAuthService
@@ -23,6 +25,19 @@ def _telegram_text_preview(text: str, max_len: int = 80) -> str:
         return ""
     first = stripped.splitlines()[0]
     return first[:max_len]
+
+
+def format_job_result_memory_summary(final_job: Job) -> str:
+    summary = f"status={final_job.status.value}"
+    if final_job.error_stage:
+        summary += f" stage={final_job.error_stage}"
+    if final_job.error:
+        summary += f" err={str(final_job.error)[:300]}"
+    summary += f" model={final_job.runner_actual_model or final_job.request.model.value}"
+    token_usage = format_token_usage(final_job.runner_token_usage)
+    if token_usage:
+        summary += f" tokens={token_usage}"
+    return summary
 
 
 class TelegramChat(BaseModel):
@@ -222,11 +237,7 @@ def create_webhook_router(
                 final_job = job_manager.run(jid)
                 if final_job is None:
                     return
-                summary = f"status={final_job.status.value}"
-                if final_job.error_stage:
-                    summary += f" stage={final_job.error_stage}"
-                if final_job.error:
-                    summary += f" err={str(final_job.error)[:300]}"
+                summary = format_job_result_memory_summary(final_job)
                 conversation_store.append(
                     project=final_job.request.project,
                     chat_id=final_job.request.chat_id,

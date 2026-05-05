@@ -4,6 +4,7 @@ import time
 
 import httpx
 
+from app.ai.usage import format_token_usage
 from app.jobs.schemas import Job
 from app.monitoring.events import EventLogger
 
@@ -150,7 +151,9 @@ class TelegramNotifier:
                 f"프로젝트: {job.request.project}\n"
                 f"브랜치: {branch_line}\n"
                 f"커밋: {commit_line}\n"
-                f"변경 파일: {changed}"
+                f"변경 파일: {changed}\n"
+                f"사용 모델: {job.runner_actual_model or job.request.model.value}\n"
+                f"토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}"
             )
             if job.runner_stdout_summary:
                 text += f"\n\nAI 응답:\n{job.runner_stdout_summary}"

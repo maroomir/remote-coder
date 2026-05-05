@@ -4,6 +4,7 @@ from unittest.mock import Mock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.jobs.schemas import Job, JobRequest, JobStatus
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
 from app.security.auth import AllowlistAuthService
@@ -24,7 +25,7 @@ from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 from app.telegram.parser import CommandParser
-from app.telegram.webhook import create_webhook_router
+from app.telegram.webhook import create_webhook_router, format_job_result_memory_summary
 
 
 class DummyJob:
@@ -48,6 +49,28 @@ class CaptureJobManager:
     def submit(self, request):
         self.last_request = request
         return DummyJob()
+
+
+def test_format_job_result_memory_summary_includes_usage():
+    job = Job(
+        id="job-usage",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CODEX,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+        status=JobStatus.SUCCEEDED,
+        runner_actual_model="ChatGPT 5.5",
+        runner_token_usage={"input": 1200, "output": 300},
+    )
+
+    summary = format_job_result_memory_summary(job)
+
+    assert "status=succeeded" in summary
+    assert "model=ChatGPT 5.5" in summary
+    assert "tokens=1,500" in summary
 
     def run(self, job_id: str):
         _ = job_id

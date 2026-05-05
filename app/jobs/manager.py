@@ -9,6 +9,7 @@ from uuid import uuid4
 from app.admin.advanced_settings import FileAdvancedSettingsStore
 from app.ai.base import RunnerInput
 from app.ai.factory import AiRunnerFactory
+from app.ai.usage import extract_runner_usage
 from app.config import Settings
 from app.git.ai_commit import AiCommitBodyGenerator
 from app.git.branch_naming import BranchNamingStrategy
@@ -378,6 +379,9 @@ class JobManager:
         job.runner_stderr_summary = self._make_output_summary(
             runner_result.stderr, limit=self._STDERR_SUMMARY_LIMIT
         )
+        usage = extract_runner_usage(f"{runner_result.stdout}\n{runner_result.stderr}")
+        job.runner_actual_model = usage.actual_model
+        job.runner_token_usage = usage.token_usage
 
     @classmethod
     def _strip_links_for_stdout_summary(cls, text: str) -> str:

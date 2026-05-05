@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.jobs.store import InMemoryJobStore
+from app.ai.usage import format_token_usage
 from app.jobs.schemas import Job, JobStatus
+from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
 from app.monitoring.code import count_project_code, format_code_monitor
 from app.monitoring.events import EventLogger
@@ -351,6 +352,8 @@ class StatusCommand(TelegramCommand):
         lines.append(f"Job {job.id}")
         lines.append(f"상태: {job.status.value} {emoji}")
         lines.append(f"프로젝트: {job.request.project} | 모델: {job.request.model.value}")
+        lines.append(f"사용 모델: {job.runner_actual_model or job.request.model.value}")
+        lines.append(f"토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}")
 
         instr = job.request.instruction.strip().replace("\n", " ")
         if len(instr) > 80:

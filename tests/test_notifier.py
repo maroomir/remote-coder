@@ -32,6 +32,32 @@ def test_notifier_send_job_result_success():
     payload = route.calls[0].request.content.decode()
     assert "AI 응답" in payload
     assert "done summary" in payload
+    assert "사용 모델" in payload
+    assert "토큰 사용량" in payload
+
+
+@respx.mock
+def test_notifier_send_job_result_success_includes_runner_usage():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    job = Job(
+        id="j-usage",
+        request=JobRequest(
+            project="proj", model=ModelName.CODEX, instruction="x", chat_id=1, requested_by=1
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="b",
+        commit_hash="abc",
+        changed_files=["a.py"],
+        runner_actual_model="ChatGPT 5.5",
+        runner_token_usage={"input": 1200, "output": 300},
+    )
+    notifier.send_job_result(job)
+    payload = route.calls[0].request.content.decode()
+    assert "사용 모델: ChatGPT 5.5" in payload
+    assert "토큰 사용량: 1,500" in payload
 
 
 @respx.mock

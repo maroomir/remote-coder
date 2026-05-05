@@ -69,6 +69,48 @@ def test_job_manager_submit_and_run_success(test_settings, project_registry):
     assert call.kwargs.get("base_branch") is None
 
 
+def test_job_manager_extracts_runner_usage(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = []
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0,
+        stdout="model: ChatGPT 5.5\ninput tokens: 1,200\noutput tokens: 300",
+        stderr="",
+        started_at=None,
+        finished_at=None,
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier = Mock()
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CODEX,
+        instruction="report usage",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    final_job = manager.run(job.id)
+
+    assert final_job.status.value == "succeeded"
+    assert final_job.runner_actual_model == "ChatGPT 5.5"
+    assert final_job.runner_token_usage == {"input": 1200, "output": 300}
+
+
 def test_job_manager_no_changes_skips_branch_commit_push(test_settings, project_registry):
     store = InMemoryJobStore()
     git_service = Mock()

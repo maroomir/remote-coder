@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -9,33 +8,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Final
 
+from app.ai.usage import extract_runner_usage, format_token_usage, merge_token_usage
 from app.jobs.schemas import Job
 from app.models import ModelName
 
 _CLI_TIMEOUT_SEC: Final[int] = 25
 _RECENT_JOB_LIMIT: Final[int] = 50
 _LOG_READ_LIMIT: Final[int] = 120_000
-_MODEL_VALUE_LIMIT: Final[int] = 80
-
-_MODEL_FIELD_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
-    re.compile(
-        r"(?im)^\s*(?:actual\s+model|selected\s+model|current\s+model|model|사용\s*모델)\s*[:=]\s*([^\n,;]+)"
-    ),
-    re.compile(r"(?im)\b(?:using|selected)\s+(?:model\s+)?([A-Za-z][\w .:/-]{1,70}\d(?:\.\d+)?)"),
-)
-_TOKEN_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
-    re.compile(
-        r"(?i)\b(input|prompt|output|completion|cached|cache\s+read|cache\s+write|total)\s*"
-        r"(?:tokens?|토큰)\s*[:=]\s*([0-9][0-9,._]*)"
-    ),
-    re.compile(
-        r"(?i)\b(input_tokens|prompt_tokens|output_tokens|completion_tokens|cached_tokens|total_tokens)"
-        r'["\']?\s*[:=]\s*([0-9][0-9,._]*)'
-    ),
-    re.compile(
-        r"(?i)\b(input|prompt|output|completion|cached|total)\s*[:=]\s*([0-9][0-9,._]*)\s*(?:tokens?|토큰)"
-    ),
-)
 
 
 @dataclass(frozen=True)
@@ -101,10 +80,10 @@ def _summarize_recent_usage(
     totals: dict[str, int] = {}
     for job in matched:
         text = _read_observable_job_text(job)
+        usage = extract_runner_usage(text)
         if actual_model is None:
-            actual_model = _extract_actual_model(text)
-        for label, value in _extract_token_metrics(text).items():
-            totals[label] = totals.get(label, 0) + value
+            actual_model = job.runner_actual_model or usage.actual_model
+        merge_token_usage(totals, job.runner_token_usage or usage.token_usage)
 
     return RecentUsageSummary(
         inspected_jobs=len(matched),
@@ -133,60 +112,6 @@ def _read_log_excerpt(path: Path) -> str:
         return ""
 
 
-def _extract_actual_model(text: str) -> str | None:
-    for pattern in _MODEL_FIELD_PATTERNS:
-        match = pattern.search(text)
-        if not match:
-            continue
-        value = _sanitize_metric_value(match.group(1))
-        if value:
-            return value[:_MODEL_VALUE_LIMIT]
-    return None
-
-
-def _extract_token_metrics(text: str) -> dict[str, int]:
-    metrics: dict[str, int] = {}
-    for pattern in _TOKEN_PATTERNS:
-        for match in pattern.finditer(text):
-            label = _normalize_token_label(match.group(1))
-            value = _parse_int(match.group(2))
-            if value is None:
-                continue
-            metrics[label] = metrics.get(label, 0) + value
-    return metrics
-
-
-def _normalize_token_label(raw: str) -> str:
-    key = raw.lower().replace("_", " ").strip()
-    if key in {"prompt", "prompt tokens"}:
-        return "input"
-    if key in {"completion", "completion tokens"}:
-        return "output"
-    if key in {"input tokens"}:
-        return "input"
-    if key in {"output tokens"}:
-        return "output"
-    if key in {"cached tokens"}:
-        return "cached"
-    if key in {"total tokens"}:
-        return "total"
-    return key
-
-
-def _parse_int(raw: str) -> int | None:
-    normalized = raw.replace(",", "").replace("_", "").strip()
-    if not normalized.isdigit():
-        return None
-    return int(normalized)
-
-
-def _sanitize_metric_value(raw: str) -> str:
-    value = re.sub(r"\s+", " ", raw).strip().strip("`'\"")
-    if not value:
-        return ""
-    return value
-
-
 def _format_recent_usage_section(summary: RecentUsageSummary | None) -> str | None:
     if summary is None:
         return None
@@ -209,18 +134,7 @@ def _format_recent_usage_section(summary: RecentUsageSummary | None) -> str | No
     else:
         lines.append("- 관측된 세부 모델: CLI 기본값/설정에서 자동 선택됨 (로그에서 확인 불가)")
     if summary.token_metrics:
-        labels = ("input", "output", "cached", "total", "cache read", "cache write")
-        rendered = [
-            f"{label}={summary.token_metrics[label]:,}"
-            for label in labels
-            if label in summary.token_metrics
-        ]
-        rendered.extend(
-            f"{label}={value:,}"
-            for label, value in sorted(summary.token_metrics.items())
-            if label not in labels
-        )
-        lines.append(f"- 관측된 토큰 합계: {', '.join(rendered)}")
+        lines.append(f"- 관측된 토큰 합계: {format_token_usage(summary.token_metrics)}")
     else:
         lines.append("- 관측된 토큰 합계: 토큰 사용량 패턴을 로그에서 찾지 못했습니다.")
     lines.append("- 참고: 계정별 남은 한도/리셋 시각은 각 공급자 대시보드 또는 CLI 대화형 사용량 화면이 기준입니다.")

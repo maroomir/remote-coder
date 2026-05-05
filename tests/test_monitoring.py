@@ -70,3 +70,29 @@ def test_format_model_monitor_includes_recent_job_usage():
     assert "관측된 세부 모델: ChatGPT 5.5" in text
     assert "input=1,200" in text
     assert "output=300" in text
+
+
+def test_format_model_monitor_prefers_structured_usage():
+    job = Job(
+        id="job-structured-usage",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CODEX,
+            instruction="x",
+            chat_id=7,
+            requested_by=1,
+        ),
+        status=JobStatus.SUCCEEDED,
+        runner_stdout_summary="model: older\ninput tokens: 1",
+        runner_actual_model="ChatGPT 5.5",
+        runner_token_usage={"input": 1200, "output": 300},
+    )
+    text = format_model_monitor(
+        ModelName.CODEX,
+        timeout_seconds=2,
+        recent_jobs=[job],
+        chat_id=7,
+        project="remote-coder",
+    )
+    assert "관측된 세부 모델: ChatGPT 5.5" in text
+    assert "관측된 토큰 합계: 1,500" in text

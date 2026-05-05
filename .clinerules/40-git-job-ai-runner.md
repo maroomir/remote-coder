@@ -17,13 +17,15 @@
 - Job 상태는 최소한 `queued`, `running`, `succeeded`, `failed`, `cancelled`를 지원합니다.
 - 작업별 timeout을 적용합니다.
 - 실패 시 어느 단계에서 실패했는지 기록합니다.
-- commit hash, branch name, changed files를 Job 결과에 저장합니다.
+- commit hash, branch name, changed files, 관측 가능한 세부 모델명, 토큰 사용량을 Job 결과에 저장합니다.
+- SQLite 대화 메모리에 Job 결과를 남길 때 관측 가능한 세부 모델명과 토큰 사용량을 함께 기록합니다.
 
 ## 3. AI Runner 규칙
 
 - Claude/Codex/Gemini 실행 코드는 공통 인터페이스 뒤에 둡니다.
 - Runner는 입력으로 작업 지시문, 작업 디렉토리, timeout, 환경 변수를 받습니다.
 - Runner는 stdout, stderr, exit code, 시작/종료 시각을 결과로 반환합니다.
+- Runner 로그에서 세부 모델명과 토큰 사용량을 관측할 수 있으면 구조화된 Job 필드로 추출합니다.
 - CLI 실행 시 인자를 문자열 결합으로 만들지 말고 리스트 기반 subprocess 호출을 우선합니다.
 - Runner 선택은 Strategy 또는 Factory 패턴을 활용해 조건문이 서비스 전반에 퍼지지 않도록 합니다.
 - Claude/Codex/Gemini CLI 호출부는 Adapter로 감싸 외부 프로세스 실행 세부사항이 도메인 로직에 새지 않게 합니다.
