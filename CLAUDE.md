@@ -72,6 +72,7 @@ tests/
   - Job 실행 흐름 → Facade (`app/jobs/manager.py`)
 - **단일 책임**: 클래스/모듈 변경 이유를 하나로 유지
 - **Webhook은 즉시 응답**: 장시간 AI 작업은 반드시 백그라운드 Job으로 분리
+- **미니멀 주석**: 주석은 Why·보안·제약·트레이드오프·워크어라운드만 남기고, 시그니처와 동어반복인 docstring은 추가하지 않음. 마커는 `TODO(#)`, `FIXME(#)`, `NOTE:`, `SECURITY:`만 사용. 자세한 기준은 `.cursor/rules/60-comments-policy.mdc` 참조.
 
 ## Git/Worktree 규칙
 

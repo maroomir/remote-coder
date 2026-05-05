@@ -392,7 +392,6 @@ def test_cleanup_managed_worktrees_raises_when_prune_fails(mock_run, tmp_path: P
 @patch("app.git.service.uuid.uuid4", return_value=SimpleNamespace(hex="aaaaaaaa1234567890abcdef12345678"))
 @patch("app.git.service.subprocess.run")
 def test_rebase_branch_onto_main_removes_linked_worktree_before_add(mock_run, _mock_uuid, tmp_path: Path):
-    """대상 브랜치가 다른 worktree에 checkout되어 있으면 rebase용 worktree add 전에 제거해야 한다."""
     project_path = tmp_path / "repo"
     project_path.mkdir()
     linked = tmp_path / "job_wt"

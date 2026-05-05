@@ -1,5 +1,3 @@
-"""Claude/Codex/Gemini CLI Probe 및 최근 Job 사용량 요약."""
-
 from __future__ import annotations
 
 import json
@@ -42,8 +40,6 @@ _TOKEN_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
 
 @dataclass(frozen=True)
 class RecentUsageSummary:
-    """최근 Job 출력에서 관측 가능한 모델/토큰 사용량."""
-
     inspected_jobs: int
     latest_job_id: str | None = None
     latest_status: str | None = None
@@ -60,7 +56,6 @@ def format_model_monitor(
     chat_id: int | None = None,
     project: str | None = None,
 ) -> str:
-    """현재 선택 모델 기준 CLI 상태 요약."""
     if model == ModelName.CLAUDE:
         body = _format_claude_monitor(timeout_seconds)
     elif model == ModelName.CODEX:

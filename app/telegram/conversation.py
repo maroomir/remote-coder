@@ -14,14 +14,12 @@ _AMBIGUOUS_FOLLOWUP = re.compile(
     re.UNICODE | re.IGNORECASE,
 )
 
-# Reply 체인에 넣을 사용자 메시지·job 요약 최대 길이
 _REPLY_SNIPPET_MAX = 800
-# reply_to 역추적 최대 깊이 (순환 방지)
+# 순환 reply 체인 방지 상한.
 _REPLY_CHAIN_MAX_DEPTH = 32
 
 
 def is_ambiguous_followup(text: str) -> bool:
-    """옵션 제거 후 남은 본문이 모호한 후속 요청인지 여부."""
     return bool(_AMBIGUOUS_FOLLOWUP.match(text.strip()))
 
 
@@ -34,8 +32,6 @@ def _truncate_snippet(text: str, limit: int = _REPLY_SNIPPET_MAX) -> str:
 
 @dataclass(frozen=True)
 class ConversationEntry:
-    """프로젝트+채팅별 대화/작업 기록 한 줄."""
-
     id: int
     project: str
     chat_id: int
@@ -54,8 +50,6 @@ class ConversationRoleCount:
 
 @dataclass(frozen=True)
 class ConversationDbChatStats:
-    """모니터링용: 특정 프로젝트+채팅의 SQLite 행 수 및 DB 파일 크기."""
-
     db_path: Path
     db_exists: bool
     db_size_bytes: int
@@ -91,8 +85,6 @@ def _ensure_entry_columns(conn: sqlite3.Connection) -> None:
 
 
 class SQLiteConversationStore:
-    """프로젝트 이름과 텔레그램 chat_id 단위로 SQLite에 대화를 저장합니다."""
-
     def __init__(
         self,
         db_path: Path,
@@ -105,7 +97,6 @@ class SQLiteConversationStore:
 
     @property
     def db_path(self) -> Path:
-        """대화 기억 SQLite 파일 경로."""
         return self._db_path
 
     def ensure_schema(self) -> None:
@@ -161,7 +152,6 @@ class SQLiteConversationStore:
                 conn.close()
 
     def reset(self) -> None:
-        """기억 DB 파일을 비우고 빈 스키마로 다시 만듭니다."""
         with self._lock:
             if self._db_path.exists():
                 self._db_path.unlink()
@@ -195,7 +185,6 @@ class SQLiteConversationStore:
         )
 
     def _apply_memory_limits(self, conn: sqlite3.Connection) -> None:
-        """고급 설정이 켜져 있으면 전역 기준으로 오래된 행을 삭제하고 필요 시 VACUUM 합니다."""
         if self._advanced_settings_store is None:
             return
         cfg = self._advanced_settings_store.get()
@@ -258,7 +247,6 @@ class SQLiteConversationStore:
                 conn.close()
 
     def list_recent(self, project: str, chat_id: int, limit: int) -> list[ConversationEntry]:
-        """해당 프로젝트+채팅의 최근 limit개를 id 오름차순(시간순)으로 반환합니다."""
         if limit <= 0:
             return []
         with self._lock:
@@ -283,7 +271,6 @@ class SQLiteConversationStore:
     def get_user_entry_by_message_id(
         self, project: str, chat_id: int, message_id: int
     ) -> ConversationEntry | None:
-        """해당 Telegram message_id의 가장 최근 user 행."""
         with self._lock:
             conn = sqlite3.connect(self._db_path)
             try:
@@ -304,7 +291,6 @@ class SQLiteConversationStore:
     def get_latest_job_result_text_for_user_message(
         self, project: str, chat_id: int, message_id: int
     ) -> str | None:
-        """message_branch_links의 job_id로 가장 최근 job_result 텍스트."""
         with self._lock:
             conn = sqlite3.connect(self._db_path)
             try:
@@ -336,7 +322,6 @@ class SQLiteConversationStore:
     def collect_reply_chain_message_ids(
         self, project: str, chat_id: int, reply_to_message_id: int
     ) -> set[int]:
-        """현재 메시지가 reply하는 조상 user message_id 집합 (순서 무관)."""
         ids: set[int] = set()
         cur: int | None = reply_to_message_id
         depth = 0
@@ -356,7 +341,6 @@ class SQLiteConversationStore:
     def get_reply_chain_user_entries_newest_first(
         self, project: str, chat_id: int, reply_to_message_id: int
     ) -> list[ConversationEntry]:
-        """reply_to_message_id부터 reply_to를 따라 올라가며 user 행을 수집 (최신 조상이 먼저)."""
         chain: list[ConversationEntry] = []
         cur: int | None = reply_to_message_id
         depth = 0
@@ -374,7 +358,6 @@ class SQLiteConversationStore:
         return chain
 
     def format_reply_chain_context(self, project: str, chat_id: int, reply_to_message_id: int) -> str:
-        """조상 user 메시지와 각 메시지의 Job 결과 요약 블록. 기록이 없으면 빈 문자열."""
         newest_first = self.get_reply_chain_user_entries_newest_first(project, chat_id, reply_to_message_id)
         if not newest_first:
             return ""
@@ -439,10 +422,7 @@ class SQLiteConversationStore:
     def get_entries_for_branch(
         self, project: str, chat_id: int, branch: str
     ) -> list[tuple[str, str | None]]:
-        """브랜치에 연결된 user 요청과 job 결과를 시간순으로 반환합니다.
-
-        Returns list of (user_text, job_result_text or None).
-        """
+        # 반환: (user_text, job_result_text or None) 시간순 목록.
         with self._lock:
             conn = sqlite3.connect(self._db_path)
             try:
@@ -492,7 +472,6 @@ class SQLiteConversationStore:
         chat_id: int,
         recent_limit: int = 5,
     ) -> ConversationReport | None:
-        """SQL 집계로 프로젝트+채팅별 기억 요약 리포트를 생성합니다."""
         safe_limit = max(0, recent_limit)
         with self._lock:
             conn = sqlite3.connect(self._db_path)
@@ -570,7 +549,6 @@ class SQLiteConversationStore:
         )
 
     def get_chat_stats(self, project: str, chat_id: int) -> ConversationDbChatStats:
-        """프로젝트+채팅별 행 수와 DB 파일 크기를 반환합니다."""
         db_exists = self._db_path.exists()
         size_bytes = self._db_path.stat().st_size if db_exists else 0
         rows_by_role: dict[str, int] = {}
@@ -624,8 +602,6 @@ def _row_to_entry(r: tuple[object, ...]) -> ConversationEntry:
 
 
 class ConversationContextBuilder:
-    """최근 기록과 현재 한 줄 요청을 runner instruction 문자열로 합칩니다."""
-
     @staticmethod
     def build(entries: list[ConversationEntry], current_user_line: str) -> str:
         lines: list[str] = [

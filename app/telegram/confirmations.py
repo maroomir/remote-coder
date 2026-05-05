@@ -11,8 +11,6 @@ class PendingConfirmation:
 
 
 class InMemoryConfirmationStore:
-    """채팅별 확인 대기 작업을 프로세스 메모리에 보관."""
-
     def __init__(self) -> None:
         self._values: dict[int, PendingConfirmation] = {}
         self._lock = Lock()

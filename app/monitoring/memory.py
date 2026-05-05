@@ -1,5 +1,3 @@
-"""SQLite 대화 기억 모니터링 포맷."""
-
 from __future__ import annotations
 
 from app.telegram.conversation import ConversationDbChatStats

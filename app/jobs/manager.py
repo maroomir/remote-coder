@@ -381,7 +381,6 @@ class JobManager:
 
     @classmethod
     def _strip_links_for_stdout_summary(cls, text: str) -> str:
-        """텔레그램 요약에 넣기 전 stdout에서 URL·Markdown 링크를 제거합니다."""
         stripped = cls._MD_LINK_PATTERN.sub(r"\1", text)
         stripped = cls._HTTP_URL_PATTERN.sub("", stripped)
         stripped = cls._WWW_URL_PATTERN.sub("", stripped)

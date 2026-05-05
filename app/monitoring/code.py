@@ -1,12 +1,9 @@
-"""프로젝트 코드 파일·라인 수 (대략적, 읽기 전용)."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 
 
-# 텍스트로 간주할 확장자 (바이너리 제외)
 _CODE_SUFFIXES: frozenset[str] = frozenset(
     {
         ".py",
@@ -46,7 +43,6 @@ _CODE_SUFFIXES: frozenset[str] = frozenset(
     }
 )
 
-# 디렉터리 이름만 매칭 (경로 구성요소)
 _SKIP_DIR_NAMES: frozenset[str] = frozenset(
     {
         ".git",
@@ -81,10 +77,6 @@ def count_project_code(
     worktree_base_dir: Path | None = None,
     max_files: int = 50_000,
 ) -> ProjectCodeStats:
-    """
-    프로젝트 루트 이하를 순회해 코드 확장자 파일의 줄 수를 합산합니다.
-    `worktree_base_dir`가 프로젝트 루트 밖이어도, 루트 아래에 겹치면 제외합니다.
-    """
     root = project_root.resolve()
     wt_base = worktree_base_dir.resolve() if worktree_base_dir is not None else None
 

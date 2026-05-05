@@ -9,8 +9,6 @@ _log = EventLogger("app.git.ai_commit", "git.commit")
 
 
 class AiCommitBodyGenerator:
-    """변경된 파일과 지시 내용을 바탕으로 AI가 커밋 메시지 title과 body를 생성한다."""
-
     _PROMPT = (
         "You are writing a git commit message.\n"
         "First, output one line: \"title: <concise summary under 72 chars>\"\n"
@@ -30,7 +28,6 @@ class AiCommitBodyGenerator:
         changed_files: list[str],
         timeout: int = 30,
     ) -> tuple[str | None, str | None]:
-        """AI가 생성한 (title, body) 튜플을 반환. 실패 시 (None, None)."""
         prompt = self._PROMPT.format(
             instruction=instruction.strip(),
             files=", ".join(changed_files) if changed_files else "(none)",

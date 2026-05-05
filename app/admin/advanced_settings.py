@@ -9,8 +9,7 @@ from pydantic import BaseModel, model_validator
 
 
 class AdvancedSettings(BaseModel):
-    """전역 고급 설정. 기본값은 모두 비활성(기존 동작 유지)."""
-
+    # 모든 기본값은 비활성. 켤 때마다 기존 동작 대비 부수효과가 생기므로 한 번에 하나씩 켭니다.
     model_config = {"extra": "forbid"}
 
     auto_merge_to_main_enabled: bool = False
@@ -43,8 +42,6 @@ def advanced_settings_path_for_project_root(project_root: Path) -> Path:
 
 
 class FileAdvancedSettingsStore:
-    """고급 설정을 JSON 파일로 읽고 씁니다."""
-
     def __init__(self, path: Path) -> None:
         self._path = path
         self._lock = Lock()

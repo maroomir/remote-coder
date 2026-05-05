@@ -1,5 +1,3 @@
-"""app/monitoring 코드 카운터 및 포맷 단위 테스트."""
-
 from pathlib import Path
 
 from app.jobs.schemas import Job, JobRequest, JobStatus

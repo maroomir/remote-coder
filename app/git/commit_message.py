@@ -4,8 +4,6 @@ import re
 
 
 class CommitMessageFormatter:
-    """Remote AI Coder 작업용 Git 커밋 메시지 포맷터."""
-
     _OPTION_PATTERN = re.compile(
         r"\b(?:model|branch|project)\s*:\s*\S+|\bno\s+commit\b",
         flags=re.IGNORECASE,

@@ -306,7 +306,6 @@ def test_job_manager_truncates_runner_output_summary(test_settings, project_regi
 
 
 def test_job_manager_succeeds_with_no_changes_when_read_only_mentioned_in_output(test_settings, project_registry):
-    """exit_code=0이고 변경 파일이 없으면, 출력에 read-only 언급이 있어도 성공(변경 없음)으로 처리한다."""
     store = InMemoryJobStore()
     git_service = Mock()
     git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
@@ -343,7 +342,6 @@ def test_job_manager_succeeds_with_no_changes_when_read_only_mentioned_in_output
     job = manager.submit(request)
     final_job = manager.run(job.id)
 
-    # 출력에 read-only 언급이 있어도 exit_code=0+변경없음 → 성공(변경 없음)
     assert final_job.status.value == "succeeded"
     assert final_job.branch is None
     assert final_job.commit_hash is None

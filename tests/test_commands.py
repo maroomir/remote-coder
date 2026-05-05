@@ -279,7 +279,6 @@ def test_init_command_resets_project_model_and_pending(project_registry: Project
 
 
 def test_init_command_runs_when_clear_confirmation_pending(project_registry: ProjectRegistry):
-    """`/init`은 확인 대기보다 우선하며, 대기 중인 `/clear` 확인을 버리고 초기화합니다."""
     registry = CommandRegistry([InitCommand(), ClearCommand()])
     ctx = _ctx(project_registry)
     chat_id = 99

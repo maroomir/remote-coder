@@ -1,5 +1,3 @@
-"""관리 UI용 대화 기억 SQLite 읽기 전용 조회."""
-
 from __future__ import annotations
 
 import csv
@@ -113,8 +111,7 @@ def _build_where(
 
 
 class ConversationDatabaseBrowser:
-    """화이트리스트된 테이블만 읽기 전용으로 조회합니다."""
-
+    # SECURITY: `_TABLES` 화이트리스트 외 테이블은 노출하지 않으며, sqlite는 read-only URI로만 엽니다.
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path.resolve()
 
@@ -138,7 +135,6 @@ class ConversationDatabaseBrowser:
         }
 
     def distinct_filter_options(self, table: str) -> dict[str, list[str]]:
-        """필터 콤보박스용 distinct project·role 값 (role은 conversation_entries만)."""
         spec = _TABLES.get(table)
         if spec is None:
             raise ValueError(f"unknown table: {table}")
@@ -245,7 +241,7 @@ class ConversationDatabaseBrowser:
         max_rows: int = _DEFAULT_EXPORT_MAX_ROWS,
         chunk_size: int = _EXPORT_CHUNK,
     ) -> Iterator[bytes]:
-        """UTF-8 BOM + RFC 4180 CSV 라인을 UTF-8 바이트로 순서대로 보냅니다."""
+        # Excel·한글 환경에서 CSV가 UTF-8로 인식되도록 BOM을 먼저 보냅니다.
         spec = _TABLES.get(table)
         if spec is None:
             raise ValueError(f"unknown table: {table}")

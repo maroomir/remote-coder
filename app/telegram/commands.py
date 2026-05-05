@@ -101,7 +101,6 @@ def _job_button_label(job: Job) -> str:
 
 
 def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | None:
-    """채팅별 `/project` 선택값이 있으면 그것, 없으면 레지스트리에 설정된 기본값(미선택 시 폴백)."""
     pref = ctx.project_preferences.get(chat_id)
     if pref:
         return pref
@@ -426,8 +425,6 @@ class StatusCommand(TelegramCommand):
 
 
 class ProjectCommand(TelegramCommand):
-    """채팅별 작업 프로젝트 조회·전환(인메모리). 레지스트리 전역 기본값은 바꾸지 않습니다."""
-
     name = "/project"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
@@ -470,8 +467,6 @@ class ProjectCommand(TelegramCommand):
 
 
 class InitCommand(TelegramCommand):
-    """채팅별 인메모리 설정을 서버 시작 직후와 동일하게 되돌립니다."""
-
     name = "/init"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
@@ -587,8 +582,6 @@ class ReportsCommand(TelegramCommand):
 
 
 class BranchCommand(TelegramCommand):
-    """이 채팅 적용 프로젝트 저장소의 현재 브랜치 조회 또는 `git switch`로 전환."""
-
     name = "/branch"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
@@ -654,8 +647,6 @@ class BranchCommand(TelegramCommand):
 
 
 class RebaseCommand(TelegramCommand):
-    """적용 프로젝트 저장소에서 브랜치를 main 기준으로 rebase 후 main에 fast-forward 병합·push."""
-
     name = "/rebase"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
@@ -721,7 +712,6 @@ class RebaseCommand(TelegramCommand):
 
 
 def _branch_to_pr_title(branch: str) -> str:
-    """브랜치 이름에서 PR 제목 추출: remote- 접두사와 날짜 접미사 제거."""
     slug = branch
     if slug.startswith("remote-"):
         slug = slug[len("remote-"):]
@@ -730,8 +720,6 @@ def _branch_to_pr_title(branch: str) -> str:
 
 
 class PullCommand(TelegramCommand):
-    """현재 프로젝트의 모든 브랜치를 pull 합니다."""
-
     name = "/pull"
     menu_text = "원격 저장소의 모든 브랜치 pull"
 
@@ -858,8 +846,6 @@ class PrCommand(TelegramCommand):
 
 
 class MonitorCommand(TelegramCommand):
-    """현재 채팅 적용 프로젝트 기준 읽기 전용 모니터링."""
-
     name = "/monitor"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
@@ -934,7 +920,6 @@ class MonitorCommand(TelegramCommand):
                 project_name,
             )
 
-        # code
         stats = count_project_code(
             entry.root_path,
             worktree_base_dir=entry.worktree_base_dir,
@@ -943,8 +928,6 @@ class MonitorCommand(TelegramCommand):
 
 
 class ClearCommand(ConfirmableCommand):
-    """브랜치 정리 또는 기억 DB 초기화를 확인 후 실행."""
-
     name = "/clear"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:

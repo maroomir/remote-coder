@@ -1,5 +1,3 @@
-"""관리 UI용 인메모리 로그 링 버퍼와 logging.Handler."""
-
 from __future__ import annotations
 
 import logging
@@ -97,8 +95,6 @@ class BufferedLogLine:
 
 
 class InMemoryLogBuffer:
-    """스레드 안전한 최근 로그 링 버퍼."""
-
     def __init__(self, max_entries: int = 2000) -> None:
         if max_entries < 1:
             raise ValueError("max_entries must be >= 1")
@@ -120,7 +116,6 @@ class InMemoryLogBuffer:
         exception: str | None,
         context: dict[str, Any] | None = None,
     ) -> int:
-        """한 줄을 추가하고 할당된 id를 반환합니다."""
         ctx = _context_from_dict(context)
         line_id = 0
         with self._lock:
@@ -167,7 +162,6 @@ class InMemoryLogBuffer:
         project: str | None = None,
         category: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        """필터된 로그와 버퍼 내 최대 id를 반환합니다."""
         raw = self._snapshot()
         max_seen = raw[-1].id if raw else 0
 
@@ -214,8 +208,6 @@ class InMemoryLogBuffer:
 
 
 class MemoryLogHandler(logging.Handler):
-    """InMemoryLogBuffer로 레코드를 전달하는 logging.Handler."""
-
     def __init__(self, buffer: InMemoryLogBuffer) -> None:
         super().__init__(level=logging.DEBUG)
         self._buffer = buffer
@@ -245,11 +237,7 @@ def attach_app_memory_log_handler(
     *,
     app_logger_name: str = "app",
 ) -> MemoryLogHandler:
-    """`app` 패키지 로거에 메모리 핸들러를 붙입니다.
-
-    --reload 환경에서 앱이 리로드될 때 새로운 InMemoryLogBuffer가 생성되므로,
-    기존 핸들러가 있더라도 제거하고 새 버퍼에 연결된 핸들러로 교체합니다.
-    """
+    # --reload 환경에서 새 InMemoryLogBuffer가 생성될 때 기존 핸들러를 새 버퍼에 연결된 것으로 교체합니다.
     app_logger = logging.getLogger(app_logger_name)
     for h in list(app_logger.handlers):
         if getattr(h, "_remote_coder_admin_memory", False):

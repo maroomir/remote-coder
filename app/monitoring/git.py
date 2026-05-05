@@ -1,5 +1,3 @@
-"""Git 브랜치·worktree 모니터링 (읽기 전용)."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,7 +15,6 @@ def format_branch_monitor(
     project_name: str,
     max_len: int = TELEGRAM_SAFE_LEN,
 ) -> str:
-    """로컬·원격 브랜치 요약 및 목록(적용 프로젝트 기준)."""
     try:
         current = git.get_current_branch(root)
         local_n = git.count_local_branches(root)
@@ -51,7 +48,6 @@ def format_worktree_monitor(
     branch_prefix: str = "remote-",
     max_detail: int = 40,
 ) -> str:
-    """`git worktree list --porcelain` 기반 요약."""
     try:
         entries = git.list_worktree_entries(project_path)
     except RuntimeError as exc:

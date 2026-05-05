@@ -20,8 +20,6 @@ def projects_config_path_for_settings(project_root: Path, explicit: Path | None)
 
 
 class ProjectRecord(BaseModel):
-    """단일 등록 프로젝트."""
-
     model_config = {"extra": "forbid"}
 
     name: str
@@ -50,8 +48,6 @@ class ProjectRecord(BaseModel):
 
 
 class ProjectsFilePayload(BaseModel):
-    """디스크에 저장되는 전체 구조."""
-
     model_config = {"extra": "forbid"}
 
     default_project: str
@@ -59,8 +55,6 @@ class ProjectsFilePayload(BaseModel):
 
 
 class ProjectRegistry:
-    """파일 기반 프로젝트 등록소. 스레드 안전 읽기/쓰기."""
-
     def __init__(self, config_path: Path) -> None:
         self._path = config_path
         self._lock = Lock()
@@ -75,7 +69,7 @@ class ProjectRegistry:
             self._payload = self._read_file_unlocked()
 
     def ensure_seeded_from_settings(self, settings: Settings) -> None:
-        """설정 파일이 없으면 .env 기반 기본 프로젝트로 생성."""
+        # 설정 파일이 없는 첫 실행에 한해 .env 기반 기본 프로젝트를 자동 생성합니다.
         self._path.parent.mkdir(parents=True, exist_ok=True)
         if self._path.exists():
             self.load()
@@ -171,7 +165,7 @@ class ProjectRegistry:
             self._write_file_unlocked(self._payload)
 
     def to_public_dict(self) -> dict:
-        """API 응답용 (락 보유 중 호출 금지 — 외부에서 load 후 사용)."""
+        # 호출 측에서 이미 락을 잡고 있으면 데드락이 나므로, API 응답 용도로만 사용하세요.
         with self._lock:
             return {
                 "default_project": self._payload.default_project,

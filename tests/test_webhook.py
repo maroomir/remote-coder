@@ -169,7 +169,6 @@ def test_webhook_sends_command_response_to_telegram(project_registry):
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    # /help sends inline buttons, so captured in sent_with_buttons
     assert notifier.sent_with_buttons
     assert notifier.sent_with_buttons[0][0] == 123
 
