@@ -445,11 +445,15 @@
 
     function renderSummary(settings, projectsPayload) {
       const grid = $("#summary-grid");
+      const list = projectsPayload.projects || [];
+      const enabled = list.filter((p) => p.enabled).length;
       const defName = projectsPayload.default_project || "(없음)";
       const envModel = settings.default_model_env || "—";
       const tokenOk = settings.telegram_bot_token_masked && settings.telegram_bot_token_masked !== "(설정 안 됨)";
 
       grid.innerHTML = `
+        <div class="stat-card"><p class="label">등록 프로젝트</p><p class="value">${list.length}</p></div>
+        <div class="stat-card"><p class="label">활성 프로젝트</p><p class="value">${enabled}</p></div>
         <div class="stat-card"><p class="label">폴백 기본</p><p class="value" style="font-size:1rem">${escapeHtml(defName)}</p></div>
         <div class="stat-card"><p class="label">환경 기본 모델</p><p class="value" style="font-size:1rem">${escapeHtml(envModel)}</p></div>
         <div class="stat-card"><p class="label">봇 토큰</p><p class="value" style="font-size:0.95rem">${tokenOk ? "설정됨" : "미설정"}</p>
