@@ -144,7 +144,7 @@ ngrok version
 - `/clear memory` : 대화 기억 SQLite 데이터베이스 초기화
 - `/stop` : 진행 중인 Job 목록에서 인라인 버튼으로 선택해 중단
 - `/stop <job_id>` : 지정한 Job 강제 중단 (queued/running 상태만 가능)
-- `/monitor model` : 현재 채팅 기본 모델 기준 Claude(`claude auth status`) / Codex(`codex --version`) / Gemini(`gemini --version`) 등 CLI Probe + 최근 Job 로그에서 관측된 세부 모델명·토큰 사용량 요약 — 플랜·크레딧 남은량은 공급자 대시보드·안내 문구 참고
+- `/monitor model` : 현재 채팅 기본 모델 기준 Claude(`claude auth status`) / Codex(`codex --version`) / Gemini(`gemini --version`) 등 CLI Probe + 로컬 CLI 로그에서 관측한 실제 사용량 요약. Codex 세션 로그에 `rate_limits`가 있으면 5시간/주간 잔여율과 리셋 시각도 표시하고, Claude/Gemini는 로컬 transcript/chat 로그의 세부 모델·토큰·요청 수를 표시합니다.
 - `/monitor memory` : 이 채팅·현재 **적용 프로젝트** 기준 SQLite 대화 기억 행 수·역할별 행 수·DB 파일 크기
 - `/monitor branch` : 적용 프로젝트 저장소의 브랜치 요약(로컬/원격 개수 및 목록)
 - `/monitor worktrees` : linked worktree 목록·detached 개수·Remote Coder managed 후보 요약

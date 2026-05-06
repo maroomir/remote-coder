@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 from app.ai.usage import extract_runner_usage, format_token_usage, merge_token_usage
 from app.jobs.schemas import Job
@@ -15,6 +16,8 @@ from app.models import ModelName
 _CLI_TIMEOUT_SEC: Final[int] = 25
 _RECENT_JOB_LIMIT: Final[int] = 50
 _LOG_READ_LIMIT: Final[int] = 120_000
+_LOCAL_USAGE_FILE_LIMIT: Final[int] = 80
+_LOCAL_USAGE_LINE_LIMIT: Final[int] = 5000
 
 
 @dataclass(frozen=True)
@@ -25,6 +28,26 @@ class RecentUsageSummary:
     latest_finished_at: datetime | None = None
     actual_model: str | None = None
     token_metrics: dict[str, int] | None = None
+
+
+@dataclass(frozen=True)
+class LocalQuotaWindow:
+    label: str
+    used_percent: float
+    remaining_percent: float
+    resets_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class LocalUsageSnapshot:
+    source: str
+    observed_at: datetime | None = None
+    actual_model: str | None = None
+    token_metrics: dict[str, int] | None = None
+    quota_windows: tuple[LocalQuotaWindow, ...] = ()
+    plan_type: str | None = None
+    requests_today: int | None = None
+    remaining_note: str | None = None
 
 
 def format_model_monitor(
@@ -42,12 +65,16 @@ def format_model_monitor(
     else:
         body = _format_gemini_monitor(timeout_seconds)
 
+    local_usage = _format_local_usage_section(_read_local_usage_snapshot(model))
     usage = _format_recent_usage_section(
         _summarize_recent_usage(recent_jobs, model=model, chat_id=chat_id, project=project)
     )
+    sections = [body]
+    if local_usage:
+        sections.append(local_usage)
     if usage:
-        return f"{body}\n\n{usage}"
-    return body
+        sections.append(usage)
+    return "\n\n".join(sections)
 
 
 def _summarize_recent_usage(
@@ -137,8 +164,295 @@ def _format_recent_usage_section(summary: RecentUsageSummary | None) -> str | No
         lines.append(f"- 관측된 토큰 합계: {format_token_usage(summary.token_metrics)}")
     else:
         lines.append("- 관측된 토큰 합계: 토큰 사용량 패턴을 로그에서 찾지 못했습니다.")
-    lines.append("- 참고: 계정별 남은 한도/리셋 시각은 각 공급자 대시보드 또는 CLI 대화형 사용량 화면이 기준입니다.")
     return "\n".join(lines)
+
+
+def _read_local_usage_snapshot(model: ModelName) -> LocalUsageSnapshot | None:
+    if model == ModelName.CLAUDE:
+        return _read_claude_local_usage()
+    if model == ModelName.CODEX:
+        return _read_codex_local_usage()
+    return _read_gemini_local_usage()
+
+
+def _format_local_usage_section(snapshot: LocalUsageSnapshot | None) -> str | None:
+    if snapshot is None:
+        return "실제 로컬 사용량/잔여량\n- 로컬 CLI 사용량 로그를 찾지 못했습니다."
+
+    lines = ["실제 로컬 사용량/잔여량", f"- 출처: {snapshot.source}"]
+    if snapshot.observed_at:
+        lines.append(f"- 관측 시각: {snapshot.observed_at.astimezone().isoformat(timespec='seconds')}")
+    if snapshot.plan_type:
+        lines.append(f"- 플랜/계정 유형: {snapshot.plan_type}")
+    if snapshot.actual_model:
+        lines.append(f"- 관측된 세부 모델: {snapshot.actual_model}")
+    if snapshot.token_metrics:
+        formatted = format_token_usage(snapshot.token_metrics)
+        if formatted:
+            lines.append(f"- 관측된 토큰: {formatted}")
+    if snapshot.requests_today is not None:
+        lines.append(f"- 오늘 로컬 로그 기준 요청 수: {snapshot.requests_today:,}")
+    if snapshot.quota_windows:
+        for window in snapshot.quota_windows:
+            reset = ""
+            if window.resets_at is not None:
+                reset = f", 리셋 {window.resets_at.astimezone().isoformat(timespec='minutes')}"
+            lines.append(
+                f"- {window.label}: 잔여 {window.remaining_percent:g}% "
+                f"(사용 {window.used_percent:g}%{reset})"
+            )
+    elif snapshot.remaining_note:
+        lines.append(f"- 잔여량: {snapshot.remaining_note}")
+    return "\n".join(lines)
+
+
+def _read_codex_local_usage() -> LocalUsageSnapshot | None:
+    root = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+    sessions = root / "sessions"
+    newest: tuple[Path, dict[str, Any], datetime | None] | None = None
+    for path in _iter_recent_files(sessions, "*.jsonl"):
+        for item in _read_jsonl_objects(path):
+            payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+            if not isinstance(payload, dict):
+                continue
+            if "rate_limits" not in payload and "info" not in payload:
+                continue
+            observed = _parse_datetime(item.get("timestamp"))
+            if _is_newer(observed, newest[2] if newest else None):
+                newest = (path, item, observed)
+    if newest is None:
+        return None
+
+    path, item, observed = newest
+    payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+    info = payload.get("info") if isinstance(payload.get("info"), dict) else {}
+    rate_limits = payload.get("rate_limits") if isinstance(payload.get("rate_limits"), dict) else {}
+    token_usage = _normalize_token_dict(info.get("total_token_usage"))
+    windows = _codex_quota_windows(rate_limits)
+    return LocalUsageSnapshot(
+        source=_compact_home(path),
+        observed_at=observed,
+        token_metrics=token_usage or None,
+        quota_windows=tuple(windows),
+        plan_type=_string_or_none(rate_limits.get("plan_type")),
+        remaining_note=None if windows else "Codex 세션 로그에서 rate_limits 스냅샷을 찾지 못했습니다.",
+    )
+
+
+def _codex_quota_windows(rate_limits: dict[str, Any]) -> list[LocalQuotaWindow]:
+    windows: list[LocalQuotaWindow] = []
+    for key, fallback in (("primary", "기본 윈도우"), ("secondary", "보조 윈도우")):
+        raw = rate_limits.get(key)
+        if not isinstance(raw, dict):
+            continue
+        used = _float_or_none(raw.get("used_percent"))
+        if used is None:
+            continue
+        minutes = _int_or_none(raw.get("window_minutes"))
+        label = _format_window_label(minutes) if minutes is not None else fallback
+        windows.append(
+            LocalQuotaWindow(
+                label=label,
+                used_percent=used,
+                remaining_percent=max(0.0, 100.0 - used),
+                resets_at=_datetime_from_epoch(raw.get("resets_at")),
+            )
+        )
+    return windows
+
+
+def _read_claude_local_usage() -> LocalUsageSnapshot | None:
+    root = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
+    projects = root / "projects"
+    newest: tuple[Path, dict[str, Any], dict[str, Any], datetime | None] | None = None
+    for path in _iter_recent_files(projects, "*.jsonl"):
+        for item in _read_jsonl_objects(path):
+            message = item.get("message") if isinstance(item.get("message"), dict) else {}
+            usage = message.get("usage") if isinstance(message.get("usage"), dict) else {}
+            if usage:
+                observed = _parse_datetime(item.get("timestamp"))
+                if _is_newer(observed, newest[3] if newest else None):
+                    newest = (path, item, message, observed)
+    if newest is None:
+        return None
+
+    path, _item, message, observed = newest
+    return LocalUsageSnapshot(
+        source=_compact_home(path),
+        observed_at=observed,
+        actual_model=_string_or_none(message.get("model")),
+        token_metrics=_normalize_token_dict(message.get("usage")) or None,
+        remaining_note="Claude 로컬 transcript에는 세션 토큰은 남지만 계정 잔여 quota 스냅샷은 저장되지 않았습니다.",
+    )
+
+
+def _read_gemini_local_usage() -> LocalUsageSnapshot | None:
+    root = Path(os.environ.get("GEMINI_HOME", Path.home() / ".gemini"))
+    newest: tuple[Path, dict[str, Any], datetime | None] | None = None
+    today = datetime.now().astimezone().date()
+    requests_today = 0
+    for path in _iter_recent_files(root, "*.jsonl"):
+        for item in _read_jsonl_objects(path):
+            if item.get("type") != "gemini" or not isinstance(item.get("tokens"), dict):
+                continue
+            observed = _parse_datetime(item.get("timestamp"))
+            if observed and observed.astimezone().date() == today:
+                requests_today += 1
+            if _is_newer(observed, newest[2] if newest else None):
+                newest = (path, item, observed)
+    if newest is None:
+        return None
+
+    path, item, observed = newest
+    return LocalUsageSnapshot(
+        source=_compact_home(path),
+        observed_at=observed,
+        actual_model=_string_or_none(item.get("model")),
+        token_metrics=_normalize_token_dict(item.get("tokens")) or None,
+        requests_today=requests_today,
+        remaining_note="Gemini 로컬 chat 로그에는 요청·토큰은 남지만 계정 잔여 quota 스냅샷은 저장되지 않았습니다.",
+    )
+
+
+def _iter_recent_files(root: Path, pattern: str) -> list[Path]:
+    if not root.exists():
+        return []
+    try:
+        files = [p for p in root.rglob(pattern) if p.is_file()]
+    except OSError:
+        return []
+    files.sort(key=lambda p: _safe_mtime(p), reverse=True)
+    return files[:_LOCAL_USAGE_FILE_LIMIT]
+
+
+def _read_jsonl_objects(path: Path) -> list[dict[str, Any]]:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+
+    objects: list[dict[str, Any]] = []
+    for line in lines[-_LOCAL_USAGE_LINE_LIMIT:]:
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            objects.append(item)
+    return objects
+
+
+def _normalize_token_dict(raw: object) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        return {}
+    labels = {
+        "input_tokens": "input",
+        "cache_creation_input_tokens": "cache write",
+        "cache_read_input_tokens": "cache read",
+        "cached_input_tokens": "cached",
+        "output_tokens": "output",
+        "reasoning_output_tokens": "reasoning",
+        "total_tokens": "total",
+        "input": "input",
+        "output": "output",
+        "cached": "cached",
+        "thoughts": "thoughts",
+        "tool": "tool",
+        "total": "total",
+    }
+    metrics: dict[str, int] = {}
+    for key, value in raw.items():
+        normalized = labels.get(str(key))
+        parsed = _int_or_none(value)
+        if normalized is not None and parsed is not None:
+            metrics[normalized] = metrics.get(normalized, 0) + parsed
+    return metrics
+
+
+def _parse_datetime(raw: object) -> datetime | None:
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _datetime_from_epoch(raw: object) -> datetime | None:
+    value = _int_or_none(raw)
+    if value is None:
+        return None
+    try:
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    except (OSError, ValueError, OverflowError):
+        return None
+
+
+def _format_window_label(minutes: int) -> str:
+    if minutes == 300:
+        return "5시간 한도"
+    if minutes == 10080:
+        return "주간 한도"
+    if minutes % 1440 == 0:
+        return f"{minutes // 1440}일 한도"
+    if minutes % 60 == 0:
+        return f"{minutes // 60}시간 한도"
+    return f"{minutes}분 한도"
+
+
+def _compact_home(path: Path) -> str:
+    home = Path.home()
+    try:
+        return "~/" + str(path.resolve().relative_to(home.resolve()))
+    except (OSError, ValueError):
+        return str(path)
+
+
+def _safe_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _is_newer(candidate: datetime | None, current: datetime | None) -> bool:
+    if current is None:
+        return True
+    if candidate is None:
+        return False
+    return candidate > current
+
+
+def _int_or_none(raw: object) -> int | None:
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float):
+        return int(raw)
+    if isinstance(raw, str) and raw.strip().isdigit():
+        return int(raw.strip())
+    return None
+
+
+def _float_or_none(raw: object) -> float | None:
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int | float):
+        return float(raw)
+    if isinstance(raw, str):
+        try:
+            return float(raw.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _string_or_none(raw: object) -> str | None:
+    if not isinstance(raw, str):
+        return None
+    value = raw.strip()
+    return value or None
 
 
 def _format_claude_monitor(timeout_seconds: int) -> str:
@@ -220,11 +534,7 @@ def _claude_auth_fallback_json(timeout_seconds: int, prev_code: int, prev_msg: s
 
 
 def _claude_footer() -> list[str]:
-    return [
-        "",
-        "참고: 구독·요금제별 남은 할당량·윈도우 리셋 시각은 Claude Code 대화형 `/usage`(또는 `/cost`) 또는",
-        "Anthropic 계정 대시보드에서 확인하는 것이 가장 정확합니다.",
-    ]
+    return []
 
 
 def _format_codex_monitor(timeout_seconds: int) -> str:
@@ -258,13 +568,7 @@ def _format_codex_monitor(timeout_seconds: int) -> str:
 
 
 def _codex_footer() -> list[str]:
-    return [
-        "",
-        "참고: Codex CLI는 계정별 남은 크레딧·플랜 한도를 터미널 한 줄로 조회하는 공식 서브커맨드가",
-        "환경에 따라 제한적일 수 있습니다 (OpenAI 측 로드맵 이슈 참고).",
-        "웹 사용량: https://chatgpt.com/codex/settings/usage",
-        "세션별 토큰 이벤트는 로컬 CODEX_HOME(기본 ~/.codex) 세션 로그에 기록될 수 있습니다.",
-    ]
+    return []
 
 
 def _format_gemini_monitor(timeout_seconds: int) -> str:
@@ -301,6 +605,4 @@ def _gemini_footer() -> list[str]:
     return [
         "",
         "설치: npm install -g @google/gemini-cli",
-        "참고: 인증과 quota는 `gemini` 대화형 `/auth` 또는 Google/Gemini 계정 화면에서 확인하세요.",
-        "문서: https://geminicli.com/docs/get-started/installation/",
     ]

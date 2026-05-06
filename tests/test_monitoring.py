@@ -1,3 +1,5 @@
+import json
+from datetime import datetime
 from pathlib import Path
 
 from app.jobs.schemas import Job, JobRequest, JobStatus
@@ -96,3 +98,114 @@ def test_format_model_monitor_prefers_structured_usage():
     )
     assert "관측된 세부 모델: ChatGPT 5.5" in text
     assert "관측된 토큰 합계: 1,500" in text
+
+
+def test_format_model_monitor_includes_codex_local_rate_limits(tmp_path: Path, monkeypatch):
+    codex_home = tmp_path / ".codex"
+    session_dir = codex_home / "sessions" / "2026" / "05" / "07"
+    session_dir.mkdir(parents=True)
+    session = session_dir / "rollout.jsonl"
+    session.write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-05-07T01:00:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "info": {
+                        "total_token_usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 25,
+                            "total_tokens": 125,
+                        }
+                    },
+                    "rate_limits": {
+                        "plan_type": "plus",
+                        "primary": {
+                            "used_percent": 56.0,
+                            "window_minutes": 300,
+                            "resets_at": 1778119200,
+                        },
+                        "secondary": {
+                            "used_percent": 10.0,
+                            "window_minutes": 10080,
+                            "resets_at": 1778724000,
+                        },
+                    },
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    text = format_model_monitor(ModelName.CODEX, timeout_seconds=2)
+
+    assert "실제 로컬 사용량/잔여량" in text
+    assert "플랜/계정 유형: plus" in text
+    assert "5시간 한도: 잔여 44%" in text
+    assert "주간 한도: 잔여 90%" in text
+    assert "관측된 토큰: 125" in text
+
+
+def test_format_model_monitor_includes_claude_local_transcript_usage(tmp_path: Path, monkeypatch):
+    claude_home = tmp_path / ".claude"
+    project_dir = claude_home / "projects" / "example"
+    project_dir.mkdir(parents=True)
+    transcript = project_dir / "session.jsonl"
+    transcript.write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-05-07T02:00:00Z",
+                "type": "assistant",
+                "message": {
+                    "model": "claude-sonnet-4-6",
+                    "usage": {
+                        "input_tokens": 10,
+                        "cache_read_input_tokens": 20,
+                        "output_tokens": 5,
+                    },
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+
+    text = format_model_monitor(ModelName.CLAUDE, timeout_seconds=2)
+
+    assert "실제 로컬 사용량/잔여량" in text
+    assert "관측된 세부 모델: claude-sonnet-4-6" in text
+    assert "input=10" in text
+    assert "output=5" in text
+    assert "계정 잔여 quota 스냅샷은 저장되지 않았습니다" in text
+
+
+def test_format_model_monitor_includes_gemini_local_chat_usage(tmp_path: Path, monkeypatch):
+    gemini_home = tmp_path / ".gemini"
+    chat_dir = gemini_home / "tmp" / "proj" / "chats"
+    chat_dir.mkdir(parents=True)
+    chat = chat_dir / "session.jsonl"
+    today = datetime.now().astimezone().replace(microsecond=0)
+    chat.write_text(
+        json.dumps(
+            {
+                "timestamp": today.isoformat(),
+                "type": "gemini",
+                "tokens": {"input": 30, "output": 7, "total": 37},
+                "model": "gemini-3-flash-preview",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GEMINI_HOME", str(gemini_home))
+
+    text = format_model_monitor(ModelName.GEMINI, timeout_seconds=2)
+
+    assert "실제 로컬 사용량/잔여량" in text
+    assert "관측된 세부 모델: gemini-3-flash-preview" in text
+    assert "오늘 로컬 로그 기준 요청 수: 1" in text
+    assert "input=30" in text
+    assert "계정 잔여 quota 스냅샷은 저장되지 않았습니다" in text
