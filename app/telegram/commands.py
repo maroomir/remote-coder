@@ -293,7 +293,10 @@ class ModelCommand(TelegramCommand):
         ctx: CommandContext | None = None,
     ) -> list[list[InlineButton]] | None:
         _ = ctx
-        _ = message
+        if message is not None:
+            tokens = message.text.strip().split()
+            if len(tokens) == 2 and tokens[1] in {model.value for model in ModelName}:
+                return None
         return [
             [
                 InlineButton("claude", "/model claude"),
