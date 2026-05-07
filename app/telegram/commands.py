@@ -111,6 +111,17 @@ def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | 
     return default or None
 
 
+def effective_model_for_chat(ctx: CommandContext, chat_id: int, project_name: str | None) -> ModelName:
+    explicit = ctx.model_preferences.get_explicit(chat_id)
+    if explicit is not None:
+        return explicit
+    if project_name:
+        entry = ctx.project_registry.get(project_name)
+        if entry is not None:
+            return entry.default_model
+    return ctx.default_model
+
+
 class TelegramCommand(ABC):
     name: str
     menu_text: str | None = None
@@ -278,7 +289,8 @@ class ModelCommand(TelegramCommand):
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
-        current = ctx.model_preferences.get(message.chat_id)
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        current = effective_model_for_chat(ctx, message.chat_id, project_name)
         if len(tokens) == 1:
             return f"현재 기본 모델: {current.value}"
         if len(tokens) == 2 and tokens[1] in {model.value for model in ModelName}:
@@ -458,8 +470,12 @@ class ProjectCommand(TelegramCommand):
             if not entry.enabled:
                 return f"비활성화된 프로젝트: {name}"
             ctx.project_preferences.set(message.chat_id, name)
+            ctx.model_preferences.clear(message.chat_id)
             _cmd_evt.info("project switched to=%s", name, chat_id=message.chat_id, project=name)
-            msg = f"작업 프로젝트가 {name}로 변경되었습니다."
+            msg = (
+                f"작업 프로젝트가 {name}로 변경되었습니다.\n"
+                f"기본 모델: {entry.default_model.value}"
+            )
             settings = ctx.advanced_settings_store.get() if ctx.advanced_settings_store else None
             if settings and settings.auto_pull_on_project_switch:
                 try:
@@ -528,7 +544,7 @@ class InitCommand(TelegramCommand):
                 "관리 화면에서 활성화하거나 기본 프로젝트를 변경하세요."
             )
 
-        model = ctx.model_preferences.get(chat_id)
+        model = effective_model_for_chat(ctx, chat_id, default_name)
         return (
             "이 채팅의 작업 프로젝트·기본 모델·확인 대기 상태를 초기화했습니다.\n"
             f"적용 프로젝트: {default_name}\n"
@@ -958,7 +974,7 @@ class MonitorCommand(TelegramCommand):
             project=project_name,
         )
         if sub == "model":
-            current = ctx.model_preferences.get(message.chat_id)
+            current = effective_model_for_chat(ctx, message.chat_id, project_name)
             body = format_model_monitor(
                 current,
                 recent_jobs=ctx.job_store.list_recent(50),

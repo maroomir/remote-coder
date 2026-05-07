@@ -103,6 +103,33 @@ def test_parse_natural_no_model_preferences_uses_project_default(project_registr
     assert req.model == ModelName.CODEX
 
 
+def test_parse_natural_without_explicit_model_preference_uses_project_default(
+    project_registry: ProjectRegistry,
+):
+    root = project_registry.config_path.parent / "project_default_repo"
+    root.mkdir()
+    wt = project_registry.config_path.parent / "project_default_wt"
+    wt.mkdir()
+    project_registry.add_project(
+        ProjectRecord(
+            name="project_default",
+            root_path=root,
+            worktree_base_dir=wt,
+            default_model=ModelName.CODEX,
+            enabled=True,
+        )
+    )
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+    )
+
+    req = parser.parse_natural("project: project_default task", chat_id=1, user_id=2)
+
+    assert req.model == ModelName.CODEX
+
+
 def test_parse_natural_uses_project_preference(project_registry: ProjectRegistry):
     root = project_registry.config_path.parent / "pref_repo"
     root.mkdir()

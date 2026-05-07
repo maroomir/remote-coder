@@ -121,7 +121,7 @@ class CommandParser:
         if model is not None:
             selected_model = model
         elif self._model_preferences is not None:
-            selected_model = self._model_preferences.get(chat_id)
+            selected_model = self._model_preferences.get_explicit(chat_id) or entry.default_model
         else:
             selected_model = entry.default_model
 

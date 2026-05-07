@@ -231,8 +231,36 @@ def test_project_command_switches_chat_preference(project_registry: ProjectRegis
     ctx = _ctx(project_registry)
     text = registry.dispatch(TelegramMessage(chat_id=88, user_id=1, text="/project other"), ctx)
     assert text is not None and "other" in text and "변경" in text
+    assert "기본 모델: codex" in text
     current = registry.dispatch(TelegramMessage(chat_id=88, user_id=1, text="/project"), ctx)
     assert current is not None and "other" in current
+
+
+def test_project_command_resets_chat_model_to_project_default(project_registry: ProjectRegistry):
+    root = project_registry.config_path.parent / "model_reset_repo"
+    root.mkdir()
+    wt = project_registry.config_path.parent / "model_reset_wt"
+    wt.mkdir()
+    project_registry.add_project(
+        ProjectRecord(
+            name="model-reset",
+            root_path=root,
+            worktree_base_dir=wt,
+            default_model=ModelName.CLAUDE,
+            enabled=True,
+        )
+    )
+    registry = CommandRegistry([ProjectCommand(), ModelCommand()])
+    ctx = _ctx(project_registry)
+    chat_id = 99
+    ctx.model_preferences.set(chat_id, ModelName.CODEX)
+
+    text = registry.dispatch(TelegramMessage(chat_id=chat_id, user_id=1, text="/project model-reset"), ctx)
+    current = registry.dispatch(TelegramMessage(chat_id=chat_id, user_id=1, text="/model"), ctx)
+
+    assert text is not None and "기본 모델: claude" in text
+    assert ctx.model_preferences.get_explicit(chat_id) is None
+    assert current == "현재 기본 모델: claude"
 
 
 def test_project_command_unknown_project(project_registry: ProjectRegistry):

@@ -15,6 +15,10 @@ class InMemoryModelPreferenceStore:
         with self._lock:
             return self._values.get(chat_id, self._default_model)
 
+    def get_explicit(self, chat_id: int) -> ModelName | None:
+        with self._lock:
+            return self._values.get(chat_id)
+
     def set(self, chat_id: int, model: ModelName) -> None:
         with self._lock:
             self._values[chat_id] = model
