@@ -5,11 +5,12 @@ from pydantic import BaseModel, Field
 
 from app.ai.usage import format_token_usage
 from app.jobs.manager import JobManager
-from app.jobs.schemas import Job
+from app.jobs.schemas import Job, JobRequest
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.events import EventLogger
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import CommandContext, CommandRegistry, CommandResponse, TelegramMessage
+from app.telegram.confirmations import PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.notifier import TelegramNotifier
 from app.telegram.parser import CommandParseError, CommandParser
@@ -38,6 +39,33 @@ def format_job_result_memory_summary(final_job: Job) -> str:
     if token_usage:
         summary += f" tokens={token_usage}"
     return summary
+
+
+_NATURAL_JOB_CONFIRMATION = "__natural_job__"
+
+
+def _format_natural_job_confirmation(request: JobRequest, current_branch: str) -> str:
+    lines = [
+        "현재 할 작업을 확인하세요.",
+        f"프로젝트: {request.project}",
+        f"작업 브랜치: {current_branch}",
+        f"사용 모델: {request.model.value}",
+    ]
+    if request.branch:
+        lines.append(f"요청 브랜치: {request.branch}")
+    lines.extend(
+        [
+            "",
+            "실행하려면 `y` 또는 `Y`를 입력하세요. 그 외 응답은 취소됩니다.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _format_natural_job_cancelled(request: JobRequest | None) -> str:
+    if request is None:
+        return "작업 요청을 취소했습니다."
+    return f"작업 요청을 취소했습니다. (프로젝트: {request.project}, 모델: {request.model.value})"
 
 
 class TelegramChat(BaseModel):
@@ -213,6 +241,32 @@ def create_webhook_router(
             return {"status": "ignored"}
 
         message = TelegramMessage(chat_id=chat_id, user_id=user_id, text=update.message.text)
+        pending = command_context.confirmation_store.get(chat_id)
+        message_tokens = message.text.strip().split(maxsplit=1)
+        message_head = message_tokens[0] if message_tokens else ""
+        if (
+            pending is not None
+            and pending.command_name == _NATURAL_JOB_CONFIRMATION
+            and message_head != "/init"
+        ):
+            confirmed = command_context.confirmation_store.pop(chat_id)
+            if message.text.strip() not in {"y", "Y"}:
+                background_tasks.add_task(
+                    notifier.send_text,
+                    chat_id,
+                    _format_natural_job_cancelled(confirmed.job_request if confirmed else None),
+                )
+                return {"status": "ok"}
+            if confirmed is None or confirmed.job_request is None or confirmed.original_text is None:
+                background_tasks.add_task(notifier.send_text, chat_id, "확인 대기 작업을 처리할 수 없습니다.")
+                return {"status": "ignored"}
+            job = _submit_confirmed_natural_request(
+                request=confirmed.job_request,
+                original_text=confirmed.original_text,
+                background_tasks=background_tasks,
+            )
+            return {"status": "accepted", "job_id": job.id}
+
         command_response: CommandResponse | None = command_registry.dispatch_rich(message, command_context)
         if command_response:
             raw_cmd = message.text.strip()
@@ -271,32 +325,59 @@ def create_webhook_router(
             project=request.project,
         )
 
+        entry = command_context.project_registry.get(request.project)
+        if entry is None:
+            background_tasks.add_task(notifier.send_text, chat_id, f"알 수 없는 프로젝트: {request.project}")
+            return {"status": "ignored"}
+        try:
+            current_branch = str(command_context.git_service.get_current_branch(entry.root_path))
+        except RuntimeError as exc:
+            background_tasks.add_task(notifier.send_text, chat_id, f"작업 브랜치 확인 실패: {exc}")
+            return {"status": "ignored"}
+
+        command_context.confirmation_store.set(
+            chat_id,
+            PendingConfirmation(
+                command_name=_NATURAL_JOB_CONFIRMATION,
+                action="submit",
+                job_request=request,
+                original_text=message.text.strip(),
+            ),
+        )
+        background_tasks.add_task(
+            notifier.send_text,
+            chat_id,
+            _format_natural_job_confirmation(request, current_branch),
+        )
+        return {"status": "ok"}
+
+    def _submit_confirmed_natural_request(
+        request: JobRequest,
+        original_text: str,
+        background_tasks: BackgroundTasks,
+    ) -> Job:
         if conversation_store is not None:
             conversation_store.append(
                 project=request.project,
-                chat_id=chat_id,
+                chat_id=request.chat_id,
                 role="user",
-                text=message.text.strip(),
-                message_id=update.message.message_id,
-                reply_to_message_id=(
-                    update.message.reply_to_message.message_id
-                    if update.message.reply_to_message is not None
-                    else None
-                ),
+                text=original_text,
+                message_id=request.message_id,
+                reply_to_message_id=request.reply_to_message_id,
             )
             _cmdlog.info(
                 "conversation user message recorded message_id=%s",
-                update.message.message_id,
-                chat_id=chat_id,
-                user_id=user_id,
+                request.message_id,
+                chat_id=request.chat_id,
+                user_id=request.requested_by,
                 project=request.project,
             )
 
         job = job_manager.submit(request)
         _cmdlog.info(
             "job accepted background scheduled",
-            chat_id=chat_id,
-            user_id=user_id,
+            chat_id=request.chat_id,
+            user_id=request.requested_by,
             project=request.project,
             job_id=job.id,
         )
@@ -308,7 +389,7 @@ def create_webhook_router(
         ):
             conversation_store.bind_message_branch(
                 project=request.project,
-                chat_id=chat_id,
+                chat_id=request.chat_id,
                 message_id=request.message_id,
                 branch=request.branch,
                 job_id=job.id,
@@ -317,15 +398,15 @@ def create_webhook_router(
         if conversation_store is not None:
             conversation_store.append(
                 project=request.project,
-                chat_id=chat_id,
+                chat_id=request.chat_id,
                 role="job_accepted",
                 text=f"Job 접수: {job.id}",
                 job_id=job.id,
             )
             _cmdlog.info(
                 "conversation job_accepted recorded",
-                chat_id=chat_id,
-                user_id=user_id,
+                chat_id=request.chat_id,
+                user_id=request.requested_by,
                 project=request.project,
                 job_id=job.id,
             )
@@ -375,6 +456,6 @@ def create_webhook_router(
         else:
             background_tasks.add_task(job_manager.run, job.id)
         _ = job_store
-        return {"status": "accepted", "job_id": job.id}
+        return job
 
     return router

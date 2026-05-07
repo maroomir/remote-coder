@@ -97,6 +97,8 @@ def test_webhook_accepts_natural_message(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
     app.include_router(
         create_webhook_router(
             auth_service=AllowlistAuthService({123}),
@@ -122,7 +124,7 @@ def test_webhook_accepts_natural_message(project_registry):
                 project_registry=project_registry,
                 model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
                 project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=Mock(),
+                git_service=git_service,
                 git_remote_name="origin",
                 conversation_store=None,
                 confirmation_store=InMemoryConfirmationStore(),
@@ -139,8 +141,21 @@ def test_webhook_accepts_natural_message(project_registry):
         "message": {"message_id": 1, "text": "fix tests", "chat": {"id": 123}, "from": {"id": 999}},
     }
     response = client.post("/telegram/webhook", json=payload)
+    confirm_response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 2,
+            "message": {"message_id": 2, "text": "Y", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
     assert response.status_code == 200
-    assert response.json()["status"] == "accepted"
+    assert response.json()["status"] == "ok"
+    assert notifier.sent[0][1].startswith("현재 할 작업을 확인하세요.")
+    assert "프로젝트: remote-coder" in notifier.sent[0][1]
+    assert "작업 브랜치: main" in notifier.sent[0][1]
+    assert "사용 모델: claude" in notifier.sent[0][1]
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "accepted"
 
 
 def test_webhook_sends_command_response_to_telegram(project_registry):
@@ -352,6 +367,8 @@ def test_webhook_ambiguous_followup_uses_conversation_history(project_registry, 
     store = InMemoryJobStore()
     notifier = DummyNotifier()
     capture = CaptureJobManager()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
     app.include_router(
         create_webhook_router(
             auth_service=AllowlistAuthService({123}),
@@ -374,7 +391,7 @@ def test_webhook_ambiguous_followup_uses_conversation_history(project_registry, 
                 project_registry=project_registry,
                 model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
                 project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=Mock(),
+                git_service=git_service,
                 git_remote_name="origin",
                 conversation_store=conv,
                 confirmation_store=InMemoryConfirmationStore(),
@@ -394,8 +411,17 @@ def test_webhook_ambiguous_followup_uses_conversation_history(project_registry, 
             "message": {"message_id": 2, "text": "작업 시작해줘", "chat": {"id": 123}, "from": {"id": 999}},
         },
     )
+    confirm_response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 3,
+            "message": {"message_id": 3, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
     assert response.status_code == 200
-    assert response.json()["status"] == "accepted"
+    assert response.json()["status"] == "ok"
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "accepted"
     assert capture.last_request is not None
     assert "README" in capture.last_request.instruction
 
@@ -472,6 +498,8 @@ def test_webhook_conversation_isolated_by_chat(project_registry, tmp_path):
     store = InMemoryJobStore()
     notifier = DummyNotifier()
     capture = CaptureJobManager()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
     app.include_router(
         create_webhook_router(
             auth_service=AllowlistAuthService({123, 999}),
@@ -494,7 +522,7 @@ def test_webhook_conversation_isolated_by_chat(project_registry, tmp_path):
                 project_registry=project_registry,
                 model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
                 project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=Mock(),
+                git_service=git_service,
                 git_remote_name="origin",
                 conversation_store=conv,
                 confirmation_store=InMemoryConfirmationStore(),
@@ -586,9 +614,18 @@ def test_webhook_reply_reuses_bound_branch(project_registry, tmp_path):
             },
         },
     )
+    confirm_response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 6,
+            "message": {"message_id": 3, "text": "Y", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "accepted"
+    assert response.json()["status"] == "ok"
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "accepted"
     assert capture.last_request is not None
     assert capture.last_request.branch == "remote-a"
     assert capture.last_request.reply_to_message_id == 1
@@ -606,6 +643,8 @@ def test_webhook_appends_user_message_with_telegram_ids(project_registry, tmp_pa
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
     app.include_router(
         create_webhook_router(
             auth_service=AllowlistAuthService({123}),
@@ -628,7 +667,7 @@ def test_webhook_appends_user_message_with_telegram_ids(project_registry, tmp_pa
                 project_registry=project_registry,
                 model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
                 project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=Mock(),
+                git_service=git_service,
                 git_remote_name="origin",
                 conversation_store=conv,
                 confirmation_store=InMemoryConfirmationStore(),
@@ -654,7 +693,15 @@ def test_webhook_appends_user_message_with_telegram_ids(project_registry, tmp_pa
             },
         },
     )
+    confirm_response = client.post(
+        "/telegram/webhook",
+        json={
+            "update_id": 51,
+            "message": {"message_id": 78, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
     assert response.status_code == 200
+    assert confirm_response.status_code == 200
     recent = conv.list_recent("remote-coder", 123, limit=5)
     user_rows = [e for e in recent if e.role == "user"]
     assert user_rows
@@ -667,6 +714,8 @@ def _make_webhook_app(project_registry, *, allowed_chats: set[int] | None = None
     allowed = allowed_chats if allowed_chats is not None else {123}
     store = InMemoryJobStore()
     notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
     defaults = dict(
         auth_service=AllowlistAuthService(allowed),
         parser=CommandParser(
@@ -691,7 +740,7 @@ def _make_webhook_app(project_registry, *, allowed_chats: set[int] | None = None
             project_registry=project_registry,
             model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
             project_preferences=InMemoryProjectPreferenceStore(),
-            git_service=Mock(),
+            git_service=git_service,
             git_remote_name="origin",
             conversation_store=None,
             confirmation_store=InMemoryConfirmationStore(),
@@ -715,6 +764,13 @@ def test_webhook_logs_inbound_and_job_accepted(caplog, project_registry):
             json={
                 "update_id": 1,
                 "message": {"message_id": 1, "text": "fix tests", "chat": {"id": 123}, "from": {"id": 999}},
+            },
+        )
+        client.post(
+            "/telegram/webhook",
+            json={
+                "update_id": 2,
+                "message": {"message_id": 2, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
             },
         )
     names = [r.name for r in caplog.records]
