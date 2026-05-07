@@ -143,6 +143,24 @@ def test_model_command_shows_model_buttons(project_registry: ProjectRegistry):
     ]
 
 
+def test_model_command_keeps_model_buttons_after_selection(project_registry: ProjectRegistry):
+    registry = CommandRegistry([ModelCommand()])
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=77, user_id=1, text="/model codex"),
+        _ctx(project_registry),
+    )
+
+    assert response is not None
+    assert response.text == "기본 모델이 codex로 변경되었습니다."
+    assert response.inline_buttons == [
+        [
+            InlineButton("claude", "/model claude"),
+            InlineButton("codex", "/model codex"),
+            InlineButton("gemini", "/model gemini"),
+        ]
+    ]
+
+
 def test_model_command_updates_preference_to_gemini(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     ctx = _ctx(project_registry)
