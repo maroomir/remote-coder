@@ -27,6 +27,12 @@ def compute_token_hash_prefix(token: str, length: int = WEBHOOK_TOKEN_HASH_PREFI
     return compute_token_hash(token)[:length]
 
 
+def build_public_webhook_url(public_base_url: str, bot_token: str) -> str:
+    base = public_base_url.strip().rstrip("/")
+    prefix = compute_token_hash_prefix(bot_token.strip())
+    return f"{base}/telegram/webhook/{prefix}"
+
+
 def normalize_webhook_token_hash_path_segment(segment: str) -> str | None:
     s = segment.strip().lower()
     return s if _WEBHOOK_TOKEN_HASH_PREFIX_RE.fullmatch(s) else None
@@ -240,6 +246,9 @@ class ProjectRegistry:
     def _project_record_to_public_dict(record: ProjectRecord) -> dict:
         token_plain = record.bot_token.get_secret_value()
         prefix = compute_token_hash_prefix(token_plain)
+        secret_plain = (
+            record.webhook_secret.get_secret_value().strip() if record.webhook_secret else ""
+        )
         return {
             "name": record.name,
             "root_path": str(record.root_path),
@@ -247,7 +256,7 @@ class ProjectRegistry:
             "default_model": record.default_model.value,
             "enabled": record.enabled,
             "bot_token_masked": mask_bot_token(token_plain),
-            "webhook_secret_set": record.webhook_secret is not None,
+            "webhook_secret_set": bool(secret_plain),
             "allowed_chat_ids": list(record.allowed_chat_ids),
             "allowed_user_ids": list(record.allowed_user_ids),
             "webhook_path": f"/telegram/webhook/{prefix}",

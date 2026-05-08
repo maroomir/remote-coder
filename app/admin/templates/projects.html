@@ -493,9 +493,28 @@
 
     <div class="summary-grid" id="summary-grid" aria-label="요약"></div>
 
+    <section class="card" aria-labelledby="webhook-ops-heading">
+      <h2 id="webhook-ops-heading">Telegram webhook (멀티봇)</h2>
+      <p class="lead">
+        봇마다 webhook 경로가 다릅니다. 전체 주소는 <code>&lt;공개 HTTPS Base URL&gt;</code> +
+        표에서 각 행의 <code>webhook_path</code> 입니다. BotFather(<code>/newbot</code>)로 봇을 만든 뒤
+        아래 폼에 토큰을 넣어 저장하고, Base URL 칸에 ngrok 등 HTTPS 주소를 적으면 행마다 조합된 URL 예시가 나타납니다.
+      </p>
+      <label class="field" for="webhook-base-preview">공개 HTTPS Base URL (예시)</label>
+      <p class="hint" style="margin:0.35rem 0 0">
+        Telegram이 호출할 수 있는 스킴+호스트(+포트). 끝의 <code>/</code>는 생략해도 됩니다.
+      </p>
+      <input id="webhook-base-preview" type="url" inputmode="url" autocomplete="off" placeholder="https://abcd-1234.ngrok-free.app" />
+      <p class="hint" style="margin-top:0.85rem" id="webhook-ops-note"></p>
+      <p class="hint" style="margin-top:0.5rem">
+        활성 프로젝트 전체에 대해 한 번에 등록하려면 터미널에서
+        <code>python scripts/set_webhook.py &lt;위 Base URL&gt;</code> 를 실행합니다.
+      </p>
+    </section>
+
     <section class="card" aria-labelledby="projects-heading">
       <h2 id="projects-heading">등록 목록</h2>
-      <p class="lead">프로젝트를 추가하거나 기본 폴백 프로젝트를 지정합니다. 저장 시 실행 중인 서버에 봇 인스턴스가 즉시 반영됩니다.</p>
+      <p class="lead">프로젝트를 추가하거나 기본 폴백 프로젝트를 지정합니다. 저장 시 실행 중인 서버의 <code>BotInstanceManager</code>에 즉시 반영됩니다.</p>
 
       <div class="table-wrap">
         <table class="data" id="proj-table">
@@ -543,7 +562,10 @@
 
         <label class="field" for="f-bot-token">
           봇 토큰
-          <span class="hint" title="BotFather에서 발급받은 토큰">BotFather에서 발급받은 토큰 (평문은 서버에만 저장되며 API 목록에서는 마스킹됩니다)</span>
+          <span class="hint">
+            Telegram의 BotFather에서 <code>/newbot</code> 후 받은 API 토큰. 평문은 레지스트리 파일에만 저장되며,
+            목록·API에는 마스킹된 값만 표시됩니다.
+          </span>
         </label>
         <input id="f-bot-token" name="bot_token" type="password" autocomplete="new-password" placeholder="123456789:AA…" />
 
@@ -658,6 +680,33 @@
         .filter((n) => !Number.isNaN(n));
     }
 
+    function webhookBase() {
+      const el = $("#webhook-base-preview");
+      const v = el ? String(el.value || "").trim().replace(/\/+$/, "") : "";
+      return v;
+    }
+
+    function renderProjectTable(projectsPayload) {
+      const tb = $("#proj-tbody");
+      tb.innerHTML = "";
+      const tbl = $("#proj-table");
+      const oldCap = tbl.querySelector("caption");
+      if (oldCap) oldCap.remove();
+      const cap = document.createElement("caption");
+      cap.textContent = "등록 폴백 기본값: " + (lastDefault || "(없음)");
+      tbl.prepend(cap);
+
+      const list = projectsPayload.projects || [];
+      if (!list.length) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          '<td colspan="7" class="empty-state">등록된 프로젝트가 없습니다. 아래 폼에서 추가하세요.</td>';
+        tb.appendChild(tr);
+      } else {
+        list.forEach((p) => tb.appendChild(row(p, lastDefault)));
+      }
+    }
+
     function row(p, defaultName) {
       const tr = document.createElement("tr");
       const isDefault = p.name === defaultName;
@@ -667,6 +716,8 @@
       const secretBadge = p.webhook_secret_set
         ? '<span class="badge badge-on" title="웹훅 시크릿 설정됨">시크릿</span>'
         : "";
+      const baseRaw = webhookBase();
+      const fullUrl = baseRaw ? baseRaw + (p.webhook_path || "") : "";
       tr.innerHTML = `
         <td><code>${escapeHtml(p.name)}</code></td>
         <td>${badges}</td>
@@ -675,7 +726,13 @@
         <td>${escapeHtml(p.default_model)}</td>
         <td>
           <div title="마스킹된 봇 토큰">${escapeHtml(p.bot_token_masked || "")}</div>
-          <div class="path-cell" title="Webhook 경로 (공개 base URL 뒤에 연결)">${escapeHtml(p.webhook_path || "")}</div>
+          <div class="path-cell"><code>${escapeHtml(p.token_hash_prefix || "")}</code> <span style="color:var(--text-muted)">prefix</span></div>
+          <div class="path-cell" title="상대 webhook 경로">${escapeHtml(p.webhook_path || "")}</div>
+          ${
+            fullUrl
+              ? `<div class="path-cell" title="전체 webhook URL 예시">${escapeHtml(fullUrl)}</div>`
+              : `<div class="path-cell" style="opacity:0.78">위 Base URL 입력 시 전체 주소</div>`
+          }
           ${secretBadge}
         </td>
         <td>
@@ -709,22 +766,12 @@
         lastDefault = d.default_project || "";
         renderSummary(settings, d);
 
-        const tb = $("#proj-tbody");
-        tb.innerHTML = "";
-        const cap = document.createElement("caption");
-        cap.textContent = "등록 폴백 기본값: " + (lastDefault || "(없음)");
-        const tbl = $("#proj-table");
-        const oldCap = tbl.querySelector("caption");
-        if (oldCap) oldCap.remove();
-        tbl.prepend(cap);
-
-        if (!lastProjects.length) {
-          const tr = document.createElement("tr");
-          tr.innerHTML = '<td colspan="7" class="empty-state">등록된 프로젝트가 없습니다. 아래 폼에서 추가하세요.</td>';
-          tb.appendChild(tr);
-        } else {
-          lastProjects.forEach((p) => tb.appendChild(row(p, lastDefault)));
+        const policyEl = $("#webhook-ops-note");
+        if (policyEl && settings.webhook_deleted_disabled_note) {
+          policyEl.textContent = settings.webhook_deleted_disabled_note;
         }
+
+        renderProjectTable(d);
       } finally {
         setBusy(false);
         updateFormModeBanner();
@@ -859,6 +906,11 @@
       } finally {
         setBusy(false);
       }
+    });
+
+    $("#webhook-base-preview").addEventListener("input", () => {
+      renderProjectTable({ projects: lastProjects });
+      updateFormModeBanner();
     });
 
     loadAll();

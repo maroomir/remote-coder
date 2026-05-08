@@ -8,6 +8,7 @@ from app.models import ModelName
 from app.projects.registry import (
     ProjectRecord,
     ProjectRegistry,
+    build_public_webhook_url,
     compute_token_hash,
     compute_token_hash_prefix,
     mask_bot_token,
@@ -269,3 +270,13 @@ def test_update_project_rejects_webhook_prefix_collision(test_settings: Settings
                 allowed_chat_ids=[1],
             ),
         )
+
+
+def test_build_public_webhook_url_matches_registry_webhook_path(project_registry: ProjectRegistry) -> None:
+    entry = project_registry.get("remote-coder")
+    assert entry is not None
+    token = entry.bot_token.get_secret_value()
+    public = project_registry.to_public_dict()
+    row = next(p for p in public["projects"] if p["name"] == "remote-coder")
+    assert build_public_webhook_url("https://example.com", token) == "https://example.com" + row["webhook_path"]
+    assert build_public_webhook_url("https://example.com/", token) == "https://example.com" + row["webhook_path"]

@@ -8,9 +8,10 @@
 ## 멀티봇 모델 (요약)
 
 - **등록 프로젝트마다 별도 Telegram 봇**을 둡니다. 채팅에서 대상 저장소를 바꾸는 `/project` 명령은 없습니다.
-- Webhook 주소는 봇마다 다릅니다: `POST /telegram/webhook/{SHA256(봇토큰)의 16진 문자열}` (토큰 자체는 URL에 넣지 않음).
+- Webhook 주소는 봇마다 다릅니다: `POST /telegram/webhook/{SHA256(봇토큰)의 16진 문자열 앞 16자리}` (토큰 자체는 URL에 넣지 않음).
 - 봇 토큰·허용 Chat/User ID·(선택) webhook secret은 **프로젝트 레지스트리**(`projects.json` 등)에 저장됩니다. **토큰은 평문**이므로 파일 권한과 백업 정책을 엄격히 하세요.
 - 상세 절차는 [`docs/multi-bot-setup.md`](docs/multi-bot-setup.md)를 참고하세요.
+- 프로젝트를 **비활성화하거나 삭제**하면 서버는 해당 토큰 해시 prefix로 들어오는 업데이트를 더 이상 라우팅하지 않습니다. Telegram에 예전 URL이 남아 있어도 이 앱에서는 처리되지 않습니다. 봇 쪽 webhook을 비우거나 새 URL로 맞추려면 Bot API `deleteWebhook` 또는 [`scripts/set_webhook.py`](scripts/set_webhook.py)를 레지스트리에 맞게 다시 실행하세요.
 
 ## 공개/보안 안내
 

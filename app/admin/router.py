@@ -14,7 +14,12 @@ from app.config import Settings
 from app.models import ModelName
 from app.monitoring.events import EventLogger
 from app.monitoring.log_buffer import InMemoryLogBuffer
-from app.projects.registry import ProjectRecord, ProjectRegistry, mask_bot_token
+from app.projects.registry import (
+    WEBHOOK_TOKEN_HASH_PREFIX_LENGTH,
+    ProjectRecord,
+    ProjectRegistry,
+    mask_bot_token,
+)
 from app.telegram.bot_instances import BotInstanceManager
 from app.telegram.conversation import SQLiteConversationStore
 
@@ -314,8 +319,17 @@ def create_admin_router(
             "telegram_webhook_secret_set": bool(settings.telegram_webhook_secret),
             "default_model_env": settings.default_model.value,
             "projects_config_path": str(registry.config_path),
-            "webhook_hint": "각 프로젝트(봇)마다 webhook 경로가 다릅니다. GET /api/projects 의 webhook_path 와 "
-            "scripts/set_webhook.py 를 참고하세요.",
+            "webhook_token_hash_prefix_length": WEBHOOK_TOKEN_HASH_PREFIX_LENGTH,
+            "webhook_route_template": "/telegram/webhook/{token_hash_prefix}",
+            "webhook_public_url_rule": "<공개 HTTPS Base URL> + 각 프로젝트의 webhook_path",
+            "webhook_hint": "각 프로젝트(봇)마다 webhook_path·token_hash_prefix가 다릅니다. "
+            "전체 URL은 공개 Base에 webhook_path를 이어붙입니다. 등록: python scripts/set_webhook.py <Base URL>",
+            "webhook_deleted_disabled_note": (
+                "프로젝트를 비활성화하거나 삭제하면 서버는 해당 token_hash_prefix로 들어오는 업데이트를 "
+                "더 이상 처리하지 않습니다(매칭 실패·404). Telegram이 예전 URL로 호출을 보내도 이 앱에서는 "
+                "무시됩니다. 봇의 webhook을 비우거나 새 URL로 맞추려면 Bot API deleteWebhook 또는 "
+                "갱신된 레지스트리로 scripts/set_webhook.py 를 다시 실행하세요."
+            ),
         }
 
     @router.get("/api/projects")

@@ -1,6 +1,7 @@
+from unittest.mock import MagicMock
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from app.admin.router import create_admin_router
 from app.models import ModelName
 
@@ -82,6 +83,23 @@ def test_admin_api_settings_masks_short_token(test_settings, project_registry, a
     assert data["telegram_bot_token_masked"] == "***"
 
 
+def test_admin_api_settings_includes_webhook_operations_metadata(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    app = FastAPI()
+    app.include_router(
+        create_admin_router(
+            test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+        )
+    )
+    client = TestClient(app)
+    data = client.get("/api/settings").json()
+    assert data["webhook_token_hash_prefix_length"] == 16
+    assert data["webhook_route_template"] == "/telegram/webhook/{token_hash_prefix}"
+    assert data["webhook_public_url_rule"]
+    assert data["webhook_deleted_disabled_note"]
+
+
 def test_admin_api_projects_post_and_delete(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):
     app = FastAPI()
     app.include_router(create_admin_router(
@@ -119,6 +137,185 @@ def test_admin_api_projects_post_and_delete(test_settings, project_registry, adv
     assert del_r.status_code == 200
     names_after = [p["name"] for p in del_r.json()["projects"]]
     assert "extra" not in names_after
+
+
+def test_admin_api_projects_syncs_bot_instance_manager(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    bot_mgr = MagicMock()
+    app = FastAPI()
+    app.include_router(
+        create_admin_router(
+            test_settings,
+            project_registry,
+            advanced_settings_store,
+            log_buffer,
+            conversation_store,
+            bot_instance_manager=bot_mgr,
+        )
+    )
+    client = TestClient(app)
+
+    root = test_settings.project_root / "bim_repo"
+    root.mkdir()
+    wt = test_settings.project_root / "bim_wt"
+    wt.mkdir()
+
+    client.post(
+        "/api/projects",
+        json={
+            "name": "bimproj",
+            "root_path": str(root),
+            "worktree_base_dir": str(wt),
+            "default_model": "claude",
+            "enabled": True,
+            "bot_token": "888888:AA-bim-bot-test",
+            "allowed_chat_ids": [9],
+            "allowed_user_ids": [],
+        },
+    )
+    bot_mgr.register.assert_called()
+    assert bot_mgr.register.call_args[0][0].name == "bimproj"
+
+    bot_mgr.reset_mock()
+    client.put(
+        "/api/projects/bimproj",
+        json={
+            "name": "bimproj",
+            "root_path": str(root),
+            "worktree_base_dir": str(wt),
+            "default_model": "claude",
+            "enabled": False,
+            "allowed_chat_ids": [9],
+            "allowed_user_ids": [],
+        },
+    )
+    bot_mgr.unregister.assert_called_once_with("bimproj")
+
+    bot_mgr.reset_mock()
+    client.put(
+        "/api/projects/bimproj",
+        json={
+            "name": "bimproj",
+            "root_path": str(root),
+            "worktree_base_dir": str(wt),
+            "default_model": "claude",
+            "enabled": True,
+            "allowed_chat_ids": [9],
+            "allowed_user_ids": [],
+        },
+    )
+    bot_mgr.register.assert_called_once()
+
+    bot_mgr.reset_mock()
+    client.delete("/api/projects/bimproj")
+    bot_mgr.unregister.assert_called_once_with("bimproj")
+
+
+def test_admin_api_projects_put_omitted_webhook_secret_preserves(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    app = FastAPI()
+    app.include_router(
+        create_admin_router(
+            test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+        )
+    )
+    client = TestClient(app)
+
+    root = test_settings.project_root / "wh_omit_repo"
+    root.mkdir()
+    wt = test_settings.project_root / "wh_omit_wt"
+    wt.mkdir()
+
+    create = client.post(
+        "/api/projects",
+        json={
+            "name": "wh-omit",
+            "root_path": str(root),
+            "worktree_base_dir": str(wt),
+            "default_model": "claude",
+            "enabled": True,
+            "bot_token": "777777:AA-wh-omit-bot",
+            "webhook_secret": "persist-wh-secret",
+            "allowed_chat_ids": [3],
+            "allowed_user_ids": [],
+        },
+    )
+    assert create.status_code == 200
+
+    res = client.put(
+        "/api/projects/wh-omit",
+        json={
+            "name": "wh-omit",
+            "root_path": str(root),
+            "worktree_base_dir": str(wt),
+            "default_model": "claude",
+            "enabled": True,
+            "allowed_chat_ids": [3],
+            "allowed_user_ids": [],
+        },
+    )
+    assert res.status_code == 200
+    updated = project_registry.get("wh-omit")
+    assert updated is not None
+    assert updated.webhook_secret is not None
+    assert updated.webhook_secret.get_secret_value() == "persist-wh-secret"
+
+    client.delete("/api/projects/wh-omit")
+
+
+def test_admin_api_projects_put_empty_webhook_secret_clears(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    app = FastAPI()
+    app.include_router(
+        create_admin_router(
+            test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+        )
+    )
+    client = TestClient(app)
+
+    root = test_settings.project_root / "wh_clear_repo"
+    root.mkdir()
+    wt = test_settings.project_root / "wh_clear_wt"
+    wt.mkdir()
+
+    create = client.post(
+        "/api/projects",
+        json={
+            "name": "wh-clear",
+            "root_path": str(root),
+            "worktree_base_dir": str(wt),
+            "default_model": "claude",
+            "enabled": True,
+            "bot_token": "666666:AA-wh-clear-bot",
+            "webhook_secret": "to-clear",
+            "allowed_chat_ids": [4],
+            "allowed_user_ids": [],
+        },
+    )
+    assert create.status_code == 200
+
+    res = client.put(
+        "/api/projects/wh-clear",
+        json={
+            "name": "wh-clear",
+            "root_path": str(root),
+            "worktree_base_dir": str(wt),
+            "default_model": "claude",
+            "enabled": True,
+            "allowed_chat_ids": [4],
+            "allowed_user_ids": [],
+            "webhook_secret": "",
+        },
+    )
+    assert res.status_code == 200
+    updated = project_registry.get("wh-clear")
+    assert updated is not None
+    assert updated.webhook_secret is None
+
+    client.delete("/api/projects/wh-clear")
 
 
 def test_admin_api_projects_put_updates(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):

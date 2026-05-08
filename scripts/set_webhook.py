@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""등록된 활성 프로젝트마다 Telegram setWebhook 을 호출합니다.
+
+공개 HTTPS Base URL 하나를 넘기면 `build_public_webhook_url(base, bot_token)` 규칙으로
+프로젝트별 전체 webhook URL을 만들고, 비활성·삭제된 프로젝트는 스크립트 대상에서 빠집니다.
+Telegram에 예전 URL이 남은 봇은 Bot API deleteWebhook 또는 이 스크립트 재실행으로 정리합니다.
+"""
+
 import sys
 import time
 from pathlib import Path
@@ -78,7 +85,7 @@ def main() -> None:
     from app.config import get_settings
     from app.projects.registry import (
         ProjectRegistry,
-        compute_token_hash_prefix,
+        build_public_webhook_url,
         projects_config_path_for_settings,
     )
 
@@ -109,8 +116,7 @@ def main() -> None:
             any_failed = True
             continue
 
-        route_key = compute_token_hash_prefix(token)
-        webhook_url = f"{public_url}/telegram/webhook/{route_key}"
+        webhook_url = build_public_webhook_url(public_url, token)
         api_url = f"https://api.telegram.org/bot{token}/setWebhook"
         secret = (
             record.webhook_secret.get_secret_value().strip()
