@@ -1,296 +1,234 @@
 # AGENTS.md
 
-이 문서는 Remote AI Coder 프로젝트에서 AI 에이전트가 작업할 때 따라야 할 역할, 절차, 체크리스트, 완료 보고 기준을 정의합니다.
+This document gives AI coding agents the project-specific context and workflow needed to work effectively in `remote-coder`.
 
-## 1. 문서 역할 분리
+## Project Identity
 
-이 프로젝트에는 성격이 다른 규칙/기획 문서가 함께 존재합니다. AI 에이전트는 작업 전 각 문서의 역할을 구분해서 읽어야 합니다.
+`remote-coder` is a FastAPI automation service that lets an allowed Telegram user run local AI coding tools remotely. It receives Telegram messages, validates the requester, creates a job, runs Claude Code, Codex CLI, or Gemini CLI in an isolated Git worktree, commits changes on a separate branch when needed, pushes the branch, and reports the result back to Telegram.
 
-| 문서 | 역할 | 업데이트 시점 |
-|---|---|---|
-| `PLAN.md` | 제품 기획서. 프로젝트 목표, MVP 범위, 요구사항, 아키텍처, 로드맵을 정의합니다. | 기능 범위, 요구사항, 아키텍처, 로드맵이 바뀔 때 |
-| `.clinerules/` | Cline 공식 규칙 구조에 맞춘 프로젝트 전역 개발 규칙. 기술 스택, 보안 원칙, 코드 구조, 테스트 원칙 등 모든 작업에 적용되는 기준을 주제별 파일로 정의합니다. | 개발 원칙, 보안 규칙, 구조 규칙, 테스트 기준이 바뀔 때 |
-| `.cursor/rules/` | Cursor 공식 규칙 구조에 맞춘 프로젝트 전역 개발 규칙. `.mdc` 파일과 frontmatter로 Cursor에서 사용할 규칙을 정의합니다. | `.clinerules/`와 동일한 개발 원칙을 Cursor에서도 유지해야 할 때 |
-| `AGENTS.md` | AI 에이전트 작업 지침. 작업 순서, 체크리스트, 보고 방식, 에이전트 행동 규칙을 정의합니다. | AI 작업 절차, 완료 보고 기준, 체크리스트가 바뀔 때 |
-
-요약하면, `.clinerules/`와 `.cursor/rules/`는 **프로젝트의 개발 헌장**이고, `AGENTS.md`는 **AI 에이전트의 작업 매뉴얼**입니다.
-
-`.clinerules/`는 Cline 공식 방식에 맞춰 폴더 안에 주제별 Markdown 파일로 관리합니다. 단일 대형 규칙 파일보다 작은 규칙 파일을 선호하며, 파일명은 `00-`, `10-` 같은 prefix로 읽는 순서와 주제를 명확히 합니다.
-
-`.cursor/rules/`는 Cursor 공식 방식에 맞춰 `.mdc` 파일로 관리합니다. 각 파일은 `description`, `globs`, `alwaysApply` frontmatter를 포함해야 하며, Cline 규칙과 같은 의도를 유지하도록 동기화합니다.
-
-## 2. 최우선 참고 순서
-
-작업 전 다음 순서로 문서를 확인합니다.
-
-1. 사용자의 최신 명시 지시
-2. `PLAN.md`
-3. `.clinerules/`
-4. `.cursor/rules/`
-5. `AGENTS.md`
-6. 기존 코드와 테스트
-
-문서 간 충돌이 있으면 임의로 판단하지 말고, 가능한 경우 사용자에게 확인합니다. 단, 명확한 오탈자나 오래된 설명은 수정하면서 충돌을 해소할 수 있습니다.
-
-## 3. 프로젝트 컨텍스트
-
-Remote AI Coder는 텔레그램을 원격 인터페이스로 사용하여 로컬 개발 머신의 AI 코딩 도구를 실행하는 자동화 시스템입니다.
-
-핵심 흐름은 다음과 같습니다.
+Core flow:
 
 ```text
 Telegram Message
-  → FastAPI Webhook
-  → Auth/Command Parser
-  → Job Manager
-  → Git Worktree
-  → Claude Code 또는 Codex CLI
-  → Git Commit
-  → Telegram Notification
+  -> FastAPI Webhook
+  -> Auth / Command Parser
+  -> Job Manager
+  -> Git Worktree
+  -> AI Runner (Claude / Codex / Gemini)
+  -> Git Commit
+  -> Telegram Notification
 ```
 
-AI 에이전트는 이 흐름을 안전하고 테스트 가능한 방식으로 구현하는 것을 목표로 합니다.
+## Source of Truth
 
-## 3.1 AI 에이전트 행동 원칙
+- The user's latest explicit instruction overrides project documents.
+- `PLAN.md` defines product goals, MVP scope, requirements, architecture, and roadmap.
+- `.clinerules/` and `.cursor/rules/` define project-wide development rules for Cline and Cursor.
+- `AGENTS.md` defines AI-agent workflow, checklists, and final reporting expectations.
+- `CLAUDE.md` is the Claude Code entry point and references the rule files.
+- Existing source files and tests override intended architecture notes. If implementation and documentation disagree, investigate before editing.
 
-이 원칙은 LLM 코딩 에이전트가 흔히 만드는 잘못된 가정, 과한 추상화, 불필요한 주변 변경, 검증 없는 완료 보고를 줄이기 위해 적용합니다. 단순 오탈자 수정이나 명백한 한 줄 변경처럼 사소한 작업에는 속도와 엄격함의 균형을 판단하되, 비자명한 작업에는 아래 원칙을 우선합니다.
+Consult sources in this order for non-trivial work:
 
-### 3.1.1 구현 전 사고
+1. The user's latest explicit instruction.
+2. `PLAN.md`.
+3. `.clinerules/`.
+4. `.cursor/rules/`.
+5. `AGENTS.md`.
+6. Existing code and tests.
 
-- 가정을 숨기지 말고 명시합니다. 불확실하면 추측하지 말고 사용자에게 확인합니다.
-- 해석이 여러 개인 요청은 가능한 해석과 트레이드오프를 먼저 제시합니다.
-- 더 단순한 접근이 있거나 요청이 위험하거나 과도하면 근거를 들어 되묻거나 대안을 제안합니다.
-- 혼란스러운 지점이 있으면 작업을 멈추고, 무엇이 불명확한지 짧게 밝힌 뒤 확인합니다.
+If documents conflict in a way that could change behavior, ask the user before editing. Clear typos or stale wording can be fixed while preserving intent.
 
-### 3.1.2 단순성 우선
+## Core Principles
 
-- 요청을 해결하는 최소 코드만 작성하고, 요청되지 않은 기능을 추가하지 않습니다.
-- 한 번만 쓰이는 코드에 추상화를 만들지 않습니다.
-- 요구되지 않은 유연성, 설정화, 확장 포인트를 넣지 않습니다.
-- 실제로 발생할 수 없는 시나리오를 위한 방어 코드나 오류 처리를 추가하지 않습니다.
-- 200줄로 작성한 코드가 50줄로 충분하다면, 먼저 단순한 구조로 다시 줄입니다.
+- Keep the MVP flow safe, observable, and testable.
+- Webhook handlers must respond quickly; long-running AI work belongs in background jobs.
+- Validate Telegram Chat ID/User ID before executing commands or creating jobs.
+- Never hard-code bot tokens, API keys, private Chat IDs, credentials, or local secrets.
+- Never execute user messages directly as shell commands.
+- Keep Git, Telegram, subprocess, and AI CLI details behind service or adapter boundaries.
+- Use OOP and GoF patterns when they reduce real complexity: Strategy/Factory for AI runners, Adapter for external tools, Command for Telegram commands, Facade/Orchestrator for job execution.
+- Prefer small, focused modules over large catch-all files.
+- Follow `.clinerules/05-agent-behavior.md`: surface assumptions, prefer simple solutions, make surgical changes, and define verifiable success criteria.
+- Follow `.clinerules/15-clean-code.md`: optimize for readability, maintainability, testability, and consistent naming/structure.
+- Follow `.clinerules/60-comments-policy.md`: add minimal comments only for why, security, constraints, tradeoffs, or non-obvious contracts.
 
-### 3.1.3 외과적 변경
+## Agent Behavior
 
-- 사용자 요청을 해결하는 데 필요한 파일과 줄만 수정합니다.
-- 인접 코드, 주석, 포맷을 임의로 개선하거나 정리하지 않습니다.
-- 고장 나지 않은 코드를 리팩터링하지 않고, 기존 스타일을 따릅니다.
-- 관련 없는 죽은 코드나 이상한 구조를 발견하면 삭제하지 말고 완료 보고나 별도 메모로 언급합니다.
-- 내가 만든 변경으로 unused import, 변수, 함수가 생기면 직접 정리합니다. 기존 dead code는 요청 없이는 제거하지 않습니다.
-- 모든 변경 라인은 사용자 요청과 직접 연결되어야 합니다.
+For non-trivial work, state assumptions and success criteria before editing. Ask when ambiguity could change product behavior, architecture, security, or verification.
 
-### 3.1.4 목표 기반 실행
+Write the minimum code or documentation needed to satisfy the request:
 
-- 작업을 시작할 때 성공 기준과 검증 방법을 가능한 한 구체적으로 정합니다.
-- "검증 추가"는 "잘못된 입력 테스트를 작성하고 통과시킨다"처럼 확인 가능한 목표로 바꿉니다.
-- "버그 수정"은 가능하면 "버그를 재현하는 테스트를 만들고 통과시킨다"로 바꿉니다.
-- "리팩터링"은 변경 전후 기존 테스트 통과를 성공 기준에 포함합니다.
-- 여러 단계 작업은 짧은 계획을 세우고 각 단계마다 `검증: <확인 방법>`을 붙입니다.
-- 완료 전에는 정의한 검증을 실행하거나, 실행하지 못한 이유와 남은 위험을 보고합니다.
+- Do not add unrequested features, configuration, flexibility, or extension points.
+- Do not abstract single-use code.
+- Do not add defensive branches for scenarios that cannot happen in the current design.
+- If the implementation becomes much larger than the problem demands, simplify before finalizing.
 
-## 4. 작업 전 체크리스트
+Keep changes surgical:
 
-코드 변경 전 다음을 확인합니다.
+- Touch only files and lines required by the request.
+- Do not improve adjacent code, comments, formatting, or naming unless directly required.
+- Match existing style.
+- Remove unused imports, variables, functions, files, or tests introduced by your own changes.
+- Mention unrelated dead code or cleanup opportunities instead of changing them.
 
-- [ ] 작업이 `PLAN.md`의 MVP 또는 확장 범위에 포함되는가?
-- [ ] 요청의 가정, 모호한 해석, 트레이드오프를 확인했는가?
-- [ ] 성공 기준과 검증 방법을 명확히 정했는가?
-- [ ] `.clinerules/`와 `.cursor/rules/`의 보안/구조/테스트 규칙을 위반하지 않는가?
-- [ ] 객체지향 설계와 단일 책임 원칙을 지키는 구조인가?
-- [ ] Strategy, Adapter, Factory, Command 등 GoF 패턴을 적용하면 코드가 더 단순해지는 지점이 있는가? 단, 단일 사용을 위한 과한 추상화는 아닌가?
-- [ ] 요청하지 않은 기능, 설정화, 유연성을 추가하고 있지 않은가?
-- [ ] 민감 정보가 코드에 하드코딩될 가능성은 없는가?
-- [ ] 외부 프로세스 실행, 파일 삭제, Git 조작 등 위험 작업이 포함되는가?
-- [ ] Git worktree/브랜치 정책을 침해하지 않는가?
-- [ ] 수정하려는 모든 파일과 라인이 사용자 요청에 직접 연결되는가?
-- [ ] 새로 추가하는 주석이 Why/보안/제약/트레이드오프를 설명하는가, 자명한 동어반복은 아닌가? (`60-comments-policy` 참조)
-- [ ] 테스트 또는 문서 업데이트가 필요한가?
-- [ ] 규칙 변경이 필요한 작업이라면 `.clinerules/`, `.cursor/rules/`, `AGENTS.md`를 함께 업데이트해야 하는가?
+## Pre-Work Checklist
 
-## 5. 작업 후 체크리스트
+Before code changes, check:
 
-작업 완료 전 다음을 확인합니다.
+- [ ] Is the task inside `PLAN.md` MVP or extension scope?
+- [ ] Are assumptions, ambiguous interpretations, and tradeoffs clear?
+- [ ] Are success criteria and verification steps defined?
+- [ ] Does the change respect `.clinerules/` and `.cursor/rules/`?
+- [ ] Does the design preserve clear responsibility boundaries?
+- [ ] Would Strategy, Adapter, Factory, Command, Facade, State, or Repository simplify real variability?
+- [ ] Is the change avoiding unrequested features, configurability, and abstraction?
+- [ ] Could secrets or private IDs be hard-coded by accident?
+- [ ] Does the task include subprocess execution, file deletion, Git mutation, or other risky operations?
+- [ ] Does it preserve worktree and branch policy?
+- [ ] Does every planned edit trace directly to the user request?
+- [ ] Are new comments limited to why, security, constraints, or tradeoffs?
+- [ ] Are tests or docs required?
+- [ ] If rules change, should `.clinerules/`, `.cursor/rules/`, `AGENTS.md`, or `CLAUDE.md` be updated together?
 
-- [ ] 구현이 사용자 요청을 충족하는가?
-- [ ] 관련 테스트를 작성하거나 기존 테스트를 갱신했는가?
-- [ ] 실행 가능한 검증 방법을 확인했는가?
-- [ ] 정의한 성공 기준을 충족했고, 실패한 검증이 있다면 원인과 잔여 위험을 설명했는가?
-- [ ] 내가 만든 변경으로 생긴 unused import, 변수, 함수, 문서 불일치를 정리했는가?
-- [ ] 요청과 무관한 리팩터링, 포맷 변경, 주변 코드 정리가 섞이지 않았는가?
-- [ ] 새 환경 변수, 명령어, 설정 파일이 있다면 문서화했는가?
-- [ ] 개발 원칙/보안 정책/작업 절차가 바뀌었다면 `.clinerules/`, `.cursor/rules/`, `AGENTS.md`를 업데이트했는가?
-- [ ] 기획 범위나 요구사항이 바뀌었다면 `PLAN.md`를 업데이트했는가?
+## Post-Work Checklist
 
-## 6. 구현 원칙
+Before finalizing, check:
 
-### 6.0 객체지향 및 GoF 패턴 우선 원칙
+- [ ] The implementation satisfies the user request.
+- [ ] Relevant tests were added or updated when needed.
+- [ ] Verification was run, or limitations and residual risk are stated.
+- [ ] Success criteria are met.
+- [ ] Unused imports, variables, functions, tests, and doc mismatches introduced by the change are cleaned up.
+- [ ] No unrelated refactors, formatting churn, or surrounding cleanup is mixed in.
+- [ ] New environment variables, commands, or config files are documented.
+- [ ] Development rules, security policy, workflow, or directory structure changes are reflected in rule docs.
+- [ ] Product requirement or roadmap changes are reflected in `PLAN.md`.
 
-- 이 프로젝트는 객체지향 개발자의 관점에서 읽기 쉽고 확장 가능한 코드를 지향합니다.
-- 클래스는 명확한 책임을 가져야 하며, 책임이 섞이면 서비스/도메인/Adapter/Factory 등으로 분리합니다.
-- 외부 시스템 연동부는 Adapter로 감싸고, 도메인 로직이 외부 API 세부사항에 의존하지 않게 합니다.
-- Claude/Codex/Gemini Runner 선택, 명령어 처리, 저장소 선택, 알림 방식 선택처럼 변경 가능성이 큰 부분은 Strategy, Factory, Command 패턴을 우선 검토합니다.
-- 여러 서비스를 조합하는 긴 흐름은 Facade 또는 Orchestrator 객체로 정리합니다.
-- 상태 전이가 복잡해지는 경우 Job 상태 로직을 State 패턴 또는 명시적 상태 전이 테이블로 분리합니다.
-- 패턴은 코드 복잡도를 줄일 때만 적용합니다. 단순한 코드를 패턴 이름에 맞추기 위해 과설계하지 않습니다.
+## Architecture Guidelines
 
-### 6.1 FastAPI
-
-- Webhook 엔드포인트는 빠르게 응답해야 합니다.
-- 시간이 오래 걸리는 AI 작업은 백그라운드 Job으로 넘깁니다.
-- 라우터, 서비스, 설정, 모델을 분리합니다.
-- 요청 검증에는 Pydantic 모델을 사용합니다.
-
-### 6.2 Telegram
-
-- 허용된 Chat ID/User ID만 처리합니다.
-- 인증 실패 요청은 조용히 거부하거나 최소 응답만 반환합니다.
-- 사용자에게 전송하는 메시지는 짧고 명확해야 합니다.
-- 긴 로그는 전체 전송하지 말고 요약과 저장 위치를 안내합니다.
-- 자연어 작업 요청은 현재 프로젝트·작업 브랜치·사용 모델을 표시한 확인 메시지를 보낸 뒤 `y` 또는 `Y` 입력을 받아야 Job으로 생성합니다.
-- `/init`은 이 채팅의 적용 프로젝트·기본 모델·`/clear` 확인 대기 상태를 서버 시작 직후처럼 초기화합니다(대화 기억 SQLite·Git 저장소는 변경하지 않음).
-
-### 6.3 Git
-
-- AI 작업은 별도 worktree에서 수행합니다(detached에서 실행 후, 변경이 있을 때만 브랜치 생성).
-- AI Job의 detached worktree는 **요청에 사용된 프로젝트 저장소**의 **현재 `HEAD` 커밋**에서 생성합니다(메인 작업 트리의 checkout 브랜치를 바꾸지 않음).
-- 변경 사항이 없는 경우 브랜치를 만들지 않고 커밋하지 않습니다.
-- 변경 사항이 있고 커밋이 생성되면 원격(기본 `origin`)에 push합니다.
-- `/monitor branch`는 브랜치 목록·개수 요약, `/branch`는 현재 브랜치 표시, `/branch <이름>`은 이 채팅 **적용 프로젝트**에서 로컬 브랜치가 있을 때만 `git switch` 합니다.
-- `/rebase`, `/clear` 등 관리 명령은 사용자가 명시적으로 호출할 때만 저장소 상태를 넓게 변경합니다.
-- 자동 커밋 메시지는 `type: title`·bullet·`committed by remote-coder: <job-id>` 양식을 유지하고, 제목은 기능 수정 내용을 한 줄로 요약해야 하며 첫 번째 bullet은 사용자 원문이나 최근 수정 파일 나열이 아니라 AI Agent가 수행한 변경 내용을 설명해야 합니다.
-- commit hash, branch name, changed files를 Job 결과에 저장합니다.
-
-### 6.4 AI CLI 실행
-
-- Claude와 Codex는 공통 Runner 인터페이스를 통해 호출합니다.
-- subprocess 호출 시 `shell=True` 사용을 피합니다.
-- timeout과 cwd를 명시합니다.
-- stdout/stderr/exit code를 구조화된 결과로 반환합니다.
-- Runner 구현은 Strategy 패턴으로 교체 가능하게 만들고, CLI별 세부 호출은 Adapter 객체에 격리합니다.
-
-### 6.4.1 이벤트 로그 (관리 UI)
-
-- 텔레그램·Job·Git·Runner 경계에서 관측 가능하도록 로그를 남길 때는 `app.monitoring.events.EventLogger`로 `app.<subsystem>...` 로거에 기록하고, `chat_id`·`job_id`·`project` 등은 `LOG_RECORD_CONTEXT_KEYS`에 맞춘 `extra`로만 넘깁니다.
-- 사용자 메시지 원문은 Webhook에서 첫 줄·80자 프리뷰로만 로그에 남깁니다.
-
-### 6.5 설정
-
-- 환경 변수는 `config.py` 또는 설정 객체에서 중앙 관리합니다.
-- 프로젝트별 설정은 YAML/JSON 파일로 분리할 수 있게 설계합니다.
-- 기본값은 안전한 값을 사용합니다.
-
-### 6.6 주석 정책
-
-- 주석은 코드가 말하지 못하는 것(Why, 비자명한 제약, 보안 경고, 도메인 규칙, 성능·정확성 트레이드오프, 워크어라운드)에만 사용합니다.
-- 함수·클래스 시그니처와 동어반복인 docstring은 추가하지 않습니다. `__init__.py`, 단순 dataclass·DTO 모듈은 docstring을 두지 않습니다.
-- 표준 마커는 `TODO(<이슈번호>)`, `FIXME(<이슈번호>)`, `NOTE:`, `SECURITY:`만 사용하고, `HACK`/`XXX` 같은 모호한 마커는 금지합니다. 이슈 번호 없는 `TODO`/`FIXME`는 작성하지 않습니다.
-- 주석 처리된 옛 코드 블록은 남기지 않습니다. Git 히스토리로 충분합니다.
-- 자세한 기준은 `.cursor/rules/60-comments-policy.mdc` (또는 `.clinerules/60-comments-policy.md`)를 따릅니다.
-
-## 7. 권장 코드 구조
+Recommended structure:
 
 ```text
 app/
-  main.py                 # FastAPI 앱 생성
-  config.py               # 환경 변수 및 설정
-  models.py               # 공통 데이터 모델
+  main.py                     # FastAPI application creation
+  config.py                   # Environment and settings
+  models.py                   # Shared models
   telegram/
-    webhook.py            # Webhook 라우터
-    notifier.py           # Telegram 메시지 발송
-    commands.py           # 명령어 파싱
+    webhook.py                # Webhook router
+    notifier.py               # Telegram message delivery
+    commands.py               # /help, /model, /status, etc.
+    parser.py                 # Message parsing
+    conversation.py           # SQLite conversation context
+    confirmations.py          # User confirmation flow
+    model_preferences.py      # Model selection state
+    project_preferences.py    # Project selection state
   jobs/
-    manager.py            # Job 생성/실행/상태 변경
-    store.py              # Job 저장소
-    schemas.py            # Job 모델
+    manager.py                # Job facade/orchestrator
+    store.py                  # Job store
+    schemas.py                # Job models
   git/
-    service.py            # Git/worktree 조작
-    ai/
-      base.py               # Runner 인터페이스
-      claude.py             # Claude Runner
-      codex.py              # Codex Runner
-      gemini.py             # Gemini Runner
-  monitoring/
-    log_buffer.py         # 인메모리 링 버퍼 + MemoryLogHandler
-    events.py             # EventLogger Facade (구조화 extra)
+    service.py                # Git/worktree operations
+    branch_naming.py          # Branch naming policy
+    commit_message.py         # Commit message format
+    ai_commit.py              # AI run + commit orchestration
+  ai/
+    base.py                   # AiRunner interface
+    claude.py                 # Claude Code runner
+    codex.py                  # Codex runner
+    gemini.py                 # Gemini runner
+    factory.py                # Runner factory
+  projects/
+    registry.py               # Project path/settings registry
   security/
-    auth.py               # allowlist 검증
+    auth.py                   # Allowlist validation
+  monitoring/
+    log_buffer.py             # Ring buffer and MemoryLogHandler
+    events.py                 # EventLogger facade
+  admin/
+    router.py                 # Admin UI router
 tests/
+configs/
+  projects.example.yaml
 ```
 
-## 8. 테스트 기준
+Start with the smallest useful version of this structure. Add deeper layers only when there is a concrete feature or testability need.
 
-다음 영역은 우선적으로 테스트합니다.
+## FastAPI and Telegram
 
-- Telegram 명령어 파싱
-- Chat ID/User ID allowlist 인증
-- Job 상태 전이
-- Git worktree 경로 생성 및 브랜치명 생성
-- AI Runner의 성공/실패 결과 처리
-- Notifier 메시지 포맷팅
-- Strategy/Command/Adapter/Factory 등 패턴 적용 객체의 독립 동작
+- Use Pydantic models for request validation.
+- Separate routers, services, settings, models, and adapters.
+- Natural-language job requests must show current project, target branch, and model, then wait for `y` or `Y` confirmation before creating a job.
+- `/init` resets the chat's selected project, default model, and pending confirmation state. It must not alter SQLite conversation memory or Git repositories.
+- Commands with selectable options (`/model`, `/status`, `/project`, `/branch`, `/rebase`, `/stop`) should show inline buttons when called without arguments and route callbacks through the existing slash-command path.
 
-외부 API 호출, 실제 AI CLI 실행, 실제 Git 커밋은 기본 단위 테스트에서 mock 처리합니다.
+## Git and AI Runner Rules
 
-### 8.1 테스트 실행 환경 규칙
+- AI jobs run in separate worktrees created from the requested project repository's current `HEAD`.
+- Do not modify the main working tree, default branch, or currently checked-out branch for AI jobs.
+- If there are no changes, do not create a branch, commit, or push.
+- If changes exist, create a branch, commit, and push to the configured remote (`origin` by default).
+- Automatic commit messages must use `type: title`, bullet body lines, and `committed by remote-coder: <job-id>`.
+- The commit title must summarize the functional change. The first bullet must describe what the AI agent changed.
+- Store commit hash, branch name, changed files, observed model details, and token usage when available.
+- Claude/Codex/Gemini runners share a common interface and return stdout, stderr, exit code, start time, and end time.
+- Use list-based subprocess arguments, explicit timeout, and explicit `cwd`; avoid `shell=True`.
 
-- 테스트/서버 실행 전에는 반드시 `remote-coder` Conda 환경을 활성화합니다.
-- 에이전트는 테스트 명령 실행 전에 현재 Python 환경을 확인하고, 필요 시 `conda activate remote-coder`를 먼저 수행합니다.
-- 기본 테스트 명령은 `pytest -q`이며, 환경 활성화가 어려운 경우 `conda run -n remote-coder pytest -q`를 사용합니다.
+## Event Logging
 
-## 9. 금지 사항
+Use `app.monitoring.events.EventLogger` for structured logs at Telegram, Job, Git, and Runner boundaries.
 
-- Bot Token, API Key, 개인 Chat ID를 코드에 직접 기록하지 않습니다.
-- 사용자 입력을 그대로 shell 명령으로 실행하지 않습니다.
-- 기본 브랜치에서 AI 작업을 직접 수행하지 않습니다.
-- 테스트에서 사용자의 실제 저장소를 수정하지 않습니다.
-- 실패 로그 전체를 텔레그램으로 무제한 전송하지 않습니다.
-- 자동 배포 또는 원격 서버 반영 기능을 MVP에 포함하지 않습니다.
+```python
+from app.monitoring.events import EventLogger
 
-## 10. 규칙 문서 동기화 원칙
+logger = EventLogger("app.telegram.webhook")
+logger.info("message_received", extra={"chat_id": chat_id, "job_id": job_id})
+```
 
-AI 에이전트는 작업 중 다음 유형의 변경이 발생하면 규칙 문서 업데이트를 반드시 검토합니다.
+- Pass only keys defined in `LOG_RECORD_CONTEXT_KEYS` through `extra`.
+- Log Telegram user message text only as a first-line preview of at most 80 characters.
+- Do not log secrets, bot tokens, or full project absolute paths in message bodies.
 
-- 새 보안 정책 도입 또는 기존 보안 정책 변경
-- 디렉토리 구조 변경
-- 테스트 전략 변경
-- Git/worktree/브랜치 정책 변경
-- AI Runner 실행 방식 변경
-- OOP 설계 원칙 또는 GoF 디자인 패턴 적용 기준 변경
-- Telegram 명령어 처리 방식 변경
-- Job 상태 모델 또는 작업 흐름 변경
-- 주석 정책 또는 docstring 표준 변경
-- 완료 보고 방식 변경
+## Testing and Verification
 
-업데이트 기준은 다음과 같습니다.
+- Before running tests or server commands, use the `remote-coder` Conda environment.
+- Default verification command: `conda run -n remote-coder pytest -q`.
+- Prefer focused tests first for narrow changes, then broaden when shared behavior changes.
+- Mock Telegram API calls, AI CLI calls, and real Git repositories in unit tests.
+- Do not mutate user repositories, create real commits, call external networks, or invoke real AI CLIs in default tests.
+- Prioritize tests for command parsing, authentication, job state transitions, Git worktree behavior, runner result handling, notifier formatting, and pattern objects.
 
-- 제품 요구사항이나 로드맵 변경이면 `PLAN.md`를 수정합니다.
-- 전역 개발 규칙 변경이면 `.clinerules/`와 `.cursor/rules/`의 관련 주제 파일을 수정합니다.
-- AI 에이전트의 작업 절차나 체크리스트 변경이면 `AGENTS.md`를 수정합니다.
-- 둘 이상의 문서에 영향을 주는 변경이면 관련 문서를 함께 수정합니다.
+## Rule Synchronization
 
-## 11. 완료 보고 기준
+Review rule updates when changing:
 
-AI 에이전트가 작업을 마칠 때는 다음을 요약합니다.
+- Security policy.
+- Directory structure.
+- Testing strategy.
+- Git/worktree/branch policy.
+- AI Runner execution behavior.
+- OOP or GoF pattern guidance.
+- Telegram command handling.
+- Job state model or workflow.
+- Comment/docstring policy.
+- Agent completion reporting.
 
-- 변경한 파일
-- 구현한 기능 또는 작성한 문서
-- 보안/설정상 주의할 점
-- 실행 또는 테스트 방법
-- 규칙 문서 업데이트 여부
-- 남은 TODO 또는 후속 작업
+Update targets:
 
-## 12. 현재 추천 다음 작업
+- Product requirements or roadmap changes -> `PLAN.md`.
+- Global development rules -> `.clinerules/` and `.cursor/rules/`.
+- AI-agent procedure or checklist changes -> `AGENTS.md`.
+- Claude Code rule entry point changes -> `CLAUDE.md`.
 
-프로젝트를 처음 구현한다면 다음 순서로 진행합니다.
+## Final Report Format
 
-1. Python/FastAPI 프로젝트 기본 구조 생성
-2. `.env.example` 작성
-3. 설정 로더 구현
-4. `/health` 엔드포인트 구현
-5. Telegram Webhook 엔드포인트 구현
-6. Chat ID allowlist 인증 구현
-7. Job 모델 및 인메모리 Job Store 구현
-8. Git worktree 서비스 구현
-9. Claude Runner 구현
-10. Gemini Runner 구현
-11. 텔레그램 결과 알림 구현
+When work is complete, summarize:
+
+- Changed files.
+- Implemented behavior or written documentation.
+- Security/configuration notes.
+- Verification commands and results, or why verification was limited.
+- Whether rule documents were updated.
+- Remaining TODOs or follow-up work.
+
+Keep the final report concise and specific.

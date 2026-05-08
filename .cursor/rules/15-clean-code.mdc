@@ -1,0 +1,63 @@
+---
+description: Clean code standards for readability, maintainability, naming, structure, and testability
+globs: "**/*.py,tests/**/*"
+alwaysApply: true
+---
+
+# Clean Code Rules
+
+The goal is code that another person can understand quickly and modify safely.
+
+## Core Quality Bar
+
+Write code that is readable, maintainable, extensible, robust, testable, self-documenting, and consistent.
+
+## Good Shape
+
+- Let the project formatter handle mechanical formatting.
+- Keep strongly related code close together.
+- Use blank lines to separate distinct semantic steps.
+- Use comments only for intent, constraints, tradeoffs, security, or non-obvious context.
+- Remove comments that merely repeat what the code says.
+- Avoid large uninterrupted blocks; split when a reader cannot see the meaningful unit at once.
+
+## Good Structure
+
+- Keep related state, derived values, and functions near each other.
+- Arrange similar handlers/functions in a consistent order.
+- Preserve data-flow readability.
+- Split long functions/classes when one screen no longer shows the meaningful unit.
+- Keep FastAPI routing, domain services, adapters, persistence, and Telegram presentation concerns separated.
+
+Before finalizing structure, ask whether a reader can trace where values are created and used, whether related behaviors are grouped, and whether the likely change location is obvious.
+
+## Good Names
+
+- Reveal the value's role.
+- Make the type or shape reasonably inferable.
+- Avoid unclear abbreviations.
+- Use more specific names for wider scopes.
+- Boolean names should usually begin with `is`, `has`, `can`, or `should`.
+- Avoid vague names such as `process`, `do_stuff`, `handle_it`, `data`, `flag`, and `temp`, unless the scope is tiny and meaning is obvious.
+
+## Naming Nuance
+
+- `create`: make a new object or resource.
+- `add`: add an item to an existing collection.
+- `insert`: place an item at a specific position.
+- `fetch`: retrieve remote data.
+- `load`: read from file, resource, or persisted state.
+- `get`: access an already available value.
+- `update`: modify an existing value.
+- `validate`: check whether input satisfies rules.
+- `current`: currently active value.
+- `selected`: user-selected value.
+
+## Review Checklist
+
+- Can the role of each value/function be inferred from its name?
+- Does each function/class have a focused responsibility?
+- Are related pieces close together and unrelated pieces separated?
+- Do comments explain intent/context rather than repeat implementation?
+- Are patterns consistent with the surrounding project?
+- Is the code split into units that are easy to test?

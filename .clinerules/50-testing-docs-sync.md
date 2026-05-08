@@ -1,23 +1,58 @@
-# 테스트, 문서화, 규칙 동기화
+# Testing, Verification, and Documentation Sync
 
-## 1. 테스트 규칙
+Use project-defined commands and keep verification appropriate to the current repository maturity.
 
-- 명령 파서, 인증 로직, Git 서비스, Job 상태 전이는 우선적으로 단위 테스트를 작성합니다.
-- 실제 Telegram API, 실제 AI CLI, 실제 Git 저장소에 의존하는 테스트는 mock 또는 fixture를 사용합니다.
-- 위험한 파일 삭제, 실제 커밋 생성, 외부 네트워크 호출은 기본 테스트에서 수행하지 않습니다.
-- 외부 의존성은 인터페이스/Adapter 뒤에 두어 mock 테스트가 가능하도록 설계합니다.
-- 디자인 패턴을 적용한 경우, 각 전략/명령/상태 객체를 독립적으로 테스트할 수 있어야 합니다.
-- 도메인 이벤트 로그는 `app.monitoring.events.EventLogger`를 사용하고, `app.monitoring.log_buffer.LOG_RECORD_CONTEXT_KEYS`에 정의된 키만 `extra`로 전달합니다. 새 컨텍스트 키가 필요하면 버퍼·API·UI를 함께 확장하고 README 로거 표를 갱신합니다.
-- 비자명한 작업은 구현 전에 성공 기준과 검증 방법을 정합니다. 버그 수정은 가능하면 재현 테스트를 먼저 만들고, 리팩터링은 변경 전후 기존 테스트 통과를 확인합니다.
-- 검증을 실행하지 못한 경우 완료 보고에 이유와 남은 위험을 명시합니다.
+## Before Running Commands
 
-## 2. 문서화 규칙
+- Confirm the active Python environment before tests or server commands.
+- Prefer `conda run -n remote-coder ...` in automated contexts.
+- Use project-defined scripts and configuration over ad-hoc commands.
+- Avoid tests that mutate the user's real repositories, create real commits, call external networks, or invoke real AI CLIs unless the task explicitly requires integration verification.
 
-- 새로운 환경 변수는 `.env.example`과 README에 함께 반영합니다.
-- 새로운 텔레그램 명령어는 README 또는 별도 사용 문서에 설명합니다.
-- 구현 결정이 기획과 달라지는 경우 `PLAN.md`의 “향후 검토 사항” 또는 관련 섹션을 업데이트합니다.
-- 개발 규칙, 보안 정책, 작업 절차, 디렉토리 구조, 테스트 기준이 바뀌면 `.clinerules/`, `.cursor/rules/`, `AGENTS.md`를 함께 검토하고 필요한 내용을 동기화합니다.
-- OOP 설계 원칙이나 디자인 패턴 적용 기준이 바뀌면 `.clinerules/`, `.cursor/rules/`, `AGENTS.md`를 함께 업데이트합니다.
-- AI 에이전트가 작업을 완료할 때는 “규칙 문서 업데이트가 필요한 변경인지”를 확인해야 합니다.
-- 규칙 문서 간 내용이 충돌하지 않도록, 역할 분리에 맞게 중복은 최소화하고 서로 참조하도록 작성합니다.
-- 코드 주석·docstring 작성 기준은 `60-comments-policy`를 따르고, 본 문서에서는 중복 정의하지 않습니다.
+## Recommended Verification
+
+Default command:
+
+```bash
+conda run -n remote-coder pytest -q
+```
+
+For narrower work, run the focused test file or test case first, then broaden when the change affects shared behavior.
+
+## Testing Priorities
+
+- Telegram command parsing.
+- Chat ID/User ID allowlist authentication.
+- Job state transitions.
+- Git worktree path generation and branch naming.
+- AI Runner success/failure result handling.
+- Notifier message formatting.
+- Strategy, Command, Adapter, Factory, State, and Repository objects when introduced.
+- Event logging behavior at Telegram, Job, Git, and Runner boundaries.
+
+## Test Design Rules
+
+- Mock or fixture Telegram API calls, AI CLI calls, and real Git repositories by default.
+- Keep external dependencies behind interfaces/adapters so they are easy to mock.
+- When applying a design pattern, make each strategy/command/state object independently testable.
+- For non-trivial work, define success criteria and verification before editing.
+- For bug fixes, reproduce the bug with a test when practical, then verify the fix.
+- For refactors, verify existing behavior before and after the change.
+- If verification cannot be run, state why and describe the remaining risk.
+
+## Event Log Rules
+
+- Use `app.monitoring.events.EventLogger` for structured events at Telegram, Job, Git, and Runner boundaries.
+- Pass only keys defined in `app.monitoring.log_buffer.LOG_RECORD_CONTEXT_KEYS` through `extra`.
+- If a new context key is needed, update the log buffer, API, UI, and README logger table together.
+- Log Telegram user message text only as a first-line preview of at most 80 characters.
+
+## Documentation Sync
+
+- New environment variables require `.env.example` and README updates.
+- New Telegram commands require README or usage-document updates.
+- If implementation decisions change product scope or roadmap, update the relevant `PLAN.md` section.
+- If development rules, security policy, workflow, directory structure, or testing strategy changes, review `.clinerules/`, `.cursor/rules/`, and `AGENTS.md` together.
+- If OOP or GoF pattern guidance changes, update `.clinerules/`, `.cursor/rules/`, and `AGENTS.md` together.
+- Keep duplicated policy minimal; prefer one source of detail and references from related files.
+- Comment and docstring rules belong in `60-comments-policy`; do not redefine them elsewhere unless necessary.

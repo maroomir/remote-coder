@@ -1,23 +1,28 @@
-# 보안과 Telegram 규칙
+# Security and Telegram Rules
 
-## 1. 보안 규칙
+## Security Rules
 
-- Bot Token, API Key, 개인 경로, Chat ID 등 민감 정보는 절대 코드에 하드코딩하지 않습니다.
-- 민감 정보는 `.env` 또는 로컬 설정 파일로 관리하고, 예시는 `.env.example`에만 작성합니다.
-- 텔레그램 요청은 반드시 허용된 Chat ID/User ID인지 검증한 뒤 처리합니다.
-- 등록된 프로젝트 경로 밖에서는 Git/AI 작업을 실행하지 않습니다.
-- 사용자의 메시지를 shell 명령으로 직접 실행하지 않습니다.
-- `--dangerously-skip-permissions` 같은 옵션은 위험성을 문서화하고, 허용 프로젝트 경로와 사용자 allowlist가 적용된 이후에만 사용합니다.
-- AI가 생성한 결과는 별도 브랜치에 커밋하며 자동 배포하지 않습니다.
-- **관리 UI 인메모리 로그**에는 텔레그램 사용자 메시지 원문을 통째로 남기지 않고, 첫 줄 기준 최대 80자 프리뷰만 기록합니다. Bot Token·프로젝트 절대경로를 로그 메시지 본문에 넣지 않습니다. `chat_id`/`job_id` 등은 구조화 필드(`logging` `extra`)로만 전달합니다.
+- Never hard-code bot tokens, API keys, private paths, personal Chat IDs, or credentials.
+- Store secrets in `.env` or local configuration files. Commit only examples such as `.env.example`.
+- Validate Telegram Chat ID/User ID allowlists before processing any command or natural-language job request.
+- Never run Git or AI work outside registered project paths.
+- Never execute user messages directly as shell commands.
+- Avoid `shell=True`; use list-based subprocess arguments.
+- Dangerous options such as `--dangerously-skip-permissions` must be documented and used only after project path and user allowlist checks.
+- Commit AI-generated changes only to a separate branch. Do not add automatic deployment to the MVP.
+- Admin UI logs must not store full Telegram message text. Log only a first-line preview of at most 80 characters.
+- Do not place bot tokens or project absolute paths in log message bodies.
+- Pass `chat_id`, `job_id`, `project`, and similar context through structured `logging extra` fields that match `LOG_RECORD_CONTEXT_KEYS`.
 
-## 2. Telegram 메시지 규칙
+## Telegram Rules
 
-- 허용된 Chat ID/User ID만 처리합니다.
-- 인증 실패 요청은 조용히 거부하거나 최소 응답만 반환합니다.
-- 사용자에게는 작업 접수, 시작, 완료, 실패 상태를 명확히 알려야 합니다.
-- 자연어 작업 요청은 현재 프로젝트·작업 브랜치·사용 모델을 표시한 확인 메시지를 보낸 뒤 `y` 또는 `Y` 입력을 받아야 Job으로 생성합니다.
-- 완료 메시지에는 프로젝트명, 브랜치명, 커밋 해시, 변경 파일 목록을 포함합니다.
-- 실패 메시지는 너무 긴 로그 전체가 아니라 핵심 원인과 로그 위치를 안내합니다.
-- 명령어 도움말은 `/help`에서 확인 가능하게 유지합니다.
-- `/model`, `/status`, `/project`, `/branch`, `/rebase`, `/stop`처럼 선택지가 있는 명령은 인자 없이 호출했을 때 인라인 버튼을 우선 제공하고, 버튼 callback data는 인증된 콜백 쿼리에서 기존 슬래시 명령 경로로 처리합니다.
+- Process only allowed Chat ID/User ID values.
+- Reject unauthorized requests quietly or with a minimal response.
+- Send short, clear messages for received, started, completed, and failed states.
+- Natural-language job requests must show the current project, target branch, and model, then wait for `y` or `Y` confirmation before creating a job.
+- Completion messages must include project name, branch name, commit hash, changed files, model information when available, token usage when available, and an error summary on failure.
+- Failure messages should summarize the root cause and point to the log location instead of sending long logs.
+- Keep command help available through `/help`.
+- Commands with selectable options (`/model`, `/status`, `/project`, `/branch`, `/rebase`, `/stop`) should show inline buttons when called without arguments.
+- Inline button callback data must reuse the existing slash-command execution path after callback authentication.
+- `/init` resets the chat's selected project, default model, and pending confirmation state as if the server just started. It must not alter SQLite conversation memory or Git repositories.

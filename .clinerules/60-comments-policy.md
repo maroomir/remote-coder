@@ -1,57 +1,63 @@
-# 주석 정책 (Minimal Comments)
+# Comments Policy
 
-## 1. 핵심 원칙
+Applies to Python source, tests, and project scripts unless a task says otherwise.
 
-- 주석은 **코드가 말하지 못하는 것**만 남깁니다.
-- 이름·타입·구조로 읽히는 설명은 주석 대신 리팩터링으로 해결합니다.
-- 주석을 추가하기 전 “이 정보를 함수명·변수명·타입으로 드러낼 수는 없는가?”를 먼저 묻습니다.
+## Project Preference: Minimal Comments
 
-## 2. 남기는 주석
+- Default to adding no new comments.
+- Keep comments only for information the code cannot express.
+- Prefer clearer names, types, and structure over explanatory comments.
+- Do not add decorative section comments, narration, or docstrings that repeat signatures.
+- When unsure, leave the comment out.
 
-다음에 해당할 때만 주석을 추가합니다.
+## When to Add a Comment
 
-- **Why / 비자명한 제약**: 외부 API·OS·라이브러리 버그/한계로 어쩔 수 없는 선택임을 알릴 때.
-- **보안·운영 경고**: 프로덕션 영향, 권한 우회, 위험 옵션 사용 등 (`SECURITY:` 마커).
-- **도메인·규제 맥락**: 비즈니스 규칙, 정책, 외부 사양과 직접 연결되는 결정.
-- **성능·정확성 트레이드오프**: 의도된 선택임을 후속 독자에게 알릴 때.
-- **워크어라운드**: 이슈/PR 링크와 “언제 제거 가능한지” 조건 1줄 포함.
+Add a comment only when skipping it would likely mislead someone or hide a real constraint:
 
-## 3. 표준 마커
+- **Why / non-obvious constraint**: external API, OS, or library limitation.
+- **Security / operations warning**: production impact, permission bypass, dangerous option, trust boundary.
+- **Domain rule**: product, policy, or external specification that is not obvious from code.
+- **Performance / correctness tradeoff**: an intentional choice future readers might otherwise "fix."
+- **Workaround**: include an issue/PR reference and the condition for removal.
 
-다음 마커만 사용합니다. 나머지(`HACK`, `XXX` 등)는 의미가 흐려져 금지합니다.
+Prefer one tagged line when possible.
 
-| 마커 | 용도 |
+## Allowed Markers
+
+Use only these markers:
+
+| Marker | Use |
 |---|---|
-| `TODO(<이슈번호>):` | 트래킹 이슈가 있는 미완 작업 |
-| `FIXME(<이슈번호>):` | 알려진 버그/부정확함 |
-| `NOTE:` | "버그 아님"을 알려야 할 때 |
-| `SECURITY:` | 보안 가정·금지 사항 |
+| `TODO(<issue>):` | Planned work with a tracking issue |
+| `FIXME(<issue>):` | Known bug or incorrect behavior with a tracking issue |
+| `NOTE:` | Non-obvious contract, coupling, or "not a bug" context |
+| `SECURITY:` | Security assumption, trust boundary, or forbidden behavior |
 
-이슈 번호 없는 `TODO`/`FIXME`는 금지합니다.
+Do not use untracked `TODO` or `FIXME`. Do not use vague markers such as `HACK` or `XXX`.
 
-## 4. 금지
+## Do Not Add
 
-- "무엇을 하는지"를 재진술하는 `#` 주석 (`# Increment counter`, `# Return result` 류).
-- 함수·클래스 시그니처와 동어반복인 docstring (`def get_user(): """사용자를 반환한다."""`).
-- 주석 처리된 옛 코드 블록 — Git 히스토리로 충분합니다.
-- 채팅·감정 표현, 의미 없는 구분선.
+- Comments that restate implementation, such as `# Increment counter` or `# Return result`.
+- Docstrings that repeat function/class signatures.
+- Commented-out old code blocks. Git history is enough.
+- Decorative separators or chatty commentary.
 
-## 5. Docstring 사용 기준
+## Docstring Rules
 
-- 자명한 1줄 docstring은 제거합니다.
-- 도메인 규칙·제약·트레이드오프를 설명할 때만 docstring을 둡니다.
-- `__init__.py`, 단순 dataclass·DTO 모듈은 docstring을 두지 않습니다.
-- 외부 진입점(예: 라이브러리 공개 API, 복잡한 도메인 facade)은 짧은 docstring을 허용하되, 시그니처와 중복되지 않게 합니다.
+- Remove obvious one-line docstrings.
+- Use docstrings only for domain rules, constraints, tradeoffs, or complex public facades.
+- Do not add docstrings to `__init__.py`, simple dataclasses, or DTO modules.
+- Public library-style APIs may use short English docstrings when they do not duplicate the signature.
 
-## 6. 언어
+## Language
 
-- 코드 주석은 한국어를 유지합니다 (기존 톤·README와 일관).
-- 외부 표면(공개 라이브러리 API)을 만들 때는 영어 docstring도 허용합니다.
+- Prefer English for new code comments and docstrings.
+- Preserve existing Korean comments unless editing them is directly required.
 
-## 7. 리뷰 기준
+## Review Checklist
 
-PR 리뷰 시 새 주석에 대해 다음을 확인합니다.
+When adding or reviewing comments, verify:
 
-- 이 주석을 함수명·변수명·타입으로 대체할 수 있는가? → 가능하면 주석 제거.
-- 6개월 후 다른 사람이 읽었을 때 “왜 이렇게 했는지” 알려주는가? → 그렇지 않으면 제거.
-- 마커를 사용했다면 이슈 링크가 있는가? → 없으면 차단.
+- Could the comment be replaced by a better name, type, or structure?
+- Will it explain why this exists to someone reading the code six months later?
+- If it uses `TODO` or `FIXME`, does it include a tracking issue?

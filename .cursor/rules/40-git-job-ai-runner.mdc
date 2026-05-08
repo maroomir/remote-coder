@@ -1,37 +1,46 @@
 ---
-description: Git worktree, Job 상태, AI Runner 실행 규칙
+description: Git worktree, Job state, and AI Runner execution rules
 globs: "**/*.py"
 alwaysApply: true
 ---
 
-# Git, Job, AI Runner 규칙
+# Git, Job, and AI Runner Rules
 
-## 1. Git/worktree 규칙
+## Git / Worktree Rules
 
-- AI 작업은 기본 작업 디렉토리가 아니라 요청별 Git worktree에서 수행합니다.
-- 기본 브랜치 또는 현재 작업 브랜치를 직접 수정하지 않습니다.
-- 브랜치명은 사용자가 지정할 수 있으며, 미지정 시 안전한 slug와 timestamp로 생성합니다.
-- 변경 사항이 없으면 브랜치를 만들지 않고, 빈 커밋을 만들지 않습니다.
-- 변경 사항이 있으면 브랜치를 생성·커밋한 뒤 설정된 원격(기본 `origin`)에 push합니다.
-- 커밋 전 변경 파일 목록을 수집해 Job 결과에 포함합니다.
-- 자동 커밋 메시지는 `type: title`·bullet·`committed by remote-coder: <job-id>` 형식을 유지하고, `title`은 기능 수정 내용을 한 줄로 요약해야 하며 첫 번째 bullet은 사용자 원문이나 변경 파일명이 아니라 AI Agent가 수행한 변경 내용을 설명해야 합니다.
-- worktree 삭제/보존 정책은 명시적으로 설정 가능하게 만듭니다.
+- AI work must run in a request-specific Git worktree, not in the main working directory.
+- Never modify the default branch or currently checked-out branch directly for AI jobs.
+- Create detached worktrees from the current `HEAD` of the requested project repository.
+- Let users specify a branch name; otherwise generate a safe slug plus timestamp.
+- If there are no changes, do not create a branch, commit, or push.
+- If changes exist, create a branch, commit, then push to the configured remote (`origin` by default).
+- Collect changed files before commit and store them in the job result.
+- Automatic commit messages must use `type: title`, bullet body lines, and `committed by remote-coder: <job-id>`.
+- The title must summarize the functional change, not copy the user's raw request.
+- The first bullet must describe what the AI agent changed, not list recent files or repeat the prompt.
+- Store commit hash, branch name, and changed files in the job result.
+- Make worktree cleanup/preservation behavior explicit and configurable.
+- `/monitor branch` summarizes branch lists and counts.
+- `/branch` shows the current branch.
+- `/branch <name>` switches only to an existing local branch in the selected project.
+- `/rebase`, `/clear`, and other broad Git/state-changing commands must run only when the user explicitly calls them.
 
-## 2. Job 처리 규칙
+## Job Rules
 
-- 모든 작업은 고유 Job ID를 가져야 합니다.
-- Job 상태는 최소한 `queued`, `running`, `succeeded`, `failed`, `cancelled`를 지원합니다.
-- 작업별 timeout을 적용합니다.
-- 실패 시 어느 단계에서 실패했는지 기록합니다.
-- commit hash, branch name, changed files, 관측 가능한 세부 모델명, 토큰 사용량을 Job 결과에 저장합니다.
-- SQLite 대화 메모리에 Job 결과를 남길 때 관측 가능한 세부 모델명과 토큰 사용량을 함께 기록합니다.
+- Every job must have a unique Job ID.
+- Job state must support at least `queued`, `running`, `succeeded`, `failed`, and `cancelled`.
+- Apply per-job timeouts.
+- Record the stage where a failure occurred.
+- Store commit hash, branch name, changed files, observed detailed model name, and token usage when available.
+- Store job result summaries in SQLite conversation memory, including observed model and token usage when available.
 
-## 3. AI Runner 규칙
+## AI Runner Rules
 
-- Claude/Codex/Gemini 실행 코드는 공통 인터페이스 뒤에 둡니다.
-- Runner는 입력으로 작업 지시문, 작업 디렉토리, timeout, 환경 변수를 받습니다.
-- Runner는 stdout, stderr, exit code, 시작/종료 시각을 결과로 반환합니다.
-- Runner 로그에서 세부 모델명과 토큰 사용량을 관측할 수 있으면 구조화된 Job 필드로 추출합니다.
-- CLI 실행 시 인자를 문자열 결합으로 만들지 말고 리스트 기반 subprocess 호출을 우선합니다.
-- Runner 선택은 Strategy 또는 Factory 패턴을 활용해 조건문이 서비스 전반에 퍼지지 않도록 합니다.
-- Claude/Codex/Gemini CLI 호출부는 Adapter로 감싸 외부 프로세스 실행 세부사항이 도메인 로직에 새지 않게 합니다.
+- Claude, Codex, and Gemini execution must sit behind a shared runner interface.
+- Runner input should include instruction text, working directory, timeout, and environment.
+- Runner output should include stdout, stderr, exit code, start time, and end time.
+- Extract detailed model name and token usage from CLI logs when observable and store them as structured fields.
+- Build subprocess arguments as lists, not shell-joined strings.
+- Always set `cwd` and timeout explicitly.
+- Keep runner selection behind Strategy or Factory so model conditionals do not spread through services.
+- Wrap Claude/Codex/Gemini CLI details in adapters so domain logic does not depend on subprocess specifics.

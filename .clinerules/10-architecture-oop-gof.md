@@ -1,75 +1,90 @@
-# 아키텍처, 객체지향, GoF 디자인 패턴 규칙
+# Architecture, OOP, and GoF Pattern Rules
 
-## 1. 기본 개발 원칙
+## Core Development Principles
 
-- 기능은 작고 검증 가능한 단위로 구현합니다.
-- 외부 API, 파일 시스템, 프로세스 실행, Git 조작 코드는 가능한 한 서비스 계층 또는 Adapter 계층으로 분리합니다.
-- 텔레그램 Webhook 요청 처리는 빠르게 응답하고, 장시간 작업은 백그라운드 Job으로 분리합니다.
-- 운영 자동화보다 안전한 격리와 명확한 로그를 우선합니다.
-- MVP 단계에서는 과도한 추상화보다 명확한 구조와 테스트 가능한 코드를 우선합니다.
-- 요청이 모호하면 가정과 트레이드오프를 먼저 드러내고, 필요한 경우 구현 전에 확인합니다.
-- 요청을 해결하는 최소 변경을 선호하며, 요청되지 않은 기능·설정화·확장 포인트를 추가하지 않습니다.
-- 기존 코드는 필요한 범위만 외과적으로 수정하고, 주변 코드·주석·포맷을 임의로 정리하지 않습니다.
-- 객체지향 설계를 기본 개발 패러다임으로 삼고, 역할과 책임이 분명한 클래스를 작성합니다.
-- GoF 디자인 패턴은 문제를 단순화하고 변경 가능성을 낮출 때 적극 활용하되, 패턴 적용 자체가 목적이 되지 않도록 합니다.
+- Implement features in small, verifiable units.
+- Separate external APIs, file system access, process execution, and Git operations behind service or adapter layers.
+- Telegram webhook handlers must respond quickly; long-running AI work belongs in background jobs.
+- Prefer safe isolation and clear observability over operational automation.
+- In the MVP stage, prefer clear structure and testable code over premature abstraction.
+- When requests are ambiguous, surface assumptions and tradeoffs before editing.
+- Prefer the smallest change that satisfies the request.
+- Do not add unrequested features, configuration, or extension points.
+- Keep edits surgical. Do not clean up neighboring code, comments, or formatting unless directly required.
+- Use object-oriented design as the default development style.
+- Apply GoF patterns when they simplify the code or contain real variability. Do not add patterns for their own sake.
 
-## 2. OOP 원칙
+## OOP Rules
 
-- 단일 책임 원칙을 지켜 클래스와 모듈의 변경 이유를 하나에 가깝게 유지합니다.
-- 캡슐화를 통해 외부 API, Git 조작, 프로세스 실행, Telegram 호출 같은 세부 구현을 감춥니다.
-- 인터페이스 또는 추상 클래스를 사용해 Claude/Codex/Gemini Runner, Job Store, Notifier 같은 교체 가능한 구성 요소를 분리합니다.
-- 상속보다 조합을 우선합니다.
-- 도메인 개념을 명확히 표현하는 이름을 사용합니다. 예: `Job`, `JobManager`, `GitWorktreeService`, `AiRunner`, `TelegramNotifier`.
-- 함수와 메서드는 짧고 한 가지 일을 하도록 작성합니다.
+- Keep classes and modules close to single responsibility.
+- Encapsulate Telegram API calls, Git operations, subprocess execution, and AI CLI details.
+- Use interfaces or abstract base classes for replaceable components such as Claude/Codex/Gemini runners, job stores, and notifiers.
+- Prefer composition over inheritance.
+- Use domain names that reveal intent, such as `Job`, `JobManager`, `GitWorktreeService`, `AiRunner`, and `TelegramNotifier`.
+- Keep functions and methods short enough to explain one behavior.
 
-## 3. 권장 GoF 패턴
+## Recommended Patterns
 
-| 패턴 | 적용 후보 |
+| Pattern | Candidate use |
 |---|---|
-| Strategy | Claude/Codex/Gemini Runner 선택, 브랜치명 생성 정책, worktree 정리 정책 |
-| Factory Method / Abstract Factory | 설정에 따른 Runner, Store, Notifier 생성 |
-| Adapter | Telegram Bot API, Claude CLI, Codex CLI, Gemini CLI, Git CLI 래핑 |
-| Facade | Job 실행 흐름을 단순화하는 `JobManager` 또는 `JobOrchestrator` |
-| Template Method | 공통 AI 실행 흐름을 유지하면서 도구별 세부 실행만 변경 |
-| Command | 텔레그램 명령어(`/help`, `/model`, `/status`) 처리 객체화 |
-| Observer | Job 상태 변경 시 알림/로그/후처리 연결 |
-| State | Job 상태 전이를 명확히 모델링해야 할 때 |
-| Repository | Job 저장소, 프로젝트 설정 저장소 추상화 |
+| Strategy | Claude/Codex/Gemini runner selection, branch naming, worktree cleanup policy |
+| Factory Method / Abstract Factory | Runner, store, notifier, or repository creation from configuration |
+| Adapter | Telegram Bot API, Claude CLI, Codex CLI, Gemini CLI, Git CLI |
+| Facade | Job execution flow through `JobManager` or `JobOrchestrator` |
+| Template Method | Shared AI execution flow with tool-specific details |
+| Command | Telegram command handling such as `/help`, `/model`, `/status` |
+| Observer | Job state notifications, logs, and follow-up hooks |
+| State | Explicit job state transitions when they become complex |
+| Repository | Job storage and project configuration storage |
 
-## 4. 패턴 적용 기준
+## Pattern Adoption Rules
 
-- 분기문이 계속 늘어나는 경우 Strategy, Command, State 패턴을 우선 검토합니다.
-- 외부 도구나 API 호출부는 Adapter로 감싸 테스트 가능하게 만듭니다.
-- 생성 로직이 복잡해지면 Factory 계층으로 분리합니다.
-- 여러 서비스를 조합하는 긴 절차는 Facade 또는 Orchestrator로 단순화합니다.
-- 단순한 기능이나 단일 사용 코드에 불필요하게 많은 클래스를 만들지 않습니다. 복잡도가 실제로 생겼거나 예상 변경점이 분명할 때 패턴을 적용합니다.
+- If branching keeps growing, consider Strategy, Command, or State.
+- Wrap external tools and APIs with adapters so tests can mock them.
+- Move complex creation logic behind a factory.
+- Collapse long workflows behind a facade or orchestrator.
+- Do not create multiple classes for simple or single-use behavior. Apply a pattern only when complexity or variation is real.
 
-## 5. 권장 코드 구조
+## Recommended Code Structure
 
 ```text
 app/
-  main.py                 # FastAPI 앱 생성
-  config.py               # 환경 변수 및 설정
-  models.py               # 공통 데이터 모델
+  main.py                     # FastAPI application creation
+  config.py                   # Environment and settings
+  models.py                   # Shared models
   telegram/
-    webhook.py            # Webhook 라우터
-    notifier.py           # Telegram 메시지 발송
-    commands.py           # 명령어 파싱
+    webhook.py                # Webhook router
+    notifier.py               # Telegram message delivery
+    commands.py               # /help, /model, /status, etc.
+    parser.py                 # Message parsing
+    conversation.py           # SQLite conversation context
+    confirmations.py          # User confirmation flow
+    model_preferences.py      # Model selection state
+    project_preferences.py    # Project selection state
   jobs/
-    manager.py            # Job 생성/실행/상태 변경
-    store.py              # Job 저장소
-    schemas.py            # Job 모델
+    manager.py                # Job facade/orchestrator
+    store.py                  # Job store
+    schemas.py                # Job models
   git/
-    service.py            # Git/worktree 조작
+    service.py                # Git/worktree operations
+    branch_naming.py          # Branch naming policy
+    commit_message.py         # Commit message format
+    ai_commit.py              # AI run + commit orchestration
   ai/
-    base.py               # Runner 인터페이스
-    claude.py             # Claude Runner
-    codex.py              # Codex Runner
-    gemini.py             # Gemini Runner
+    base.py                   # AiRunner interface
+    claude.py                 # Claude Code runner
+    codex.py                  # Codex runner
+    gemini.py                 # Gemini runner
+    factory.py                # Runner factory
+  projects/
+    registry.py               # Project path/settings registry
   security/
-    auth.py               # allowlist 검증
-  utils/
-    logging.py
+    auth.py                   # Allowlist validation
+  monitoring/
+    log_buffer.py             # Ring buffer and MemoryLogHandler
+    events.py                 # EventLogger facade
+  admin/
+    router.py                 # Admin UI router
 tests/
 configs/
   projects.example.yaml
