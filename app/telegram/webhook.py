@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Header
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.ai.usage import format_token_usage
@@ -8,11 +8,10 @@ from app.jobs.manager import JobManager
 from app.jobs.schemas import Job, JobRequest
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.events import EventLogger
-from app.security.auth import AllowlistAuthService
-from app.telegram.commands import CommandContext, CommandRegistry, CommandResponse, TelegramMessage
+from app.telegram.commands import CommandRegistry, CommandResponse, TelegramMessage
+from app.telegram.bot_instances import BotInstanceManager
 from app.telegram.confirmations import PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
-from app.telegram.notifier import TelegramNotifier
 from app.telegram.parser import CommandParseError, CommandParser
 
 _inbound = EventLogger("app.telegram.inbound", "telegram.inbound")
@@ -114,24 +113,30 @@ class TelegramUpdate(BaseModel):
 
 
 def create_webhook_router(
-    auth_service: AllowlistAuthService,
+    bot_instance_manager: BotInstanceManager,
     parser: CommandParser,
     command_registry: CommandRegistry,
-    command_context: CommandContext,
     job_manager: JobManager,
     job_store: InMemoryJobStore,
-    notifier: TelegramNotifier,
-    webhook_secret: str | None = None,
     conversation_store: SQLiteConversationStore | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/telegram", tags=["telegram"])
 
-    @router.post("/webhook")
+    @router.post("/webhook/{token_hash}")
     def telegram_webhook(
+        token_hash: str,
         update: TelegramUpdate,
         background_tasks: BackgroundTasks,
         x_telegram_bot_api_secret_token: str | None = Header(default=None),
     ) -> dict[str, str]:
+        bot_instance = bot_instance_manager.get(token_hash)
+        if bot_instance is None:
+            raise HTTPException(status_code=404, detail="bot instance not found")
+        auth_service = bot_instance.auth_service
+        notifier = bot_instance.notifier
+        command_context = bot_instance.command_context
+        webhook_secret = bot_instance.webhook_secret
+
         _inbound.info("update received id=%s", update.update_id)
         if webhook_secret and x_telegram_bot_api_secret_token != webhook_secret:
             _authlog.warning("webhook secret mismatch update_id=%s", update.update_id)
@@ -291,7 +296,7 @@ def create_webhook_router(
             return {"status": "ok"}
 
         try:
-            request = parser.parse_natural(
+            parsed_request = parser.parse_natural(
                 message.text,
                 chat_id=chat_id,
                 user_id=user_id,
@@ -312,6 +317,7 @@ def create_webhook_router(
             )
             background_tasks.add_task(notifier.send_text, chat_id, str(exc))
             return {"status": "ignored"}
+        request = parsed_request.model_copy(update={"project": bot_instance.project_name})
 
         _cmdlog.info(
             "natural request parsed model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
@@ -325,9 +331,13 @@ def create_webhook_router(
             project=request.project,
         )
 
-        entry = command_context.project_registry.get(request.project)
+        entry = command_context.project_registry.get(bot_instance.project_name)
         if entry is None:
-            background_tasks.add_task(notifier.send_text, chat_id, f"알 수 없는 프로젝트: {request.project}")
+            background_tasks.add_task(
+                notifier.send_text,
+                chat_id,
+                f"알 수 없는 프로젝트: {bot_instance.project_name}",
+            )
             return {"status": "ignored"}
         try:
             current_branch = str(command_context.git_service.get_current_branch(entry.root_path))

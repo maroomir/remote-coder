@@ -15,7 +15,7 @@ from app.jobs.manager import JobManager
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.log_buffer import InMemoryLogBuffer, attach_app_memory_log_handler
 from app.monitoring.events import EventLogger
-from app.projects.registry import ProjectRegistry, projects_config_path_for_settings
+from app.projects.registry import ProjectRegistry, compute_token_hash, projects_config_path_for_settings
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import (
     BranchCommand,
@@ -36,6 +36,7 @@ from app.telegram.commands import (
     StopCommand,
     TelegramMessage,
 )
+from app.telegram.bot_instances import BotInstance, BotInstanceManager
 from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.notifier import TelegramNotifier
@@ -61,9 +62,6 @@ _systemlog = EventLogger("app.system", "system.lifecycle")
 _httplog = EventLogger("app.http", "http.request")
 
 job_store = InMemoryJobStore()
-auth_service = AllowlistAuthService(
-    set(settings.telegram_allowed_chat_ids), set(settings.telegram_allowed_user_ids)
-)
 model_preferences = InMemoryModelPreferenceStore(default_model=settings.default_model)
 project_preferences = InMemoryProjectPreferenceStore()
 confirmation_store = InMemoryConfirmationStore()
@@ -125,6 +123,21 @@ job_manager = JobManager(
     ai_commit_body_generator=AiCommitBodyGenerator(),
 )
 command_context.job_manager = job_manager
+def _build_bot_instance(record):
+    return BotInstance(
+        project_name=record.name,
+        token_hash=compute_token_hash(record.bot_token.get_secret_value()),
+        notifier=TelegramNotifier(record.bot_token.get_secret_value()),
+        auth_service=AllowlistAuthService(set(record.allowed_chat_ids), set(record.allowed_user_ids)),
+        command_context=command_context,
+        webhook_secret=record.webhook_secret.get_secret_value() if record.webhook_secret else None,
+    )
+
+
+bot_instance_manager = BotInstanceManager(_build_bot_instance)
+for project in project_registry.list_projects():
+    if project.enabled:
+        bot_instance_manager.register(project)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -202,18 +215,11 @@ app.include_router(
 )
 app.include_router(
     create_webhook_router(
-        auth_service=auth_service,
+        bot_instance_manager=bot_instance_manager,
         parser=parser,
         command_registry=command_registry,
-        command_context=command_context,
         job_manager=job_manager,
         job_store=job_store,
-        notifier=notifier,
-        webhook_secret=(
-            settings.telegram_webhook_secret.get_secret_value()
-            if settings.telegram_webhook_secret
-            else None
-        ),
         conversation_store=conversation_store,
     )
 )
