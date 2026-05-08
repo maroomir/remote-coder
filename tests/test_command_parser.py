@@ -23,7 +23,7 @@ def test_parse_natural_raises_on_empty(project_registry: ProjectRegistry):
 
 def test_parse_natural_uses_model_preference(project_registry: ProjectRegistry):
     pref = InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE)
-    pref.set(1, ModelName.CODEX)
+    pref.set("remote-coder", 1, ModelName.CODEX)
     parser = CommandParser(
         project_registry=project_registry,
         default_model=ModelName.CLAUDE,
@@ -31,6 +31,33 @@ def test_parse_natural_uses_model_preference(project_registry: ProjectRegistry):
     )
     req = parser.parse_natural("fix login bug", "remote-coder", chat_id=1, user_id=2)
     assert req.model == ModelName.CODEX
+
+
+def test_parse_natural_model_preference_scoped_by_project_same_chat_id(project_registry: ProjectRegistry):
+    root = project_registry.config_path.parent / "scoped_pref_repo"
+    root.mkdir()
+    wt = project_registry.config_path.parent / "scoped_pref_wt"
+    wt.mkdir()
+    project_registry.add_project(
+        ProjectRecord(
+            name="scoped-pref-proj",
+            root_path=root,
+            worktree_base_dir=wt,
+            default_model=ModelName.GEMINI,
+            enabled=True,
+            bot_token="123:scoped_pref",
+            allowed_chat_ids=[123],
+        )
+    )
+    pref = InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE)
+    pref.set("remote-coder", 42, ModelName.CODEX)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        model_preferences=pref,
+    )
+    req = parser.parse_natural("task", "scoped-pref-proj", chat_id=42, user_id=2)
+    assert req.model == ModelName.GEMINI
 
 
 def test_parse_natural_parses_model_branch_and_no_commit(project_registry: ProjectRegistry):

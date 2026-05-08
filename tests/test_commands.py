@@ -163,7 +163,7 @@ def test_model_command_updates_preference_to_gemini(project_registry: ProjectReg
     ctx = _ctx(project_registry)
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model gemini"), ctx)
     assert text == "기본 모델이 gemini로 변경되었습니다."
-    assert ctx.model_preferences.get(77) == ModelName.GEMINI
+    assert ctx.model_preferences.get(ctx.project_name, 77) == ModelName.GEMINI
 
 
 def test_model_command_returns_consistent_usage(project_registry: ProjectRegistry):
@@ -200,27 +200,36 @@ def test_init_command_resets_project_model_and_pending(project_registry: Project
     ctx = _ctx(project_registry)
     chat_id = 42
     ctx.project_name = "other"
-    ctx.model_preferences.set(chat_id, ModelName.CODEX)
-    ctx.confirmation_store.set(chat_id, PendingConfirmation(command_name="/clear", action="memory"))
+    ctx.model_preferences.set("other", chat_id, ModelName.CODEX)
+    ctx.confirmation_store.set(
+        "other",
+        chat_id,
+        PendingConfirmation(command_name="/clear", action="memory"),
+    )
 
     text = registry.dispatch(TelegramMessage(chat_id=chat_id, user_id=1, text="/init"), ctx)
     assert text is not None
     assert "초기화했습니다" in text
     assert "적용 프로젝트: other" in text
     assert "기본 모델: codex" in text
-    assert ctx.model_preferences.get(chat_id) == ModelName.CLAUDE
-    assert ctx.confirmation_store.get(chat_id) is None
+    assert ctx.model_preferences.get("other", chat_id) == ModelName.CLAUDE
+    assert ctx.confirmation_store.get("other", chat_id) is None
 
 
 def test_init_command_runs_when_clear_confirmation_pending(project_registry: ProjectRegistry):
     registry = CommandRegistry([InitCommand(), ClearCommand()])
     ctx = _ctx(project_registry)
     chat_id = 99
-    ctx.confirmation_store.set(chat_id, PendingConfirmation(command_name="/clear", action="memory"))
+    pname = ctx.project_name
+    ctx.confirmation_store.set(
+        pname,
+        chat_id,
+        PendingConfirmation(command_name="/clear", action="memory"),
+    )
 
     text = registry.dispatch(TelegramMessage(chat_id=chat_id, user_id=1, text="/init"), ctx)
     assert text is not None and "초기화했습니다" in text
-    assert ctx.confirmation_store.get(chat_id) is None
+    assert ctx.confirmation_store.get(pname, chat_id) is None
 
 
 def test_init_command_rejects_extra_args(project_registry: ProjectRegistry):

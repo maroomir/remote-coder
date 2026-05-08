@@ -8,22 +8,21 @@ from app.models import ModelName
 class InMemoryModelPreferenceStore:
     def __init__(self, default_model: ModelName) -> None:
         self._default_model = default_model
-        self._values: dict[int, ModelName] = {}
+        self._values: dict[tuple[str | None, int], ModelName] = {}
         self._lock = Lock()
 
-    def get(self, chat_id: int) -> ModelName:
+    def get(self, project_name: str | None, chat_id: int) -> ModelName:
         with self._lock:
-            return self._values.get(chat_id, self._default_model)
+            return self._values.get((project_name, chat_id), self._default_model)
 
-    def get_explicit(self, chat_id: int) -> ModelName | None:
+    def get_explicit(self, project_name: str | None, chat_id: int) -> ModelName | None:
         with self._lock:
-            return self._values.get(chat_id)
+            return self._values.get((project_name, chat_id))
 
-    def set(self, chat_id: int, model: ModelName) -> None:
+    def set(self, project_name: str | None, chat_id: int, model: ModelName) -> None:
         with self._lock:
-            self._values[chat_id] = model
+            self._values[(project_name, chat_id)] = model
 
-    def clear(self, chat_id: int) -> None:
-        # 선택을 제거하면 서버 기본 모델로 폴백합니다.
+    def clear(self, project_name: str | None, chat_id: int) -> None:
         with self._lock:
-            self._values.pop(chat_id, None)
+            self._values.pop((project_name, chat_id), None)

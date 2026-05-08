@@ -76,3 +76,58 @@ def test_list_recent_for_chat_filters_by_chat():
     store.create(new)
 
     assert [job.id for job in store.list_recent_for_chat(5)] == ["new", "old"]
+
+
+def test_list_recent_for_project_chat_filters_project_and_chat():
+    store = InMemoryJobStore()
+    base = datetime.now(UTC)
+    same_chat_other_proj = Job(
+        id="other-proj",
+        request=JobRequest(
+            project="other",
+            model=ModelName.CLAUDE,
+            instruction="i",
+            chat_id=5,
+            requested_by=5,
+        ),
+        created_at=base + timedelta(seconds=3),
+    )
+    same_proj_other_chat = Job(
+        id="other-chat",
+        request=JobRequest(
+            project="p",
+            model=ModelName.CLAUDE,
+            instruction="i",
+            chat_id=99,
+            requested_by=99,
+        ),
+        created_at=base + timedelta(seconds=2),
+    )
+    match_old = Job(
+        id="match-old",
+        request=JobRequest(
+            project="p",
+            model=ModelName.CLAUDE,
+            instruction="i",
+            chat_id=5,
+            requested_by=5,
+        ),
+        created_at=base,
+    )
+    match_new = Job(
+        id="match-new",
+        request=JobRequest(
+            project="p",
+            model=ModelName.CLAUDE,
+            instruction="i",
+            chat_id=5,
+            requested_by=5,
+        ),
+        created_at=base + timedelta(seconds=1),
+    )
+    store.create(match_old)
+    store.create(match_new)
+    store.create(same_proj_other_chat)
+    store.create(same_chat_other_proj)
+
+    assert [job.id for job in store.list_recent_for_project_chat("p", 5)] == ["match-new", "match-old"]

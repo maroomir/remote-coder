@@ -25,6 +25,9 @@ class JobStore(Protocol):
     def list_recent_for_chat(self, chat_id: int, limit: int = 20) -> list[Job]:
         ...
 
+    def list_recent_for_project_chat(self, project: str, chat_id: int, limit: int = 20) -> list[Job]:
+        ...
+
 
 class InMemoryJobStore:
     def __init__(self) -> None:
@@ -54,6 +57,16 @@ class InMemoryJobStore:
                 job
                 for job in self._jobs.values()
                 if job.request.chat_id == chat_id
+            ]
+            values.sort(key=lambda job: job.created_at, reverse=True)
+            return values[:limit]
+
+    def list_recent_for_project_chat(self, project: str, chat_id: int, limit: int = 20) -> list[Job]:
+        with self._lock:
+            values = [
+                job
+                for job in self._jobs.values()
+                if job.request.project == project and job.request.chat_id == chat_id
             ]
             values.sort(key=lambda job: job.created_at, reverse=True)
             return values[:limit]

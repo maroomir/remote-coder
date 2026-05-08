@@ -248,7 +248,8 @@ def create_webhook_router(
             return {"status": "ignored"}
 
         message = TelegramMessage(chat_id=chat_id, user_id=user_id, text=update.message.text)
-        pending = command_context.confirmation_store.get(chat_id)
+        scope_project = bot_instance.project_name
+        pending = command_context.confirmation_store.get(scope_project, chat_id)
         message_tokens = message.text.strip().split(maxsplit=1)
         message_head = message_tokens[0] if message_tokens else ""
         if (
@@ -256,7 +257,7 @@ def create_webhook_router(
             and pending.command_name == _NATURAL_JOB_CONFIRMATION
             and message_head != "/init"
         ):
-            confirmed = command_context.confirmation_store.pop(chat_id)
+            confirmed = command_context.confirmation_store.pop(scope_project, chat_id)
             if message.text.strip() not in {"y", "Y"}:
                 background_tasks.add_task(
                     notifier.send_text,
@@ -349,6 +350,7 @@ def create_webhook_router(
             return {"status": "ignored"}
 
         command_context.confirmation_store.set(
+            scope_project,
             chat_id,
             PendingConfirmation(
                 command_name=_NATURAL_JOB_CONFIRMATION,
