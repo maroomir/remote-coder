@@ -1,51 +1,71 @@
+from __future__ import annotations
+
 import sys
-import os
 import time
+from pathlib import Path
+
 import httpx
 from dotenv import load_dotenv
 
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
-def register_webhook(api_url: str, webhook_url: str, webhook_secret: str) -> bool:
+
+def register_webhook(
+    api_url: str,
+    webhook_url: str,
+    webhook_secret: str | None,
+) -> bool:
     max_attempts = 3
     connect_timeout = 10.0
     request_timeout = 30.0
 
+    payload: dict[str, object] = {
+        "url": webhook_url,
+        "drop_pending_updates": True,
+    }
+    if webhook_secret:
+        payload["secret_token"] = webhook_secret
+
     for attempt in range(1, max_attempts + 1):
-        print(f"텔레그램 서버에 요청 중... ({attempt}/{max_attempts})")
+        print(f"  텔레그램 서버에 요청 중... ({attempt}/{max_attempts})")
         try:
             response = httpx.post(
                 api_url,
-                json={
-                    "url": webhook_url,
-                    "secret_token": webhook_secret,
-                    "drop_pending_updates": True,
-                },
+                json=payload,
                 timeout=httpx.Timeout(request_timeout, connect=connect_timeout),
             )
             response.raise_for_status()
             result = response.json()
 
             if result.get("ok"):
-                print("✅ 웹훅 등록 성공!")
-                print(f"응답: {result.get('description')}")
+                print("  ✅ 웹훅 등록 성공!")
+                desc = result.get("description")
+                if desc:
+                    print(f"  응답: {desc}")
                 return True
 
-            print("❌ 웹훅 등록 실패!")
-            print(f"에러: {result}")
+            print("  ❌ 웹훅 등록 실패!")
+            print(f"  에러: {result}")
             return False
         except httpx.HTTPError as e:
-            print(f"❌ HTTP 요청 실패: {e}")
+            print(f"  ❌ HTTP 요청 실패: {e}")
             if attempt < max_attempts:
                 wait_seconds = attempt * 2
-                print(f"⏳ {wait_seconds}초 후 재시도합니다...")
+                print(f"  ⏳ {wait_seconds}초 후 재시도합니다...")
                 time.sleep(wait_seconds)
 
     return False
 
-def main():
+
+def main() -> None:
     if len(sys.argv) < 2:
         print("사용법: python scripts/set_webhook.py <PUBLIC_HTTPS_URL>")
         print("예시: python scripts/set_webhook.py https://abcd-1234.ngrok-free.app")
+        print("")
+        print("프로젝트 레지스트리(.remote-coder/projects.json 등)에 등록된")
+        print("활성화(enabled) 프로젝트마다 봇 토큰으로 setWebhook 을 호출합니다.")
         sys.exit(1)
 
     public_url = sys.argv[1].rstrip("/")
@@ -53,29 +73,72 @@ def main():
         print("에러: URL은 반드시 https:// 로 시작해야 합니다.")
         sys.exit(1)
 
-    # .env 파일 로드
     load_dotenv()
 
-    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET")
+    from app.config import get_settings
+    from app.projects.registry import (
+        ProjectRegistry,
+        compute_token_hash,
+        projects_config_path_for_settings,
+    )
 
-    if not bot_token:
-        print("에러: .env 파일에 TELEGRAM_BOT_TOKEN이 설정되어 있지 않습니다.")
-        sys.exit(1)
-    if not webhook_secret:
-        print("에러: .env 파일에 TELEGRAM_WEBHOOK_SECRET이 설정되어 있지 않습니다.")
+    settings = get_settings()
+    config_path = projects_config_path_for_settings(
+        settings.project_root,
+        settings.projects_config_path,
+    )
+    registry = ProjectRegistry(config_path)
+    registry.load()
+
+    enabled = [p for p in registry.list_projects() if p.enabled]
+    if not enabled:
+        print(
+            f"에러: 활성화된 프로젝트가 없습니다. ({config_path})",
+        )
         sys.exit(1)
 
-    webhook_url = f"{public_url}/telegram/webhook"
-    api_url = f"https://api.telegram.org/bot{bot_token}/setWebhook"
+    print(f"설정 파일: {config_path}")
+    print(f"대상: 활성화 프로젝트 {len(enabled)}개")
+    print("")
 
-    print(f"웹훅 URL을 다음으로 설정합니다: {webhook_url}")
-    try:
-        if not register_webhook(api_url=api_url, webhook_url=webhook_url, webhook_secret=webhook_secret):
-            sys.exit(1)
-    except Exception as e:
-        print(f"❌ 알 수 없는 에러 발생: {e}")
+    any_failed = False
+    for record in enabled:
+        token = record.bot_token.get_secret_value().strip()
+        if not token:
+            print(f"[{record.name}] ❌ bot_token 이 비어 있습니다.")
+            any_failed = True
+            continue
+
+        token_hash = compute_token_hash(token)
+        webhook_url = f"{public_url}/telegram/webhook/{token_hash}"
+        api_url = f"https://api.telegram.org/bot{token}/setWebhook"
+        secret = (
+            record.webhook_secret.get_secret_value().strip()
+            if record.webhook_secret
+            else ""
+        ) or None
+
+        print(f"[{record.name}] 웹훅 URL: {webhook_url}")
+        if secret:
+            print(f"[{record.name}] secret_token: 등록함")
+        else:
+            print(f"[{record.name}] secret_token: 없음 (선택 사항)")
+
+        try:
+            if not register_webhook(
+                api_url=api_url,
+                webhook_url=webhook_url,
+                webhook_secret=secret,
+            ):
+                any_failed = True
+        except Exception as e:
+            print(f"[{record.name}] ❌ 알 수 없는 에러: {e}")
+            any_failed = True
+        print("")
+
+    if any_failed:
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
