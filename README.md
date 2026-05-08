@@ -191,9 +191,9 @@ ngrok version
 - `/rebase <branch>` : 직접 브랜치를 지정해 rebase
 - `/pr` : 인라인 버튼으로 로컬 브랜치 선택 후 GitHub Pull Request 생성. PR 본문에는 해당 브랜치 작업 시 주고받은 요청과 AI 결과가 포함됩니다. GitHub CLI(`gh`)가 필요합니다 (`gh auth login`).
 - `/pr <branch>` : 직접 브랜치를 지정해 PR 생성
-- `/clear branch` : 등록된 enabled 프로젝트마다 `remote-*` 로컬·원격 브랜치와 연결된 linked worktree 정리
-- `/clear worktrees` : 등록된 enabled 프로젝트마다 관리 대상 worktree(`WORKTREE_BASE_DIR` 하위 및 `remote-*` checkout linked worktree) 정리 + stale entry prune
-- `/clear memory` : 대화 기억 SQLite 데이터베이스 초기화
+- `/clear branch` : **이 봇에 묶인 프로젝트**에서만 `remote-*` 로컬·원격 브랜치와 연결된 linked worktree 정리
+- `/clear worktrees` : **이 봇 프로젝트**의 관리 대상 worktree 정리 + stale entry prune
+- `/clear memory` : **이 봇 프로젝트 + 현재 채팅**의 대화 기억(SQLite)만 삭제
 - `/stop` : 진행 중인 Job 목록에서 인라인 버튼으로 선택해 중단
 - `/stop <job_id>` : 지정한 Job 강제 중단 (queued/running 상태만 가능)
 - `/monitor model` : 현재 채팅 기본 모델 기준 Claude(`claude auth status`) / Codex(`codex --version`) / Gemini(`gemini --version`) 등 CLI Probe + 로컬 CLI 로그에서 관측한 실제 사용량 요약. Codex 세션 로그에 `rate_limits`가 있으면 5시간/주간 잔여율과 리셋 시각도 표시하고, Claude/Gemini는 로컬 transcript/chat 로그의 세부 모델·토큰·요청 수를 표시합니다.
@@ -240,6 +240,8 @@ ngrok version
 - Worktree가 read-only로 실패할 때: [`docs/read-only-workspace.md`](docs/read-only-workspace.md)
 
 ## 6) 테스트
+
+멀티봇 라우팅·알림 격리·프로젝트 스코프 상태는 `tests/test_webhook_multibot.py`, `tests/test_bot_instance_manager.py`, `tests/test_project_scoped_state.py` 등에서 다룹니다.
 
 ```bash
 conda activate remote-coder

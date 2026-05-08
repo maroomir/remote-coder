@@ -3,7 +3,7 @@
 ## Security Rules
 
 - Never hard-code bot tokens, API keys, private paths, personal Chat IDs, or credentials.
-- Store secrets in `.env` or local configuration files (optional seeds). Primary bot tokens and per-project allowlists live in the projects registry; treat that file like a secret—restrict permissions and never commit tokens. Commit only examples such as `.env.example`.
+- Store secrets in `.env` or local configuration files (optional seeds). Primary bot tokens and per-project allowlists live in the projects registry (**tokens are plain text in that file**); treat that file like a secret—restrict permissions and never commit tokens. Commit only examples such as `.env.example`.
 - Validate Telegram Chat ID/User ID allowlists before processing any command or natural-language job request. Allowlists are per registered project / bot instance.
 - Never run Git or AI work outside registered project paths.
 - Never execute user messages directly as shell commands.
@@ -26,4 +26,4 @@
 - Commands with selectable options (`/model`, `/status`, `/branch`, `/rebase`, `/stop`) should show inline buttons when called without arguments.
 - Inline button callback data must reuse the existing slash-command execution path after callback authentication.
 - `/init` resets the chat's default model override and pending confirmation state as if the server just started. It must not alter SQLite conversation memory or Git repositories.
-- There is no `/project` command: the Telegram bot is bound to one registered project; webhook URL uses a hash derived from the bot token (full SHA-256 hex), not the raw token.
+- There is no `/project` command: the Telegram bot is bound to one registered project; webhook URL uses the first **16 hex characters** of the SHA-256 digest of the bot token as the path segment, not the raw token.

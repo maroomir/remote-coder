@@ -4,13 +4,13 @@ This document gives AI coding agents the project-specific context and workflow n
 
 ## Project Identity
 
-`remote-coder` is a FastAPI automation service that lets an allowed Telegram user run local AI coding tools remotely. Each registered project can use its own bot token and allowlist; the webhook path includes a SHA-256 hash of that token so Telegram delivers updates to the correct bot instance. Shared services (job manager, Git worktree service, parser, command registry, conversation store) handle work after routing.
+`remote-coder` is a FastAPI automation service that lets an allowed Telegram user run local AI coding tools remotely. Each registered project can use its own bot token and allowlist; the webhook path uses the **first 16 hex characters** of the SHA-256 digest of that token as the routing key (not the raw token). After routing, **bot instance = project context**: slash commands, confirmations, model prefs, recent jobs, and natural-language parsing are scoped to that project; shared services (job manager, Git worktree service, parser, command registry) operate with that binding.
 
 Core flow:
 
 ```text
 Telegram Message
-  -> FastAPI Webhook (/telegram/webhook/{token_hash})
+  -> FastAPI Webhook (/telegram/webhook/{sha256_prefix16})
   -> BotInstanceManager -> per-bot Auth / Notifier / CommandContext.project_name
   -> Command Parser
   -> Job Manager

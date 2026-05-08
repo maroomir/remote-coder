@@ -7,3 +7,5 @@
 @.clinerules/40-git-job-ai-runner.md
 @.clinerules/50-testing-docs-sync.md
 @.clinerules/60-comments-policy.md
+
+Multi-bot: each registered project uses its own bot; webhook paths use the first 16 hex chars of SHA-256(bot token). See `PLAN.md`, `docs/multi-bot-setup.md`, and `AGENTS.md`.

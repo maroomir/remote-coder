@@ -17,6 +17,12 @@ Default command:
 conda run -n remote-coder pytest -q
 ```
 
+CI-style full pass (disables unrelated pytest plugins that may ship with the environment):
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 conda run -n remote-coder pytest -q -p pytest_asyncio.plugin -p respx.fixtures
+```
+
 For narrower work, run the focused test file or test case first, then broaden when the change affects shared behavior.
 
 ## Testing Priorities
@@ -29,6 +35,7 @@ For narrower work, run the focused test file or test case first, then broaden wh
 - Notifier message formatting.
 - Strategy, Command, Adapter, Factory, State, and Repository objects when introduced.
 - Event logging behavior at Telegram, Job, Git, and Runner boundaries.
+- Multi-bot webhook routing, per-project notifier resolution, and project-scoped chat state (confirmations, model prefs, job lists).
 
 ## Test Design Rules
 

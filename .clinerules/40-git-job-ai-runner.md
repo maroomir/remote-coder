@@ -30,6 +30,7 @@ committed by remote-coder: <job-id>
 
 ## Job Rules
 
+- In multi-bot setups, job listings and cancel flows (`/status`, `/stop`) filter by the **bot-bound project** as well as chat; the same Telegram `chat_id` talking to two bots keeps separate job views.
 - Every job must have a unique Job ID.
 - Job state must support at least `queued`, `running`, `succeeded`, `failed`, and `cancelled`.
 - Apply per-job timeouts.
