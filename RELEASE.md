@@ -73,6 +73,8 @@ git push origin <release-branch>
 git push origin vX.Y.Z
 ```
 
+`v*.*.*` 태그가 원격에 푸시되면 `.github/workflows/release.yml`이 테스트·sdist/휠 빌드·`twine check` 후 GitHub Release를 만들고, 산출물(`*.tar.gz`, `*.whl`, `SHA256SUMS`)과 `CHANGELOG.md` 기반 릴리즈 노트를 첨부합니다. 로컬에서 태그만 올린 경우와 동일하게 동작합니다.
+
 GitHub Release에는 다음 내용을 포함합니다.
 
 - 버전: `vX.Y.Z`
