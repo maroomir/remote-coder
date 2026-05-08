@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from pydantic import BaseModel, Field
 
@@ -134,7 +136,7 @@ def create_webhook_router(
             raise HTTPException(status_code=404, detail="bot instance not found")
         auth_service = bot_instance.auth_service
         notifier = bot_instance.notifier
-        command_context = bot_instance.command_context
+        command_context = replace(bot_instance.command_context, project_name=bot_instance.project_name)
         webhook_secret = bot_instance.webhook_secret
 
         _inbound.info("update received id=%s", update.update_id)

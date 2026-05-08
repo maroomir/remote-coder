@@ -14,7 +14,6 @@ from app.telegram.commands import (
     InitCommand,
     ModelCommand,
     MonitorCommand,
-    ProjectCommand,
     ReportsCommand,
     RebaseCommand,
     StartCommand,
@@ -26,7 +25,6 @@ from app.telegram.commands import (
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
-from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
 
 def _ctx(
@@ -52,7 +50,7 @@ def _ctx(
         default_model=ModelName.CLAUDE,
         project_registry=project_registry,
         model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-        project_preferences=InMemoryProjectPreferenceStore(),
+        project_name=project_registry.get_default_project_name(),
         git_service=git_service,
         git_remote_name="origin",
         conversation_store=conversation_store,
@@ -67,7 +65,6 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
             HelpCommand(),
             ModelCommand(),
             StatusCommand(),
-            ProjectCommand(),
             InitCommand(),
             ReportsCommand(),
             BranchCommand(),
@@ -80,7 +77,7 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert text is not None
     assert text.startswith("도움말")
     assert "작업 지시는 일반 메시지로 보내세요." in text
-    assert "옵션: project:, model:, branch:, no commit" in text
+    assert "옵션: model:, branch:, no commit" in text
     assert "명령어 목록:" in text
     assert "/clear branch:" not in text
 
@@ -180,117 +177,7 @@ def test_monitor_project_lists_registry(project_registry: ProjectRegistry):
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/monitor project"), _ctx(project_registry))
     assert text is not None
     assert "remote-coder" in text
-    assert "이 채팅 적용 프로젝트" in text
-
-
-def test_project_command_shows_default_when_no_chat_preference(project_registry: ProjectRegistry):
-    registry = CommandRegistry([ProjectCommand()])
-    text = registry.dispatch(TelegramMessage(chat_id=5, user_id=1, text="/project"), _ctx(project_registry))
-    assert text is not None
-    assert "현재 작업 프로젝트" in text
-    assert "remote-coder" in text
-
-
-def test_project_command_shows_enabled_project_buttons(project_registry: ProjectRegistry):
-    root = project_registry.config_path.parent / "button_repo"
-    root.mkdir()
-    wt = project_registry.config_path.parent / "button_wt"
-    wt.mkdir()
-    project_registry.add_project(
-        ProjectRecord(
-            name="button",
-            root_path=root,
-            worktree_base_dir=wt,
-            enabled=True,
-        )
-    )
-    registry = CommandRegistry([ProjectCommand()])
-    response = registry.dispatch_rich(TelegramMessage(chat_id=5, user_id=1, text="/project"), _ctx(project_registry))
-
-    assert response is not None
-    assert response.inline_buttons is not None
-    assert InlineButton("remote-coder", "/project remote-coder") in response.inline_buttons[0]
-    assert InlineButton("button", "/project button") in response.inline_buttons[0]
-
-
-def test_project_command_switches_chat_preference(project_registry: ProjectRegistry):
-    root = project_registry.config_path.parent / "other_repo"
-    root.mkdir()
-    wt = project_registry.config_path.parent / "other_wt"
-    wt.mkdir()
-    project_registry.add_project(
-        ProjectRecord(
-            name="other",
-            root_path=root,
-            worktree_base_dir=wt,
-            default_model=ModelName.CODEX,
-            enabled=True,
-        )
-    )
-    registry = CommandRegistry([ProjectCommand()])
-    ctx = _ctx(project_registry)
-    text = registry.dispatch(TelegramMessage(chat_id=88, user_id=1, text="/project other"), ctx)
-    assert text is not None and "other" in text and "변경" in text
-    assert "기본 모델: codex" in text
-    current = registry.dispatch(TelegramMessage(chat_id=88, user_id=1, text="/project"), ctx)
-    assert current is not None and "other" in current
-
-
-def test_project_command_resets_chat_model_to_project_default(project_registry: ProjectRegistry):
-    root = project_registry.config_path.parent / "model_reset_repo"
-    root.mkdir()
-    wt = project_registry.config_path.parent / "model_reset_wt"
-    wt.mkdir()
-    project_registry.add_project(
-        ProjectRecord(
-            name="model-reset",
-            root_path=root,
-            worktree_base_dir=wt,
-            default_model=ModelName.CLAUDE,
-            enabled=True,
-        )
-    )
-    registry = CommandRegistry([ProjectCommand(), ModelCommand()])
-    ctx = _ctx(project_registry)
-    chat_id = 99
-    ctx.model_preferences.set(chat_id, ModelName.CODEX)
-
-    text = registry.dispatch(TelegramMessage(chat_id=chat_id, user_id=1, text="/project model-reset"), ctx)
-    current = registry.dispatch(TelegramMessage(chat_id=chat_id, user_id=1, text="/model"), ctx)
-
-    assert text is not None and "기본 모델: claude" in text
-    assert ctx.model_preferences.get_explicit(chat_id) is None
-    assert current == "현재 기본 모델: claude"
-
-
-def test_project_command_unknown_project(project_registry: ProjectRegistry):
-    registry = CommandRegistry([ProjectCommand()])
-    text = registry.dispatch(
-        TelegramMessage(chat_id=1, user_id=1, text="/project nope"),
-        _ctx(project_registry),
-    )
-    assert text is not None and "알 수 없는" in text
-
-
-def test_project_command_rejects_disabled_project(project_registry: ProjectRegistry):
-    root = project_registry.config_path.parent / "off_repo"
-    root.mkdir()
-    wt = project_registry.config_path.parent / "off_wt"
-    wt.mkdir()
-    project_registry.add_project(
-        ProjectRecord(
-            name="offproj",
-            root_path=root,
-            worktree_base_dir=wt,
-            enabled=False,
-        )
-    )
-    registry = CommandRegistry([ProjectCommand()])
-    text = registry.dispatch(
-        TelegramMessage(chat_id=1, user_id=1, text="/project offproj"),
-        _ctx(project_registry),
-    )
-    assert text is not None and "비활성화" in text
+    assert "이 봇 프로젝트" in text
 
 
 def test_init_command_resets_project_model_and_pending(project_registry: ProjectRegistry):
@@ -305,21 +192,22 @@ def test_init_command_resets_project_model_and_pending(project_registry: Project
             worktree_base_dir=wt,
             default_model=ModelName.CODEX,
             enabled=True,
+            bot_token="123:other",
+            allowed_chat_ids=[123],
         )
     )
-    registry = CommandRegistry([InitCommand(), ClearCommand(), ModelCommand(), ProjectCommand()])
+    registry = CommandRegistry([InitCommand(), ClearCommand(), ModelCommand()])
     ctx = _ctx(project_registry)
     chat_id = 42
-    ctx.project_preferences.set(chat_id, "other")
+    ctx.project_name = "other"
     ctx.model_preferences.set(chat_id, ModelName.CODEX)
     ctx.confirmation_store.set(chat_id, PendingConfirmation(command_name="/clear", action="memory"))
 
     text = registry.dispatch(TelegramMessage(chat_id=chat_id, user_id=1, text="/init"), ctx)
     assert text is not None
     assert "초기화했습니다" in text
-    assert "적용 프로젝트: remote-coder" in text
-    assert "기본 모델: claude" in text
-    assert ctx.project_preferences.get(chat_id) is None
+    assert "적용 프로젝트: other" in text
+    assert "기본 모델: codex" in text
     assert ctx.model_preferences.get(chat_id) == ModelName.CLAUDE
     assert ctx.confirmation_store.get(chat_id) is None
 
@@ -634,12 +522,14 @@ def test_monitor_code_counts_lines(project_registry: ProjectRegistry, tmp_path):
             root_path=root,
             worktree_base_dir=tmp_path / "wt",
             enabled=True,
+            bot_token="123:countproj",
+            allowed_chat_ids=[123],
         )
     )
     project_registry.set_default_project("countproj")
     registry = CommandRegistry([MonitorCommand()])
     ctx = _ctx(project_registry)
-    ctx.project_preferences.set(7, "countproj")
+    ctx.project_name = "countproj"
     text = registry.dispatch(TelegramMessage(chat_id=7, user_id=1, text="/monitor code"), ctx)
     assert text is not None
     assert "코드 규모" in text
@@ -693,68 +583,3 @@ def test_dispatch_rich_returns_none_for_natural_language(project_registry: Proje
     assert response is None
 
 
-def _ctx_with_auto_pull(project_registry: ProjectRegistry, *, enabled: bool) -> CommandContext:
-    from app.admin.advanced_settings import AdvancedSettings
-
-    settings_store = Mock()
-    settings_store.get.return_value = AdvancedSettings(auto_pull_on_project_switch=enabled)
-    ctx = _ctx(project_registry)
-    ctx.advanced_settings_store = settings_store
-    return ctx
-
-
-def test_project_command_auto_pull_enabled(project_registry: ProjectRegistry):
-    root = project_registry.config_path.parent / "pull_repo"
-    root.mkdir()
-    wt = project_registry.config_path.parent / "pull_wt"
-    wt.mkdir()
-    project_registry.add_project(
-        ProjectRecord(name="pullproj", root_path=root, worktree_base_dir=wt, enabled=True)
-    )
-    ctx = _ctx_with_auto_pull(project_registry, enabled=True)
-    ctx.git_service.pull_repository.return_value = "원격(origin)에서 모든 정보를 가져왔습니다."
-
-    registry = CommandRegistry([ProjectCommand()])
-    text = registry.dispatch(TelegramMessage(chat_id=10, user_id=1, text="/project pullproj"), ctx)
-
-    assert text is not None
-    assert "변경" in text
-    assert "원격(origin)" in text
-    ctx.git_service.pull_repository.assert_called_once_with(root, "origin")
-
-
-def test_project_command_auto_pull_disabled(project_registry: ProjectRegistry):
-    root = project_registry.config_path.parent / "nopull_repo"
-    root.mkdir()
-    wt = project_registry.config_path.parent / "nopull_wt"
-    wt.mkdir()
-    project_registry.add_project(
-        ProjectRecord(name="nopullproj", root_path=root, worktree_base_dir=wt, enabled=True)
-    )
-    ctx = _ctx_with_auto_pull(project_registry, enabled=False)
-
-    registry = CommandRegistry([ProjectCommand()])
-    text = registry.dispatch(TelegramMessage(chat_id=11, user_id=1, text="/project nopullproj"), ctx)
-
-    assert text is not None and "변경" in text
-    ctx.git_service.pull_repository.assert_not_called()
-
-
-def test_project_command_auto_pull_failure_still_switches(project_registry: ProjectRegistry):
-    root = project_registry.config_path.parent / "failpull_repo"
-    root.mkdir()
-    wt = project_registry.config_path.parent / "failpull_wt"
-    wt.mkdir()
-    project_registry.add_project(
-        ProjectRecord(name="failpull", root_path=root, worktree_base_dir=wt, enabled=True)
-    )
-    ctx = _ctx_with_auto_pull(project_registry, enabled=True)
-    ctx.git_service.pull_repository.side_effect = RuntimeError("network error")
-
-    registry = CommandRegistry([ProjectCommand()])
-    text = registry.dispatch(TelegramMessage(chat_id=12, user_id=1, text="/project failpull"), ctx)
-
-    assert text is not None
-    assert "변경" in text
-    assert "git pull 실패" in text
-    assert ctx.project_preferences.get(12) == "failpull"

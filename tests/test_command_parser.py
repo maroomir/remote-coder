@@ -5,7 +5,6 @@ from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.parser import CommandParseError, CommandParser
-from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
 
 def test_parse_natural_returns_job_request(project_registry: ProjectRegistry):
@@ -54,32 +53,6 @@ def test_parse_natural_parses_gemini_model(project_registry: ProjectRegistry):
     assert req.instruction == "fix login bug"
 
 
-def test_parse_natural_project_option(project_registry: ProjectRegistry):
-    root = project_registry.config_path.parent / "other_repo"
-    root.mkdir()
-    wt = project_registry.config_path.parent / "other_wt"
-    wt.mkdir()
-    project_registry.add_project(
-        ProjectRecord(
-            name="other",
-            root_path=root,
-            worktree_base_dir=wt,
-            default_model=ModelName.CODEX,
-            enabled=True,
-        )
-    )
-    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
-    req = parser.parse_natural("project: other do work", chat_id=1, user_id=2)
-    assert req.project == "other"
-    assert req.instruction == "do work"
-
-
-def test_parse_natural_unknown_project(project_registry: ProjectRegistry):
-    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
-    with pytest.raises(CommandParseError, match="알 수 없는"):
-        parser.parse_natural("project: nope fix", chat_id=1, user_id=2)
-
-
 def test_parse_natural_no_model_preferences_uses_project_default(project_registry: ProjectRegistry):
     root = project_registry.config_path.parent / "codex_only_repo"
     root.mkdir()
@@ -92,6 +65,8 @@ def test_parse_natural_no_model_preferences_uses_project_default(project_registr
             worktree_base_dir=wt,
             default_model=ModelName.CODEX,
             enabled=True,
+            bot_token="123:special",
+            allowed_chat_ids=[123],
         )
     )
     parser = CommandParser(
@@ -99,7 +74,8 @@ def test_parse_natural_no_model_preferences_uses_project_default(project_registr
         default_model=ModelName.CLAUDE,
         model_preferences=None,
     )
-    req = parser.parse_natural("project: special task", chat_id=1, user_id=2)
+    project_registry.set_default_project("special")
+    req = parser.parse_natural("task", chat_id=1, user_id=2)
     assert req.model == ModelName.CODEX
 
 
@@ -117,6 +93,8 @@ def test_parse_natural_without_explicit_model_preference_uses_project_default(
             worktree_base_dir=wt,
             default_model=ModelName.CODEX,
             enabled=True,
+            bot_token="123:project_default",
+            allowed_chat_ids=[123],
         )
     )
     parser = CommandParser(
@@ -125,61 +103,10 @@ def test_parse_natural_without_explicit_model_preference_uses_project_default(
         model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
     )
 
-    req = parser.parse_natural("project: project_default task", chat_id=1, user_id=2)
+    project_registry.set_default_project("project_default")
+    req = parser.parse_natural("task", chat_id=1, user_id=2)
 
     assert req.model == ModelName.CODEX
-
-
-def test_parse_natural_uses_project_preference(project_registry: ProjectRegistry):
-    root = project_registry.config_path.parent / "pref_repo"
-    root.mkdir()
-    wt = project_registry.config_path.parent / "pref_wt"
-    wt.mkdir()
-    project_registry.add_project(
-        ProjectRecord(
-            name="other",
-            root_path=root,
-            worktree_base_dir=wt,
-            default_model=ModelName.CODEX,
-            enabled=True,
-        )
-    )
-    pref = InMemoryProjectPreferenceStore()
-    pref.set(7, "other")
-    parser = CommandParser(
-        project_registry=project_registry,
-        default_model=ModelName.CLAUDE,
-        project_preferences=pref,
-    )
-    req = parser.parse_natural("do something", chat_id=7, user_id=2)
-    assert req.project == "other"
-    assert req.instruction == "do something"
-
-
-def test_parse_natural_project_option_overrides_chat_preference(project_registry: ProjectRegistry):
-    root = project_registry.config_path.parent / "pref2_repo"
-    root.mkdir()
-    wt = project_registry.config_path.parent / "pref2_wt"
-    wt.mkdir()
-    project_registry.add_project(
-        ProjectRecord(
-            name="other",
-            root_path=root,
-            worktree_base_dir=wt,
-            default_model=ModelName.CODEX,
-            enabled=True,
-        )
-    )
-    pref = InMemoryProjectPreferenceStore()
-    pref.set(7, "other")
-    parser = CommandParser(
-        project_registry=project_registry,
-        default_model=ModelName.CLAUDE,
-        project_preferences=pref,
-    )
-    req = parser.parse_natural("project: remote-coder fix bug", chat_id=7, user_id=2)
-    assert req.project == "remote-coder"
-    assert req.instruction == "fix bug"
 
 
 def test_parse_natural_rejects_invalid_branch_token(project_registry: ProjectRegistry):

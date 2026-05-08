@@ -19,7 +19,6 @@ from app.projects.registry import ProjectRegistry
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
-from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
 if TYPE_CHECKING:
     from app.admin.advanced_settings import FileAdvancedSettingsStore
@@ -42,7 +41,7 @@ class CommandContext:
     default_model: ModelName
     project_registry: ProjectRegistry
     model_preferences: InMemoryModelPreferenceStore
-    project_preferences: InMemoryProjectPreferenceStore
+    project_name: str | None
     git_service: GitWorktreeService
     git_remote_name: str
     confirmation_store: InMemoryConfirmationStore
@@ -75,12 +74,11 @@ HELP_TEXT = "\n".join(
         "도움말",
         "",
         "작업 지시는 일반 메시지로 보내세요.",
-        "옵션: project:, model:, branch:, no commit",
+        "옵션: model:, branch:, no commit",
         "",
         "명령어 목록:",
         "/model <claude|codex|gemini> - 기본 모델 변경",
         "/status <job_id> - 작업 상태 확인",
-        "/project <이름> - 작업 프로젝트 전환",
         "/branch [이름] - 브랜치 조회 또는 전환",
         "/pull - 원격 저장소의 모든 브랜치 pull",
         "/rebase [브랜치] - 브랜치 리베이스",
@@ -104,11 +102,8 @@ def _job_button_label(job: Job) -> str:
 
 
 def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | None:
-    pref = ctx.project_preferences.get(chat_id)
-    if pref:
-        return pref
-    default = ctx.project_registry.get_default_project_name()
-    return default or None
+    _ = chat_id
+    return ctx.project_name
 
 
 def effective_model_for_chat(ctx: CommandContext, chat_id: int, project_name: str | None) -> ModelName:
@@ -154,7 +149,6 @@ class StartCommand(TelegramCommand):
     name = "/start"
 
     _TOPIC_TEXT: dict[str, str] = {
-        "project": "작업 프로젝트를 선택하세요.",
         "model": "모델을 선택하세요.",
         "monitor": "확인할 모니터링 항목을 선택하세요.",
         "clear": "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다.",
@@ -162,14 +156,37 @@ class StartCommand(TelegramCommand):
     }
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        _ = ctx
         tokens = message.text.strip().split()
         if len(tokens) == 2:
             topic = tokens[1].lower()
             topic_text = self._TOPIC_TEXT.get(topic)
             if topic_text is not None:
                 return topic_text
-        return "Remote AI Coder에 오신 것을 환영합니다."
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return "Remote AI Coder에 오신 것을 환영합니다."
+        entry = ctx.project_registry.get(project_name)
+        if not entry:
+            return (
+                "Remote AI Coder에 오신 것을 환영합니다.\n"
+                f"프로젝트: {project_name} (등록 정보 없음)"
+            )
+        try:
+            current_branch = ctx.git_service.get_current_branch(entry.root_path)
+        except RuntimeError:
+            current_branch = "(확인 실패)"
+        state = "enabled" if entry.enabled else "disabled"
+        return "\n".join(
+            [
+                "Remote AI Coder에 오신 것을 환영합니다.",
+                f"프로젝트: {entry.name}",
+                f"root_path: {entry.root_path}",
+                f"default_model: {entry.default_model.value}",
+                f"current_branch: {current_branch}",
+                f"worktree_base_dir: {entry.worktree_base_dir}",
+                f"enabled: {state}",
+            ]
+        )
 
     def get_inline_buttons(
         self,
@@ -179,16 +196,6 @@ class StartCommand(TelegramCommand):
         tokens = message.text.strip().split() if message is not None else []
         topic = tokens[1].lower() if len(tokens) == 2 else ""
 
-        if topic == "project":
-            if ctx is None:
-                return [[InlineButton("뒤로", "/start")]]
-            buttons = [
-                InlineButton(p.name, f"/project {p.name}")
-                for p in ctx.project_registry.list_projects()
-                if p.enabled
-            ]
-            rows = _button_rows(buttons, per_row=1) if buttons else []
-            return rows + [[InlineButton("뒤로", "/start")]]
         if topic == "model":
             return [
                 [
@@ -241,7 +248,7 @@ class StartCommand(TelegramCommand):
                 ],
             ]
         return [
-            [InlineButton("프로젝트", "/start project"), InlineButton("모델", "/start model")],
+            [InlineButton("모델", "/start model")],
             [InlineButton("모니터링", "/start monitor"), InlineButton("정리", "/start clear")],
             [InlineButton("관리", "/start manage"), InlineButton("리포트", "/reports")],
         ]
@@ -449,65 +456,6 @@ class StatusCommand(TelegramCommand):
         )
 
 
-class ProjectCommand(TelegramCommand):
-    name = "/project"
-
-    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        tokens = message.text.strip().split()
-        if len(tokens) == 1:
-            eff = effective_project_name_for_chat(ctx, message.chat_id)
-            if not eff:
-                return (
-                    "등록된 프로젝트가 없습니다. "
-                    "브라우저에서 http://127.0.0.1:8000/projects 로 프로젝트를 등록하세요."
-                )
-            return f"현재 작업 프로젝트: {eff}"
-        if len(tokens) == 2:
-            name = tokens[1]
-            entry = ctx.project_registry.get(name)
-            if not entry:
-                return f"알 수 없는 프로젝트: {name}"
-            if not entry.enabled:
-                return f"비활성화된 프로젝트: {name}"
-            ctx.project_preferences.set(message.chat_id, name)
-            ctx.model_preferences.clear(message.chat_id)
-            _cmd_evt.info("project switched to=%s", name, chat_id=message.chat_id, project=name)
-            msg = (
-                f"작업 프로젝트가 {name}로 변경되었습니다.\n"
-                f"기본 모델: {entry.default_model.value}"
-            )
-            settings = ctx.advanced_settings_store.get() if ctx.advanced_settings_store else None
-            if settings and settings.auto_pull_on_project_switch:
-                try:
-                    pull_summary = ctx.git_service.pull_repository(entry.root_path, ctx.git_remote_name)
-                    msg += f"\n\n{pull_summary}"
-                    _cmd_evt.info("auto pull on project switch done", chat_id=message.chat_id, project=name)
-                except Exception as exc:
-                    msg += f"\n\n⚠️ git pull 실패: {exc}"
-                    _cmd_evt.warning(
-                        "auto pull on project switch failed: %s", exc,
-                        chat_id=message.chat_id, project=name,
-                    )
-            return msg
-        return format_usage("/project", "/project <프로젝트이름>")
-
-    def get_inline_buttons(
-        self,
-        message: TelegramMessage | None = None,
-        ctx: CommandContext | None = None,
-    ) -> list[list[InlineButton]] | None:
-        if message is None or ctx is None:
-            return None
-        if len(message.text.strip().split()) != 1:
-            return None
-        buttons = [
-            InlineButton(p.name, f"/project {p.name}")
-            for p in ctx.project_registry.list_projects()
-            if p.enabled
-        ]
-        return _button_rows(buttons) if buttons else None
-
-
 class InitCommand(TelegramCommand):
     name = "/init"
 
@@ -517,37 +465,35 @@ class InitCommand(TelegramCommand):
             return format_usage("/init")
 
         chat_id = message.chat_id
-        ctx.project_preferences.clear(chat_id)
         ctx.model_preferences.clear(chat_id)
         ctx.confirmation_store.pop(chat_id)
         _cmd_evt.info("init reset", chat_id=chat_id)
 
-        default_name = ctx.project_registry.get_default_project_name()
-        if not default_name:
+        project_name = effective_project_name_for_chat(ctx, chat_id)
+        if not project_name:
             return (
-                "이 채팅의 작업 프로젝트·기본 모델·확인 대기 상태를 초기화했습니다.\n"
-                "등록된 프로젝트가 없습니다. "
-                "브라우저에서 http://127.0.0.1:8000/projects 로 프로젝트를 등록하세요."
+                "이 채팅의 기본 모델·확인 대기 상태를 초기화했습니다.\n"
+                "프로젝트 컨텍스트가 설정되지 않았습니다."
             )
 
-        entry = ctx.project_registry.get(default_name)
+        entry = ctx.project_registry.get(project_name)
         if not entry:
             return (
-                "이 채팅의 작업 프로젝트·기본 모델·확인 대기 상태를 초기화했습니다.\n"
-                f"등록 파일의 기본 프로젝트 `{default_name}` 을(를) 찾을 수 없습니다. "
+                "이 채팅의 기본 모델·확인 대기 상태를 초기화했습니다.\n"
+                f"프로젝트 `{project_name}` 을(를) 찾을 수 없습니다. "
                 "관리 화면에서 프로젝트 설정을 확인하세요."
             )
         if not entry.enabled:
             return (
-                "이 채팅의 작업 프로젝트·기본 모델·확인 대기 상태를 초기화했습니다.\n"
-                f"기본 프로젝트 `{default_name}` 이(가) 비활성화되어 있습니다. "
-                "관리 화면에서 활성화하거나 기본 프로젝트를 변경하세요."
+                "이 채팅의 기본 모델·확인 대기 상태를 초기화했습니다.\n"
+                f"프로젝트 `{project_name}` 이(가) 비활성화되어 있습니다. "
+                "관리 화면에서 활성화 상태를 확인하세요."
             )
 
-        model = effective_model_for_chat(ctx, chat_id, default_name)
+        model = effective_model_for_chat(ctx, chat_id, project_name)
         return (
-            "이 채팅의 작업 프로젝트·기본 모델·확인 대기 상태를 초기화했습니다.\n"
-            f"적용 프로젝트: {default_name}\n"
+            "이 채팅의 기본 모델·확인 대기 상태를 초기화했습니다.\n"
+            f"적용 프로젝트: {project_name}\n"
             f"기본 모델: {model.value}"
         )
 
@@ -915,23 +861,28 @@ class MonitorCommand(TelegramCommand):
 
         if sub == "project":
             effective = effective_project_name_for_chat(ctx, message.chat_id)
-            projects = ctx.project_registry.list_projects()
+            if not effective:
+                return "이 봇의 프로젝트 컨텍스트를 찾을 수 없습니다."
+            entry = ctx.project_registry.get(effective)
+            if entry is None:
+                return f"알 수 없는 프로젝트: {effective}"
             _cmd_evt.info(
-                "monitor project requested effective=%s count=%d",
+                "monitor project requested effective=%s",
                 effective or "-",
-                len(projects),
                 chat_id=message.chat_id,
                 user_id=message.user_id,
                 project=effective,
             )
-            lines = [
-                f"이 채팅 적용 프로젝트: {effective or '(없음)'}",
-                "등록된 프로젝트",
-            ]
-            for p in projects:
-                state = "on" if p.enabled else "off"
-                lines.append(f"- {p.name} [{state}] root={p.root_path}")
-            return "\n".join(lines)
+            state = "on" if entry.enabled else "off"
+            return "\n".join(
+                [
+                    f"이 봇 프로젝트: {entry.name}",
+                    f"상태: {state}",
+                    f"root_path: {entry.root_path}",
+                    f"default_model: {entry.default_model.value}",
+                    f"worktree_base_dir: {entry.worktree_base_dir}",
+                ]
+            )
 
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:

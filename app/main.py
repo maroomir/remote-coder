@@ -26,7 +26,6 @@ from app.telegram.commands import (
     InitCommand,
     ModelCommand,
     MonitorCommand,
-    ProjectCommand,
     PrCommand,
     PullCommand,
     ReportsCommand,
@@ -42,7 +41,6 @@ from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.notifier import TelegramNotifier
 from app.telegram.parser import CommandParser
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
-from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 from app.telegram.webhook import create_webhook_router
 
 settings = get_settings()
@@ -63,7 +61,6 @@ _httplog = EventLogger("app.http", "http.request")
 
 job_store = InMemoryJobStore()
 model_preferences = InMemoryModelPreferenceStore(default_model=settings.default_model)
-project_preferences = InMemoryProjectPreferenceStore()
 confirmation_store = InMemoryConfirmationStore()
 conversation_store = SQLiteConversationStore(
     settings.conversation_db_path,
@@ -73,7 +70,6 @@ parser = CommandParser(
     project_registry=project_registry,
     default_model=settings.default_model,
     model_preferences=model_preferences,
-    project_preferences=project_preferences,
     conversation_store=conversation_store,
     conversation_recent_limit=settings.conversation_recent_limit,
 )
@@ -83,7 +79,6 @@ command_registry = CommandRegistry(
         HelpCommand(),
         ModelCommand(),
         StatusCommand(),
-        ProjectCommand(),
         InitCommand(),
         ReportsCommand(),
         BranchCommand(),
@@ -101,7 +96,7 @@ command_context = CommandContext(
     default_model=settings.default_model,
     project_registry=project_registry,
     model_preferences=model_preferences,
-    project_preferences=project_preferences,
+    project_name=None,
     git_service=git_service,
     git_remote_name=settings.git_remote_name,
     conversation_store=conversation_store,

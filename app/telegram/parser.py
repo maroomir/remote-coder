@@ -12,7 +12,6 @@ from app.telegram.conversation import (
     is_ambiguous_followup,
 )
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
-from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 
 
 class CommandParseError(ValueError):
@@ -28,40 +27,23 @@ class CommandParser:
         project_registry: ProjectRegistry,
         default_model: ModelName,
         model_preferences: InMemoryModelPreferenceStore | None = None,
-        project_preferences: InMemoryProjectPreferenceStore | None = None,
         conversation_store: SQLiteConversationStore | None = None,
         conversation_recent_limit: int = 10,
     ) -> None:
         self._project_registry = project_registry
         self._default_model = default_model
         self._model_preferences = model_preferences
-        self._project_preferences = project_preferences
         self._conversation_store = conversation_store
         self._conversation_recent_limit = conversation_recent_limit
 
     @staticmethod
     def _extract_options(
         text: str,
-    ) -> tuple[ModelName | None, str | None, bool | None, str | None, str]:
+    ) -> tuple[ModelName | None, str | None, bool | None, str]:
         remaining = text
         model: ModelName | None = None
         branch: str | None = None
         commit: bool | None = None
-        project: str | None = None
-
-        project_match = re.search(
-            r"\bproject:\s*([A-Za-z0-9][A-Za-z0-9._-]*)\b",
-            remaining,
-            flags=re.IGNORECASE,
-        )
-        if project_match:
-            project = project_match.group(1)
-            remaining = re.sub(
-                r"\bproject:\s*[A-Za-z0-9][A-Za-z0-9._-]*\b",
-                "",
-                remaining,
-                flags=re.IGNORECASE,
-            ).strip()
 
         model_match = re.search(
             rf"\bmodel:\s*({_MODEL_OPTION_PATTERN})\b",
@@ -87,7 +69,7 @@ class CommandParser:
             commit = False
             remaining = re.sub(r"\bno\s+commit\b", "", remaining, flags=re.IGNORECASE).strip()
 
-        return model, branch, commit, project, remaining
+        return model, branch, commit, remaining
 
     def parse_natural(
         self,
@@ -97,7 +79,7 @@ class CommandParser:
         message_id: int | None = None,
         reply_to_message_id: int | None = None,
     ) -> JobRequest:
-        model, branch, commit, project_slug, remaining = self._extract_options(text.strip())
+        model, branch, commit, remaining = self._extract_options(text.strip())
         if not remaining:
             raise CommandParseError("작업 지시문이 비어 있습니다.")
 
@@ -107,10 +89,7 @@ class CommandParser:
                 "등록된 프로젝트가 없습니다. 브라우저에서 http://127.0.0.1:8000/projects 로 프로젝트를 등록하세요.",
             )
 
-        chat_pref = (
-            self._project_preferences.get(chat_id) if self._project_preferences is not None else None
-        )
-        project_name = project_slug or chat_pref or default_name
+        project_name = default_name
         entry = self._project_registry.get(project_name)
         if not entry:
             raise CommandParseError(f"알 수 없는 프로젝트: {project_name}")
