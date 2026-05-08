@@ -56,6 +56,7 @@ For narrower work, run the focused test file or test case first, then broaden wh
 
 ## Documentation Sync
 
+- Version bumps and shipping a release: follow `RELEASE.md` and update `CHANGELOG.md` when cutting a new version section.
 - New environment variables require `.env.example` and README updates.
 - New Telegram commands require README or usage-document updates.
 - If implementation decisions change product scope or roadmap, update the relevant `PLAN.md` section.
