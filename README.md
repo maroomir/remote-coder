@@ -23,6 +23,53 @@
 - Claude Code CLI, Codex CLI, Gemini CLI 중 사용할 도구 1개 이상
 - 대상 Git 프로젝트와 worktree를 둘 로컬 디렉터리
 
+## 설치
+
+아직 정식 공개 전 버전이며 현재 패키지 버전은 `v0.0.1`입니다.
+
+소스 체크아웃에서 설치:
+
+```bash
+pipx install .
+remote-coder --version
+remote-coder serve
+```
+
+개발 중 editable 설치:
+
+```bash
+python -m pip install -e ".[dev]"
+remote-coder serve --reload
+```
+
+서버만 직접 실행할 때는 다음 명령과 동일합니다.
+
+```bash
+uvicorn app.main:app
+```
+
+`remote-coder serve`는 서버 실행만 담당합니다. ngrok 실행과 Telegram webhook 등록까지 한 번에 처리하려면 기존 개발용 스크립트인 `./run.sh`를 사용하세요.
+
+### 배포 패키지 빌드
+
+```bash
+python -m pip install build
+python -m build
+```
+
+생성물은 `dist/remote_coder-0.0.1.tar.gz`와 `dist/remote_coder-0.0.1-py3-none-any.whl`입니다.
+
+### Homebrew 배포
+
+이 프로젝트는 CLI/서버 패키지이므로 macOS 앱 번들용 `brew install --cask remote-coder`보다 Formula 방식인 `brew install remote-coder`가 적합합니다. Formula 초안은 [`packaging/homebrew/remote-coder.rb`](packaging/homebrew/remote-coder.rb)에 있습니다.
+
+릴리스 후 필요한 작업:
+
+- `homepage`를 실제 저장소 URL로 교체
+- PyPI 또는 GitHub Release의 `remote_coder-0.0.1.tar.gz` URL로 `url` 교체
+- `shasum -a 256 dist/remote_coder-0.0.1.tar.gz` 값으로 `sha256` 교체
+- Python 의존성 `resource` 블록은 `brew pypi-poet remote-coder` 같은 도구로 생성해 Formula에 추가
+
 ## 1) 환경 준비 (Conda)
 
 ```bash

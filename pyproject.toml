@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "remote-coder"
+version = "0.0.1"
+description = "Telegram-based remote AI coding automation server"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Remote AI Coder contributors" }
+]
+dependencies = [
+  "fastapi",
+  "httpx",
+  "pydantic",
+  "pydantic-settings",
+  "python-dotenv",
+  "pyyaml",
+  "uvicorn[standard]",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "respx",
+]
+
+[project.scripts]
+remote-coder = "app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
