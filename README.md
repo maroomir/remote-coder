@@ -135,7 +135,7 @@ cp .env.example .env
 
 ### 고급 설정 (위험 옵션)
 
-관리 UI의 **고급 설정** 페이지(`http://127.0.0.1:8000/advanced`)에서 전역 설정 파일 `PROJECT_ROOT/.remote-coder/advanced_settings.json`을 읽고 저장할 수 있습니다. 기본값은 모두 꺼져 있으며, 켜지 않으면 기존 동작과 동일합니다.
+관리 UI의 **고급 설정** 페이지(`http://127.0.0.1:8000/advanced`)에서 전역 설정 파일 `PROJECT_ROOT/.remote-coder/advanced_settings.json`을 읽고 저장할 수 있습니다. 기본값은 모두 꺼져 있으며, 켜지 않으면 기존 동작과 동일합니다. 예전 버전에서만 쓰이던 키는 로드 시 무시됩니다(예: 제거된 `auto_pull_on_project_switch`).
 
 > [!WARNING]
 > “요청 결과를 즉시 main/master에 반영 후 push” 옵션은 AI가 만든 변경을 통합 브랜치에 자동 반영합니다. 개인 실험용 저장소가 아니라면 기본값(off)을 유지하고, 사용 전 원격 브랜치 보호와 백업 정책을 확인하세요.

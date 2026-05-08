@@ -21,7 +21,7 @@ def test_job_store_create_get_update():
     assert store.get("id1").branch == "remote-1"
 
 
-def test_get_latest_succeeded_branch_for_chat():
+def test_get_latest_succeeded_branch_for_project_chat():
     store = InMemoryJobStore()
     t0 = datetime.now(UTC)
     old = Job(
@@ -44,8 +44,43 @@ def test_get_latest_succeeded_branch_for_chat():
     )
     store.create(old)
     store.create(new)
-    assert store.get_latest_succeeded_branch_for_chat(5) == "remote-new"
-    assert store.get_latest_succeeded_branch_for_chat(99) is None
+    assert store.get_latest_succeeded_branch_for_project_chat("p", 5) == "remote-new"
+    assert store.get_latest_succeeded_branch_for_project_chat("p", 99) is None
+
+
+def test_get_latest_succeeded_branch_for_project_chat_same_chat_different_projects():
+    store = InMemoryJobStore()
+    t0 = datetime.now(UTC)
+    proj_a = Job(
+        id="a",
+        request=JobRequest(
+            project="proj-a",
+            model=ModelName.CLAUDE,
+            instruction="i",
+            chat_id=42,
+            requested_by=42,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-a",
+        finished_at=t0,
+    )
+    proj_b = Job(
+        id="b",
+        request=JobRequest(
+            project="proj-b",
+            model=ModelName.CLAUDE,
+            instruction="i",
+            chat_id=42,
+            requested_by=42,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-b",
+        finished_at=t0 + timedelta(seconds=1),
+    )
+    store.create(proj_a)
+    store.create(proj_b)
+    assert store.get_latest_succeeded_branch_for_project_chat("proj-a", 42) == "remote-a"
+    assert store.get_latest_succeeded_branch_for_project_chat("proj-b", 42) == "remote-b"
 
 
 def test_list_recent_for_chat_filters_by_chat():

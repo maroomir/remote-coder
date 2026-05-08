@@ -13,7 +13,6 @@ class AdvancedSettings(BaseModel):
     model_config = {"extra": "forbid"}
 
     auto_merge_to_main_enabled: bool = False
-    auto_pull_on_project_switch: bool = True
     conversation_memory_limit_enabled: bool = False
     conversation_memory_max_rows: int | None = None
     conversation_memory_max_bytes: int | None = None
@@ -62,6 +61,8 @@ class FileAdvancedSettingsStore:
                 return self._cached.model_copy(deep=True)
             raw = self._path.read_text(encoding="utf-8")
             data = json.loads(raw) if raw.strip() else {}
+            if isinstance(data, dict):
+                data.pop("auto_pull_on_project_switch", None)
             self._cached = AdvancedSettings.model_validate(data)
             return self._cached.model_copy(deep=True)
 
