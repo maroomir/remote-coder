@@ -400,6 +400,92 @@ def test_clear_worktrees_confirmation_executes_cleanup(project_registry: Project
     ctx.git_service.cleanup_managed_worktrees.assert_called_once()
 
 
+def test_clear_branch_only_targets_bot_bound_project(project_registry: ProjectRegistry, tmp_path: Path):
+    root_b = tmp_path / "proj_b_root"
+    root_b.mkdir()
+    wt_b = tmp_path / "proj_b_wt"
+    wt_b.mkdir()
+    project_registry.add_project(
+        ProjectRecord(
+            name="proj-b",
+            root_path=root_b,
+            worktree_base_dir=wt_b,
+            default_model=ModelName.CLAUDE,
+            enabled=True,
+            bot_token="456:b",
+            allowed_chat_ids=[1],
+        )
+    )
+    ctx = _ctx(project_registry)
+    ctx.git_service.list_remote_branches_matching.return_value = []
+    ctx.git_service.list_local_branches_matching.return_value = []
+    registry = CommandRegistry([ClearCommand()])
+    registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
+    registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="y"), ctx)
+
+    ctx.git_service.checkout_integrate_branch.assert_called_once()
+    called_root = ctx.git_service.checkout_integrate_branch.call_args[0][0]
+    assert called_root == project_registry.get("remote-coder").root_path
+    assert called_root != root_b
+
+
+def test_clear_worktrees_only_targets_bot_bound_project(project_registry: ProjectRegistry, tmp_path: Path):
+    root_b = tmp_path / "proj_b_root2"
+    root_b.mkdir()
+    wt_b = tmp_path / "proj_b_wt2"
+    wt_b.mkdir()
+    project_registry.add_project(
+        ProjectRecord(
+            name="proj-b",
+            root_path=root_b,
+            worktree_base_dir=wt_b,
+            default_model=ModelName.CLAUDE,
+            enabled=True,
+            bot_token="789:b",
+            allowed_chat_ids=[1],
+        )
+    )
+    ctx = _ctx(project_registry)
+    ctx.git_service.cleanup_managed_worktrees.return_value = 0
+    registry = CommandRegistry([ClearCommand()])
+    registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear worktrees"), ctx)
+    registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="y"), ctx)
+
+    ctx.git_service.cleanup_managed_worktrees.assert_called_once()
+    args = ctx.git_service.cleanup_managed_worktrees.call_args[0]
+    assert args[0] == project_registry.get("remote-coder").root_path
+    assert args[1] == project_registry.get("remote-coder").worktree_base_dir
+
+
+def test_clear_memory_only_deletes_current_project_and_chat(
+    project_registry: ProjectRegistry, tmp_path: Path
+):
+    db = tmp_path / "clear_cmd_mem.sqlite3"
+    conversation_store = SQLiteConversationStore(db)
+    conversation_store.append(
+        project="remote-coder", chat_id=1, role="user", text="keep-other-chat", job_id=None
+    )
+    conversation_store.append(
+        project="remote-coder", chat_id=77, role="user", text="delete-me", job_id=None
+    )
+    conversation_store.append(
+        project="other-proj", chat_id=77, role="user", text="keep-other-project", job_id=None
+    )
+
+    ctx = _ctx(project_registry, conversation_store=conversation_store)
+    ctx.project_name = "remote-coder"
+    registry = CommandRegistry([ClearCommand()])
+    registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/clear memory"), ctx)
+    text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="y"), ctx)
+
+    assert text is not None
+    assert "대화 기억을 삭제했습니다" in text
+    assert "project=remote-coder" in text
+    assert len(conversation_store.list_recent("remote-coder", 1, 10)) == 1
+    assert conversation_store.list_recent("remote-coder", 77, 10) == []
+    assert len(conversation_store.list_recent("other-proj", 77, 10)) == 1
+
+
 def test_reports_command_summarizes_sqlite_memory(project_registry: ProjectRegistry, tmp_path):
     db = tmp_path / "cmd_reports.sqlite3"
     conversation_store = SQLiteConversationStore(db)

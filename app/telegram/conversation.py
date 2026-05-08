@@ -157,6 +157,25 @@ class SQLiteConversationStore:
                 self._db_path.unlink()
         self.ensure_schema()
 
+    def delete_chat_memory(self, *, project: str, chat_id: int) -> tuple[int, int]:
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                links_cur = conn.execute(
+                    "DELETE FROM message_branch_links WHERE project = ? AND chat_id = ?",
+                    (project, chat_id),
+                )
+                links_removed = links_cur.rowcount
+                entries_cur = conn.execute(
+                    "DELETE FROM conversation_entries WHERE project = ? AND chat_id = ?",
+                    (project, chat_id),
+                )
+                entries_removed = entries_cur.rowcount
+                conn.commit()
+            finally:
+                conn.close()
+        return int(entries_removed), int(links_removed)
+
     @staticmethod
     def _delete_oldest_entries(conn: sqlite3.Connection, limit: int) -> None:
         if limit <= 0:

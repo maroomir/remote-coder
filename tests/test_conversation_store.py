@@ -73,6 +73,23 @@ def test_projects_isolated_by_name(tmp_path: Path):
     assert store.list_recent("b", 1, 10) == []
 
 
+def test_delete_chat_memory_removes_only_project_and_chat(tmp_path: Path):
+    db = tmp_path / "del_mem.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(project="p1", chat_id=1, role="user", text="a", job_id=None)
+    store.append(project="p1", chat_id=2, role="user", text="b", job_id=None)
+    store.append(project="p2", chat_id=1, role="user", text="c", job_id=None)
+    store.bind_message_branch(project="p1", chat_id=1, message_id=10, branch="remote-x", job_id="j1")
+
+    entries, links = store.delete_chat_memory(project="p1", chat_id=1)
+    assert entries >= 1
+    assert links >= 1
+
+    assert store.list_recent("p1", 1, 10) == []
+    assert len(store.list_recent("p1", 2, 10)) == 1
+    assert len(store.list_recent("p2", 1, 10)) == 1
+
+
 def test_generate_report_uses_sql_aggregates(tmp_path: Path):
     db = tmp_path / "report.sqlite3"
     store = SQLiteConversationStore(db)

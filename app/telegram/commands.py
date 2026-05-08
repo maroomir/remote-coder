@@ -15,7 +15,7 @@ from app.monitoring.events import EventLogger
 from app.monitoring.git import format_branch_monitor, format_worktree_monitor
 from app.monitoring.memory import format_memory_monitor
 from app.monitoring.model import format_model_monitor
-from app.projects.registry import ProjectRegistry
+from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
@@ -1009,11 +1009,11 @@ class ClearCommand(ConfirmableCommand):
         )
 
         if action == "branch":
-            summary = "remote-* 브랜치와 연결된 worktree를 삭제합니다."
+            summary = "이 봇 프로젝트에서 remote-* 브랜치와 연결된 worktree를 삭제합니다."
         elif action == "worktrees":
-            summary = "관리 대상 worktree를 정리하고 stale 엔트리를 prune 합니다."
+            summary = "이 봇 프로젝트의 관리 대상 worktree를 정리하고 stale 엔트리를 prune 합니다."
         else:
-            summary = "대화 기억 SQLite 데이터베이스를 비웁니다."
+            summary = "이 봇 프로젝트에서 이 채팅방의 대화 기억만 삭제합니다."
         return (
             f"현재 할 작업: {summary}\n"
             "실행하려면 `y` 또는 `Y`를 입력하세요. 그 외 응답은 취소됩니다."
@@ -1040,58 +1040,70 @@ class ClearCommand(ConfirmableCommand):
         if pending.action == "worktrees":
             return self._clear_worktrees(ctx)
         if pending.action == "memory":
-            return self._clear_memory(ctx)
+            return self._clear_memory(ctx, message.chat_id)
         return "알 수 없는 clear 작업입니다."
 
+    def _bound_project_record(self, ctx: CommandContext) -> ProjectRecord | None:
+        name = ctx.project_name
+        if not name:
+            return None
+        return ctx.project_registry.get(name)
+
     def _clear_branches(self, ctx: CommandContext) -> str:
-        lines: list[str] = []
-        projects = [p for p in ctx.project_registry.list_projects() if p.enabled]
-        if not projects:
-            return "enabled 프로젝트가 없습니다."
+        p = self._bound_project_record(ctx)
+        if p is None:
+            return "봇에 연결된 프로젝트가 없거나 레지스트리에서 찾을 수 없습니다."
+        if not p.enabled:
+            return f"프로젝트가 비활성화되어 있습니다: {p.name}"
 
-        for p in projects:
-            try:
-                ctx.git_service.checkout_integrate_branch(p.root_path)
-                remote_branches = ctx.git_service.list_remote_branches_matching(
-                    p.root_path, ctx.git_remote_name, "remote-"
-                )
-                local_branches = ctx.git_service.list_local_branches_matching(p.root_path, "remote-")
-                if remote_branches:
-                    ctx.git_service.delete_remote_branches(p.root_path, ctx.git_remote_name, remote_branches)
-                if local_branches:
-                    ctx.git_service.remove_linked_worktrees_for_branches(p.root_path, local_branches)
-                    ctx.git_service.delete_local_branches(p.root_path, local_branches)
-                lines.append(
-                    f"{p.name}: 원격 {len(remote_branches)}개, 로컬 {len(local_branches)}개 삭제 "
-                    f"({ctx.git_remote_name})"
-                )
-            except RuntimeError as exc:
-                lines.append(f"{p.name}: 실패 — {exc}")
-        return "\n".join(lines)
+        try:
+            ctx.git_service.checkout_integrate_branch(p.root_path)
+            remote_branches = ctx.git_service.list_remote_branches_matching(
+                p.root_path, ctx.git_remote_name, "remote-"
+            )
+            local_branches = ctx.git_service.list_local_branches_matching(p.root_path, "remote-")
+            if remote_branches:
+                ctx.git_service.delete_remote_branches(p.root_path, ctx.git_remote_name, remote_branches)
+            if local_branches:
+                ctx.git_service.remove_linked_worktrees_for_branches(p.root_path, local_branches)
+                ctx.git_service.delete_local_branches(p.root_path, local_branches)
+            return (
+                f"{p.name}: 원격 {len(remote_branches)}개, 로컬 {len(local_branches)}개 삭제 "
+                f"({ctx.git_remote_name})"
+            )
+        except RuntimeError as exc:
+            return f"{p.name}: 실패 — {exc}"
 
-    def _clear_memory(self, ctx: CommandContext) -> str:
+    def _clear_memory(self, ctx: CommandContext, chat_id: int) -> str:
         if ctx.conversation_store is None:
             return "기억 저장소가 설정되지 않았습니다."
-        ctx.conversation_store.reset()
-        return "대화 기억 SQLite 데이터베이스를 초기화했습니다."
+        project_name = ctx.project_name
+        if not project_name:
+            return "봇에 연결된 프로젝트가 없습니다."
+        entries_removed, links_removed = ctx.conversation_store.delete_chat_memory(
+            project=project_name, chat_id=chat_id
+        )
+        return (
+            f"이 채팅방의 대화 기억을 삭제했습니다. "
+            f"(project={project_name}, 대화 {entries_removed}건, 브랜치 연결 {links_removed}건)"
+        )
 
     def _clear_worktrees(self, ctx: CommandContext) -> str:
-        lines: list[str] = []
-        projects = [p for p in ctx.project_registry.list_projects() if p.enabled]
-        if not projects:
-            return "enabled 프로젝트가 없습니다."
+        p = self._bound_project_record(ctx)
+        if p is None:
+            return "봇에 연결된 프로젝트가 없거나 레지스트리에서 찾을 수 없습니다."
+        if not p.enabled:
+            return f"프로젝트가 비활성화되어 있습니다: {p.name}"
 
-        for p in projects:
-            try:
-                removed_count = ctx.git_service.cleanup_managed_worktrees(
-                    p.root_path,
-                    p.worktree_base_dir,
-                    branch_prefix="remote-",
-                )
-                lines.append(f"{p.name}: worktree {removed_count}개 삭제, stale prune 완료")
-            except RuntimeError as exc:
-                lines.append(f"{p.name}: 실패 — {exc}")
-        return "\n".join(lines)
+        try:
+            removed_count = ctx.git_service.cleanup_managed_worktrees(
+                p.root_path,
+                p.worktree_base_dir,
+                branch_prefix="remote-",
+            )
+            return f"{p.name}: worktree {removed_count}개 삭제, stale prune 완료"
+        except RuntimeError as exc:
+            return f"{p.name}: 실패 — {exc}"
 
 
 class StopCommand(TelegramCommand):
