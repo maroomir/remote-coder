@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from hashlib import sha256
 from pathlib import Path
@@ -36,6 +37,72 @@ def build_public_webhook_url(public_base_url: str, bot_token: str) -> str:
 def normalize_webhook_token_hash_path_segment(segment: str) -> str | None:
     s = segment.strip().lower()
     return s if _WEBHOOK_TOKEN_HASH_PREFIX_RE.fullmatch(s) else None
+
+
+def _parse_env_int_id_list(var_name: str) -> list[int]:
+    raw = os.getenv(var_name)
+    if raw is None or not str(raw).strip():
+        return []
+    parts = [item.strip() for item in str(raw).split(",") if item.strip()]
+    return [int(v) for v in parts]
+
+
+def _legacy_projects_need_env_fill(projects: object) -> bool:
+    if not isinstance(projects, list):
+        return False
+    for p in projects:
+        if not isinstance(p, dict):
+            continue
+        token = p.get("bot_token")
+        if token is None or (isinstance(token, str) and not token.strip()):
+            return True
+        chats = p.get("allowed_chat_ids")
+        if chats is None or (isinstance(chats, list) and len(chats) == 0):
+            return True
+    return False
+
+
+def _fill_legacy_projects_payload_from_env(data: dict) -> dict:
+    projects = data.get("projects")
+    if not isinstance(projects, list) or not _legacy_projects_need_env_fill(projects):
+        return data
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    env_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+    env_chats = _parse_env_int_id_list("TELEGRAM_ALLOWED_CHAT_IDS")
+    env_users = _parse_env_int_id_list("TELEGRAM_ALLOWED_USER_IDS")
+    wh_raw = os.getenv("TELEGRAM_WEBHOOK_SECRET")
+    env_wh = wh_raw.strip() if wh_raw and str(wh_raw).strip() else None
+
+    new_projects: list[object] = []
+    for p in projects:
+        if not isinstance(p, dict):
+            new_projects.append(p)
+            continue
+        row = dict(p)
+        bt = row.get("bot_token")
+        if bt is None or (isinstance(bt, str) and not bt.strip()):
+            if env_token:
+                row["bot_token"] = env_token
+        ac = row.get("allowed_chat_ids")
+        if ac is None or (isinstance(ac, list) and len(ac) == 0):
+            if env_chats:
+                row["allowed_chat_ids"] = env_chats
+        if row.get("allowed_user_ids") is None:
+            row["allowed_user_ids"] = env_users
+        if (
+            row.get("webhook_secret") in (None, "")
+            and env_wh is not None
+        ):
+            row["webhook_secret"] = env_wh
+        new_projects.append(row)
+
+    out = dict(data)
+    out["projects"] = new_projects
+    return out
 
 
 def mask_bot_token(token: str) -> str:
@@ -280,6 +347,8 @@ class ProjectRegistry:
             data = yaml.safe_load(raw) or {}
         else:
             data = json.loads(raw) if raw.strip() else {}
+        if isinstance(data, dict):
+            data = _fill_legacy_projects_payload_from_env(data)
         return ProjectsFilePayload.model_validate(data)
 
     def _write_file_unlocked(self, payload: ProjectsFilePayload) -> None:

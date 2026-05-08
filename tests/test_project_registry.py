@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from app.config import Settings
 from app.models import ModelName
@@ -280,3 +282,81 @@ def test_build_public_webhook_url_matches_registry_webhook_path(project_registry
     row = next(p for p in public["projects"] if p["name"] == "remote-coder")
     assert build_public_webhook_url("https://example.com", token) == "https://example.com" + row["webhook_path"]
     assert build_public_webhook_url("https://example.com/", token) == "https://example.com" + row["webhook_path"]
+
+
+def test_load_legacy_projects_json_fills_bot_and_allowlist_from_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    root = tmp_path / "repo"
+    root.mkdir()
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    path = tmp_path / ".remote-coder" / "projects.json"
+    path.parent.mkdir(parents=True)
+    legacy = {
+        "default_project": "remote-coder",
+        "projects": [
+            {
+                "name": "remote-coder",
+                "root_path": str(root),
+                "worktree_base_dir": str(wt),
+                "default_model": "claude",
+                "enabled": True,
+            },
+            {
+                "name": "storyboard",
+                "root_path": str(root),
+                "worktree_base_dir": str(wt),
+                "default_model": "codex",
+                "enabled": True,
+            },
+        ],
+    }
+    path.write_text(json.dumps(legacy), encoding="utf-8")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "legacy-bot-token")
+    monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "111,222")
+
+    reg = ProjectRegistry(path)
+    reg.load()
+
+    a = reg.get("remote-coder")
+    b = reg.get("storyboard")
+    assert a is not None and b is not None
+    assert a.bot_token.get_secret_value() == "legacy-bot-token"
+    assert b.bot_token.get_secret_value() == "legacy-bot-token"
+    assert a.allowed_chat_ids == [111, 222]
+    assert b.allowed_chat_ids == [111, 222]
+
+
+def test_load_legacy_projects_json_without_env_still_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_ALLOWED_CHAT_IDS", raising=False)
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
+    monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
+    root = tmp_path / "repo"
+    root.mkdir()
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    path = tmp_path / ".remote-coder" / "projects.json"
+    path.parent.mkdir(parents=True)
+    legacy = {
+        "default_project": "p",
+        "projects": [
+            {
+                "name": "p",
+                "root_path": str(root),
+                "worktree_base_dir": str(wt),
+                "default_model": "claude",
+                "enabled": True,
+            },
+        ],
+    }
+    path.write_text(json.dumps(legacy), encoding="utf-8")
+    reg = ProjectRegistry(path)
+    with patch("dotenv.load_dotenv"):
+        with pytest.raises(ValidationError):
+            reg.load()
