@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import json
 import re
+from hashlib import sha256
 from pathlib import Path
 from threading import Lock
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 from app.config import Settings
 from app.models import ModelName
 
 _NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def compute_token_hash(token: str) -> str:
+    return sha256(token.encode("utf-8")).hexdigest()
 
 
 def projects_config_path_for_settings(project_root: Path, explicit: Path | None) -> Path:
@@ -27,6 +32,10 @@ class ProjectRecord(BaseModel):
     worktree_base_dir: Path
     default_model: ModelName = ModelName.CLAUDE
     enabled: bool = True
+    bot_token: SecretStr
+    webhook_secret: SecretStr | None = None
+    allowed_chat_ids: list[int]
+    allowed_user_ids: list[int] = Field(default_factory=list)
 
     @field_validator("name")
     @classmethod
@@ -83,6 +92,10 @@ class ProjectRegistry:
                     worktree_base_dir=settings.worktree_base_dir,
                     default_model=settings.default_model,
                     enabled=True,
+                    bot_token=settings.telegram_bot_token,
+                    webhook_secret=settings.telegram_webhook_secret,
+                    allowed_chat_ids=settings.telegram_allowed_chat_ids,
+                    allowed_user_ids=settings.telegram_allowed_user_ids,
                 )
             ],
         )
@@ -104,6 +117,14 @@ class ProjectRegistry:
             for p in self._payload.projects:
                 if p.name == name:
                     return p.model_copy(deep=True)
+        return None
+
+    def get_by_token_hash(self, token_hash: str) -> ProjectRecord | None:
+        with self._lock:
+            for project in self._payload.projects:
+                project_hash = compute_token_hash(project.bot_token.get_secret_value())
+                if project_hash.startswith(token_hash):
+                    return project.model_copy(deep=True)
         return None
 
     def get_default_project_name(self) -> str:

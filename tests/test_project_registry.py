@@ -4,7 +4,12 @@ import pytest
 
 from app.config import Settings
 from app.models import ModelName
-from app.projects.registry import ProjectRecord, ProjectRegistry, projects_config_path_for_settings
+from app.projects.registry import (
+    ProjectRecord,
+    ProjectRegistry,
+    compute_token_hash,
+    projects_config_path_for_settings,
+)
 
 
 def test_projects_config_path_explicit(tmp_path: Path) -> None:
@@ -41,6 +46,8 @@ def test_add_duplicate_project_raises(test_settings: Settings) -> None:
                 worktree_base_dir=test_settings.worktree_base_dir,
                 default_model=ModelName.CLAUDE,
                 enabled=True,
+                bot_token="another-token",
+                allowed_chat_ids=[123],
             )
         )
 
@@ -58,6 +65,8 @@ def test_add_project_invalid_root_raises(test_settings: Settings) -> None:
                 worktree_base_dir=test_settings.worktree_base_dir,
                 default_model=ModelName.CLAUDE,
                 enabled=True,
+                bot_token="newproj-token",
+                allowed_chat_ids=[123],
             )
         )
 
@@ -82,3 +91,22 @@ def test_yaml_config_roundtrip(tmp_path: Path) -> None:
     reg2.load()
     assert reg2.get_default_project_name() == "p1"
     assert reg2.get("p1") is not None
+
+
+def test_compute_token_hash_returns_sha256_hex() -> None:
+    token_hash = compute_token_hash("abc")
+    assert token_hash == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+
+def test_get_by_token_hash_finds_project_by_prefix(test_settings: Settings) -> None:
+    path = test_settings.project_root / "hash.json"
+    reg = ProjectRegistry(path)
+    reg.ensure_seeded_from_settings(test_settings)
+
+    project = reg.get("remote-coder")
+    assert project is not None
+    token_hash_prefix = compute_token_hash(project.bot_token.get_secret_value())[:16]
+
+    matched = reg.get_by_token_hash(token_hash_prefix)
+    assert matched is not None
+    assert matched.name == "remote-coder"
