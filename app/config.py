@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Self
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.models import CodexSandboxMode, ModelName
@@ -11,10 +11,25 @@ from app.models import CodexSandboxMode, ModelName
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    telegram_bot_token: SecretStr | None = None
-    telegram_allowed_chat_ids: list[int] = []
-    telegram_allowed_user_ids: list[int] = []
-    telegram_webhook_secret: SecretStr | None = None
+    telegram_bot_token: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Optional seed only: written into projects.json when the registry file is missing "
+            "or lists no projects. Runtime bots use per-project bot_token in the registry."
+        ),
+    )
+    telegram_allowed_chat_ids: list[int] = Field(
+        default_factory=list,
+        description="Optional seed only: initial allowed_chat_ids for the seeded default_project record.",
+    )
+    telegram_allowed_user_ids: list[int] = Field(
+        default_factory=list,
+        description="Optional seed only: initial allowed_user_ids for the seeded default_project record.",
+    )
+    telegram_webhook_secret: SecretStr | None = Field(
+        default=None,
+        description="Optional seed only: initial webhook_secret for the seeded default_project record.",
+    )
 
     default_model: ModelName = ModelName.CLAUDE
     default_project: str = "remote-coder"
@@ -31,6 +46,16 @@ class Settings(BaseSettings):
 
     # Codex `codex exec` 샌드박스. 기본 workspace-write (워크트리 내 파일 수정 허용). read-only는 편집 불가.
     codex_sandbox: CodexSandboxMode = CodexSandboxMode.WORKSPACE_WRITE
+
+    @model_validator(mode="after")
+    def _normalize_telegram_seed_fields(self) -> Self:
+        if self.telegram_bot_token is not None:
+            if not self.telegram_bot_token.get_secret_value().strip():
+                self.telegram_bot_token = None
+        if self.telegram_webhook_secret is not None:
+            if not self.telegram_webhook_secret.get_secret_value().strip():
+                self.telegram_webhook_secret = None
+        return self
 
     @model_validator(mode="after")
     def _default_conversation_db_path(self) -> Self:

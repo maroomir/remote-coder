@@ -19,6 +19,21 @@ def test_parse_allowed_chat_ids_from_string(tmp_path):
     assert settings.codex_sandbox == CodexSandboxMode.WORKSPACE_WRITE
 
 
+def test_empty_telegram_seed_strings_normalize_to_none(tmp_path):
+    settings = Settings(
+        telegram_bot_token="   ",
+        telegram_webhook_secret="",
+        telegram_allowed_chat_ids=[1],
+        telegram_allowed_user_ids=[],
+        default_model="claude",
+        default_project="proj",
+        project_root=tmp_path,
+        worktree_base_dir=tmp_path / "wt",
+    )
+    assert settings.telegram_bot_token is None
+    assert settings.telegram_webhook_secret is None
+
+
 def test_codex_sandbox_from_string(tmp_path):
     settings = Settings(
         telegram_bot_token="token",

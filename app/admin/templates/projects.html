@@ -465,7 +465,7 @@
       <div class="header-row">
         <div>
           <h1>프로젝트 등록</h1>
-          <p class="tagline">등록 기본값은 채팅에서 <code>/project</code> 미지정·자연어에 <code>project:</code> 생략 시 <strong>폴백</strong>으로 사용됩니다.</p>
+          <p class="tagline">각 등록 항목은 <strong>하나의 Telegram 봇</strong>과 고정된 저장소에 연결됩니다. 허용 채팅·사용자 ID와 웹훅 경로는 프로젝트마다 다릅니다.</p>
         </div>
         <nav class="header-icon-nav" aria-label="페이지 이동">
           <a href="/" class="header-icon-link" title="관리 홈" aria-label="관리 홈">
@@ -495,7 +495,7 @@
 
     <section class="card" aria-labelledby="projects-heading">
       <h2 id="projects-heading">등록 목록</h2>
-      <p class="lead">프로젝트를 추가하거나 기본 프로젝트를 지정합니다.</p>
+      <p class="lead">프로젝트를 추가하거나 기본 폴백 프로젝트를 지정합니다. 저장 시 실행 중인 서버에 봇 인스턴스가 즉시 반영됩니다.</p>
 
       <div class="table-wrap">
         <table class="data" id="proj-table">
@@ -506,6 +506,7 @@
               <th>Git 루트</th>
               <th>워크트리</th>
               <th>모델</th>
+              <th>Telegram</th>
               <th>동작</th>
             </tr>
           </thead>
@@ -539,6 +540,26 @@
         </select>
 
         <label class="checkbox"><input type="checkbox" name="enabled" checked /> 활성</label>
+
+        <label class="field" for="f-bot-token">
+          봇 토큰
+          <span class="hint" title="BotFather에서 발급받은 토큰">BotFather에서 발급받은 토큰 (평문은 서버에만 저장되며 API 목록에서는 마스킹됩니다)</span>
+        </label>
+        <input id="f-bot-token" name="bot_token" type="password" autocomplete="new-password" placeholder="123456789:AA…" />
+
+        <label class="field" for="f-wh-secret">
+          웹훅 시크릿 (선택)
+          <span class="hint">Telegram <code>secret_token</code>. 편집 시 비우면 기존 값 유지.</span>
+        </label>
+        <input id="f-wh-secret" name="webhook_secret" type="password" autocomplete="new-password" />
+
+        <label class="field" for="f-chats">허용 Chat ID</label>
+        <p class="hint" style="margin:0.35rem 0 0">쉼표 또는 공백으로 구분. 최소 1개.</p>
+        <input id="f-chats" name="allowed_chat_ids" required autocomplete="off" placeholder="-1001234567890, 123456789" />
+
+        <label class="field" for="f-users">허용 User ID (선택)</label>
+        <p class="hint" style="margin:0.35rem 0 0">비우면 채팅 ID만으로 허용합니다.</p>
+        <input id="f-users" name="allowed_user_ids" autocomplete="off" placeholder="123456789" />
 
         <div class="form-actions">
           <button type="submit" class="btn-primary" id="btn-submit">추가</button>
@@ -627,18 +648,36 @@
       `;
     }
 
+    function parseIdList(raw) {
+      if (!raw || !String(raw).trim()) return [];
+      return String(raw)
+        .split(/[\s,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => parseInt(s, 10))
+        .filter((n) => !Number.isNaN(n));
+    }
+
     function row(p, defaultName) {
       const tr = document.createElement("tr");
       const isDefault = p.name === defaultName;
       const badges =
         (isDefault ? '<span class="badge badge-default">기본</span>' : "") +
         (p.enabled ? '<span class="badge badge-on">활성</span>' : '<span class="badge badge-off">비활성</span>');
+      const secretBadge = p.webhook_secret_set
+        ? '<span class="badge badge-on" title="웹훅 시크릿 설정됨">시크릿</span>'
+        : "";
       tr.innerHTML = `
         <td><code>${escapeHtml(p.name)}</code></td>
         <td>${badges}</td>
         <td class="path-cell">${escapeHtml(String(p.root_path))}</td>
         <td class="path-cell">${escapeHtml(String(p.worktree_base_dir))}</td>
         <td>${escapeHtml(p.default_model)}</td>
+        <td>
+          <div title="마스킹된 봇 토큰">${escapeHtml(p.bot_token_masked || "")}</div>
+          <div class="path-cell" title="Webhook 경로 (공개 base URL 뒤에 연결)">${escapeHtml(p.webhook_path || "")}</div>
+          ${secretBadge}
+        </td>
         <td>
           <div class="btn-row">
             <button type="button" class="btn-primary" data-a="default" data-n="${escapeAttr(p.name)}" ${isDefault ? "disabled" : ""}>기본으로</button>
@@ -681,7 +720,7 @@
 
         if (!lastProjects.length) {
           const tr = document.createElement("tr");
-          tr.innerHTML = '<td colspan="6" class="empty-state">등록된 프로젝트가 없습니다. 아래 폼에서 추가하세요.</td>';
+          tr.innerHTML = '<td colspan="7" class="empty-state">등록된 프로젝트가 없습니다. 아래 폼에서 추가하세요.</td>';
           tb.appendChild(tr);
         } else {
           lastProjects.forEach((p) => tb.appendChild(row(p, lastDefault)));
@@ -742,9 +781,17 @@
         f.worktree_base_dir.value = p.worktree_base_dir;
         f.default_model.value = p.default_model;
         f.enabled.checked = !!p.enabled;
+        $("#f-bot-token").value = "";
+        $("#f-bot-token").removeAttribute("required");
+        $("#f-wh-secret").value = "";
+        $("#f-chats").value = (p.allowed_chat_ids || []).join(", ");
+        $("#f-users").value = (p.allowed_user_ids || []).join(", ");
         f.name.readOnly = true;
         $("#btn-submit").textContent = "저장 (PUT)";
-        setGlobalMsg("info", "이름은 변경할 수 없습니다. 다른 필드를 수정한 뒤 저장하세요.");
+        setGlobalMsg(
+          "info",
+          "이름은 변경할 수 없습니다. 봇 토큰·웹훅 시크릿은 비워 두면 기존 값이 유지됩니다.",
+        );
         updateFormModeBanner();
         f.name.focus();
       }
@@ -753,6 +800,7 @@
     $("#btn-clear").addEventListener("click", () => {
       $("#proj-form").reset();
       $("#proj-form").name.readOnly = false;
+      $("#f-bot-token").setAttribute("required", "");
       $("#btn-submit").textContent = "추가";
       setGlobalMsg("", "");
       updateFormModeBanner();
@@ -763,14 +811,31 @@
       if (busy) return;
       setGlobalMsg("", "");
       const f = e.target;
+      const editing = f.name.readOnly;
+      const allowed_chat_ids = parseIdList($("#f-chats").value);
+      const allowed_user_ids = parseIdList($("#f-users").value);
+      if (!allowed_chat_ids.length) {
+        setGlobalMsg("err", "허용 Chat ID를 하나 이상 입력하세요.");
+        return;
+      }
+      const botTok = $("#f-bot-token").value.trim();
+      if (!editing && !botTok) {
+        setGlobalMsg("err", "봇 토큰을 입력하세요.");
+        return;
+      }
       const body = {
         name: f.name.value.trim(),
         root_path: f.root_path.value.trim(),
         worktree_base_dir: f.worktree_base_dir.value.trim(),
         default_model: f.default_model.value,
         enabled: f.enabled.checked,
+        allowed_chat_ids,
+        allowed_user_ids,
       };
-      const editing = f.name.readOnly;
+      if (botTok) body.bot_token = botTok;
+      const ws = $("#f-wh-secret").value.trim();
+      if (ws) body.webhook_secret = ws;
+      else if (!editing) body.webhook_secret = null;
       const url = editing ? "/api/projects/" + encodeURIComponent(body.name) : "/api/projects";
       const method = editing ? "PUT" : "POST";
       setBusy(true);
@@ -787,6 +852,7 @@
         }
         f.name.readOnly = false;
         $("#btn-submit").textContent = "추가";
+        $("#f-bot-token").setAttribute("required", "");
         f.reset();
         setGlobalMsg("ok", editing ? "수정했습니다." : "추가했습니다.");
         await loadAll();

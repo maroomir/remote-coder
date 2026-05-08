@@ -18,6 +18,14 @@ def compute_token_hash(token: str) -> str:
     return sha256(token.encode("utf-8")).hexdigest()
 
 
+def mask_bot_token(token: str) -> str:
+    if not token:
+        return "(설정 안 됨)"
+    if len(token) <= 8:
+        return "***"
+    return f"***…{token[-4:]}"
+
+
 def projects_config_path_for_settings(project_root: Path, explicit: Path | None) -> Path:
     if explicit is not None:
         return explicit.expanduser().resolve()
@@ -78,18 +86,25 @@ class ProjectRegistry:
             self._payload = self._read_file_unlocked()
 
     def ensure_seeded_from_settings(self, settings: Settings) -> None:
-        # 설정 파일이 없을 때만 생성합니다. TELEGRAM_* 값은 프로젝트 레코드 초기 시드에만 쓰이며,
-        # 런타임 인증은 각 프로젝트(봇)의 AllowlistAuthService 가 담당합니다.
+        # TELEGRAM_* 는 레지스트리에 프로젝트가 없을 때만 시드에 사용합니다. 런타임 인증은 레지스트리의
+        # allowed_chat_ids / allowed_user_ids 와 각 봇 AllowlistAuthService 가 담당합니다.
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        if self._path.exists():
+        file_existed = self._path.exists()
+        if file_existed:
             self.load()
+
+        token = settings.telegram_bot_token
+        if token is None:
+            if not file_existed:
+                empty = ProjectsFilePayload(default_project="", projects=[])
+                with self._lock:
+                    self._payload = empty
+                    self._write_file_unlocked(empty)
             return
-        if settings.telegram_bot_token is None:
-            empty = ProjectsFilePayload(default_project="", projects=[])
-            with self._lock:
-                self._payload = empty
-                self._write_file_unlocked(empty)
+
+        if self._payload.projects:
             return
+
         seed = ProjectsFilePayload(
             default_project=settings.default_project,
             projects=[
@@ -99,10 +114,10 @@ class ProjectRegistry:
                     worktree_base_dir=settings.worktree_base_dir,
                     default_model=settings.default_model,
                     enabled=True,
-                    bot_token=settings.telegram_bot_token,
+                    bot_token=token,
                     webhook_secret=settings.telegram_webhook_secret,
-                    allowed_chat_ids=settings.telegram_allowed_chat_ids,
-                    allowed_user_ids=settings.telegram_allowed_user_ids,
+                    allowed_chat_ids=list(settings.telegram_allowed_chat_ids),
+                    allowed_user_ids=list(settings.telegram_allowed_user_ids),
                 )
             ],
         )
@@ -197,8 +212,28 @@ class ProjectRegistry:
         with self._lock:
             return {
                 "default_project": self._payload.default_project,
-                "projects": [p.model_dump(mode="json") for p in self._payload.projects],
+                "projects": [
+                    ProjectRegistry._project_record_to_public_dict(p) for p in self._payload.projects
+                ],
             }
+
+    @staticmethod
+    def _project_record_to_public_dict(record: ProjectRecord) -> dict:
+        token_plain = record.bot_token.get_secret_value()
+        token_hash = compute_token_hash(token_plain)
+        return {
+            "name": record.name,
+            "root_path": str(record.root_path),
+            "worktree_base_dir": str(record.worktree_base_dir),
+            "default_model": record.default_model.value,
+            "enabled": record.enabled,
+            "bot_token_masked": mask_bot_token(token_plain),
+            "webhook_secret_set": record.webhook_secret is not None,
+            "allowed_chat_ids": list(record.allowed_chat_ids),
+            "allowed_user_ids": list(record.allowed_user_ids),
+            "webhook_path": f"/telegram/webhook/{token_hash}",
+            "token_hash_prefix": token_hash[:16],
+        }
 
     def _read_file_unlocked(self) -> ProjectsFilePayload:
         if not self._path.exists():
@@ -211,15 +246,30 @@ class ProjectRegistry:
         return ProjectsFilePayload.model_validate(data)
 
     def _write_file_unlocked(self, payload: ProjectsFilePayload) -> None:
+        storable = self._payload_to_storable_dict(payload)
         if self._path.suffix.lower() in (".yaml", ".yml"):
-            text = yaml.safe_dump(
-                payload.model_dump(mode="json"),
-                allow_unicode=True,
-                default_flow_style=False,
-            )
+            text = yaml.safe_dump(storable, allow_unicode=True, default_flow_style=False)
         else:
-            text = json.dumps(payload.model_dump(mode="json"), indent=2, ensure_ascii=False)
+            text = json.dumps(storable, indent=2, ensure_ascii=False)
         self._path.write_text(text + "\n", encoding="utf-8")
+
+    @staticmethod
+    def _project_record_to_storable_dict(record: ProjectRecord) -> dict:
+        data = record.model_dump(mode="json", exclude={"bot_token", "webhook_secret"})
+        data["bot_token"] = record.bot_token.get_secret_value()
+        data["webhook_secret"] = (
+            record.webhook_secret.get_secret_value() if record.webhook_secret else None
+        )
+        return data
+
+    @staticmethod
+    def _payload_to_storable_dict(payload: ProjectsFilePayload) -> dict:
+        return {
+            "default_project": payload.default_project,
+            "projects": [
+                ProjectRegistry._project_record_to_storable_dict(p) for p in payload.projects
+            ],
+        }
 
     @staticmethod
     def _validate_paths(record: ProjectRecord) -> None:

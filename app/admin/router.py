@@ -14,7 +14,8 @@ from app.config import Settings
 from app.models import ModelName
 from app.monitoring.events import EventLogger
 from app.monitoring.log_buffer import InMemoryLogBuffer
-from app.projects.registry import ProjectRecord, ProjectRegistry
+from app.projects.registry import ProjectRecord, ProjectRegistry, mask_bot_token
+from app.telegram.bot_instances import BotInstanceManager
 from app.telegram.conversation import SQLiteConversationStore
 
 _adminlog = EventLogger("app.admin", "admin.ui")
@@ -35,14 +36,6 @@ def require_localhost(request: Request) -> None:
 
 
 LocalhostOnly = Annotated[None, Depends(require_localhost)]
-
-
-def _mask_bot_token(token: str) -> str:
-    if not token:
-        return "(설정 안 됨)"
-    if len(token) <= 8:
-        return "***"
-    return f"***…{token[-4:]}"
 
 
 class ProjectUpsertBody(BaseModel):
@@ -72,12 +65,22 @@ def _load_template_html(template_name: str) -> str:
     return template_path.read_text(encoding="utf-8")
 
 
+def _sync_bot_instance(manager: BotInstanceManager | None, record: ProjectRecord) -> None:
+    if manager is None:
+        return
+    if record.enabled:
+        manager.register(record)
+    else:
+        manager.unregister(record.name)
+
+
 def create_admin_router(
     settings: Settings,
     registry: ProjectRegistry,
     advanced_settings_store: FileAdvancedSettingsStore,
     log_buffer: InMemoryLogBuffer,
     conversation_store: SQLiteConversationStore,
+    bot_instance_manager: BotInstanceManager | None = None,
 ) -> APIRouter:
     router = APIRouter(tags=["admin"])
 
@@ -305,14 +308,14 @@ def create_admin_router(
             settings.default_model.value,
         )
         return {
-            "telegram_bot_token_masked": _mask_bot_token(token),
+            "telegram_bot_token_masked": mask_bot_token(token),
             "telegram_allowed_chat_ids": settings.telegram_allowed_chat_ids,
             "telegram_allowed_user_ids": settings.telegram_allowed_user_ids,
             "telegram_webhook_secret_set": bool(settings.telegram_webhook_secret),
             "default_model_env": settings.default_model.value,
             "projects_config_path": str(registry.config_path),
-            "webhook_hint": "Webhook URL은 ./run.sh 또는 scripts/set_webhook.py 로 등록합니다. "
-            "경로: POST /telegram/webhook",
+            "webhook_hint": "각 프로젝트(봇)마다 webhook 경로가 다릅니다. GET /api/projects 의 webhook_path 와 "
+            "scripts/set_webhook.py 를 참고하세요.",
         }
 
     @router.get("/api/projects")
@@ -343,6 +346,7 @@ def create_admin_router(
             _adminlog.warning("project create failed name=%s err=%s", body.name, exc, project=body.name)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         _adminlog.info("project created name=%s enabled=%s", body.name, body.enabled, project=body.name)
+        _sync_bot_instance(bot_instance_manager, record)
         return JSONResponse(registry.to_public_dict())
 
     @router.put("/api/projects/{name}")
@@ -400,6 +404,7 @@ def create_admin_router(
             body.enabled,
             project=body.name,
         )
+        _sync_bot_instance(bot_instance_manager, record)
         return JSONResponse(registry.to_public_dict())
 
     @router.delete("/api/projects/{name}")
@@ -410,6 +415,8 @@ def create_admin_router(
             _adminlog.warning("project delete failed name=%s err=%s", name, exc, project=name)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         _adminlog.info("project deleted name=%s", name, project=name)
+        if bot_instance_manager is not None:
+            bot_instance_manager.unregister(name)
         return JSONResponse(registry.to_public_dict())
 
     @router.post("/api/projects/default")

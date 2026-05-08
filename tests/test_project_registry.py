@@ -8,6 +8,7 @@ from app.projects.registry import (
     ProjectRecord,
     ProjectRegistry,
     compute_token_hash,
+    mask_bot_token,
     projects_config_path_for_settings,
 )
 
@@ -21,6 +22,37 @@ def test_projects_config_path_explicit(tmp_path: Path) -> None:
 def test_projects_config_path_default_under_project_root(tmp_path: Path) -> None:
     resolved = projects_config_path_for_settings(tmp_path, None)
     assert resolved == (tmp_path / ".remote-coder" / "projects.json").resolve()
+
+
+def test_ensure_seeded_empty_file_with_token_writes_seed(tmp_path: Path) -> None:
+    path = tmp_path / ".remote-coder" / "projects.json"
+    path.parent.mkdir(parents=True)
+    path.write_text('{"default_project": "", "projects": []}\n', encoding="utf-8")
+    root = tmp_path / "repo"
+    root.mkdir()
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    settings = Settings(
+        telegram_bot_token="seed-token",
+        telegram_allowed_chat_ids=[42],
+        telegram_allowed_user_ids=[7],
+        telegram_webhook_secret="whsec",
+        default_project="seed-proj",
+        default_model="claude",
+        project_root=root,
+        worktree_base_dir=wt,
+    )
+    reg = ProjectRegistry(path)
+    reg.ensure_seeded_from_settings(settings)
+    reg.load()
+    assert reg.get_default_project_name() == "seed-proj"
+    proj = reg.get("seed-proj")
+    assert proj is not None
+    assert proj.bot_token.get_secret_value() == "seed-token"
+    assert proj.webhook_secret is not None
+    assert proj.webhook_secret.get_secret_value() == "whsec"
+    assert proj.allowed_chat_ids == [42]
+    assert proj.allowed_user_ids == [7]
 
 
 def test_ensure_seeded_without_token_writes_empty_projects(tmp_path: Path) -> None:
@@ -117,6 +149,21 @@ def test_yaml_config_roundtrip(tmp_path: Path) -> None:
 def test_compute_token_hash_returns_sha256_hex() -> None:
     token_hash = compute_token_hash("abc")
     assert token_hash == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+
+def test_to_public_dict_masks_bot_token_and_omits_secrets(test_settings: Settings) -> None:
+    path = test_settings.project_root / "pub.json"
+    reg = ProjectRegistry(path)
+    reg.ensure_seeded_from_settings(test_settings)
+    public = reg.to_public_dict()
+    proj = next(p for p in public["projects"] if p["name"] == "remote-coder")
+    token_plain = reg.get("remote-coder")
+    assert token_plain is not None
+    assert proj["bot_token_masked"] == mask_bot_token(token_plain.bot_token.get_secret_value())
+    assert proj["webhook_path"] == f"/telegram/webhook/{compute_token_hash(token_plain.bot_token.get_secret_value())}"
+    assert proj["token_hash_prefix"] == compute_token_hash(token_plain.bot_token.get_secret_value())[:16]
+    assert "bot_token" not in proj
+    assert "webhook_secret" not in proj
 
 
 def test_get_by_token_hash_finds_project_by_prefix(test_settings: Settings) -> None:

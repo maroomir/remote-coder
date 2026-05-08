@@ -230,6 +230,7 @@ app.include_router(
         advanced_settings_store,
         log_buffer,
         conversation_store,
+        bot_instance_manager=bot_instance_manager,
     )
 )
 app.include_router(
