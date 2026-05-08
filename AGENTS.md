@@ -4,14 +4,15 @@ This document gives AI coding agents the project-specific context and workflow n
 
 ## Project Identity
 
-`remote-coder` is a FastAPI automation service that lets an allowed Telegram user run local AI coding tools remotely. It receives Telegram messages, validates the requester, creates a job, runs Claude Code, Codex CLI, or Gemini CLI in an isolated Git worktree, commits changes on a separate branch when needed, pushes the branch, and reports the result back to Telegram.
+`remote-coder` is a FastAPI automation service that lets an allowed Telegram user run local AI coding tools remotely. Each registered project can use its own bot token and allowlist; the webhook path includes a SHA-256 hash of that token so Telegram delivers updates to the correct bot instance. Shared services (job manager, Git worktree service, parser, command registry, conversation store) handle work after routing.
 
 Core flow:
 
 ```text
 Telegram Message
-  -> FastAPI Webhook
-  -> Auth / Command Parser
+  -> FastAPI Webhook (/telegram/webhook/{token_hash})
+  -> BotInstanceManager -> per-bot Auth / Notifier / CommandContext.project_name
+  -> Command Parser
   -> Job Manager
   -> Git Worktree
   -> AI Runner (Claude / Codex / Gemini)
@@ -116,13 +117,13 @@ app/
   models.py                   # Shared models
   telegram/
     webhook.py                # Webhook router
+    bot_instances.py          # Per-bot notifier, auth, token_hash routing
     notifier.py               # Telegram message delivery
     commands.py               # /help, /model, /status, etc.
     parser.py                 # Message parsing
     conversation.py           # SQLite conversation context
     confirmations.py          # User confirmation flow
     model_preferences.py      # Model selection state
-    project_preferences.py    # Project selection state
   jobs/
     manager.py                # Job facade/orchestrator
     store.py                  # Job store
@@ -158,9 +159,9 @@ Start with the smallest useful version of this structure. Add deeper layers only
 
 - Use Pydantic models for request validation.
 - Separate routers, services, settings, models, and adapters.
-- Natural-language job requests must show current project, target branch, and model, then wait for `y` or `Y` confirmation before creating a job.
-- `/init` resets the chat's selected project, default model, and pending confirmation state. It must not alter SQLite conversation memory or Git repositories.
-- Commands with selectable options (`/model`, `/status`, `/project`, `/branch`, `/rebase`, `/stop`) should show inline buttons when called without arguments and route callbacks through the existing slash-command path.
+- Natural-language job requests must show current project, target branch, and model, then wait for `y` or `Y` confirmation before creating a job. The effective project is the bot instance's bound project (no `/project` command).
+- `/init` resets the chat's default model override and pending confirmation state. It must not alter SQLite conversation memory or Git repositories.
+- Commands with selectable options (`/model`, `/status`, `/branch`, `/rebase`, `/stop`) should show inline buttons when called without arguments and route callbacks through the existing slash-command path.
 
 ## Git and AI Runner Rules
 

@@ -3,12 +3,19 @@
 텔레그램 메시지를 통해 로컬 개발 머신에서 AI 코딩 작업을 실행하고 Git 브랜치/커밋 결과를 알림으로 받는 MVP 프로젝트입니다.
 
 > [!WARNING]
-> 이 프로젝트는 Telegram 메시지를 통해 로컬 머신의 AI CLI와 Git 작업을 실행합니다. 공개 인터넷에 서버나 관리 UI를 직접 노출하지 말고, 반드시 Telegram allowlist와 webhook secret을 설정한 뒤 개인·신뢰 환경에서만 사용하세요.
+> 이 프로젝트는 Telegram 메시지를 통해 로컬 머신의 AI CLI와 Git 작업을 실행합니다. 공개 인터넷에 서버나 관리 UI를 직접 노출하지 말고, 반드시 Telegram allowlist와(선택) webhook secret을 설정한 뒤 개인·신뢰 환경에서만 사용하세요.
+
+## 멀티봇 모델 (요약)
+
+- **등록 프로젝트마다 별도 Telegram 봇**을 둡니다. 채팅에서 대상 저장소를 바꾸는 `/project` 명령은 없습니다.
+- Webhook 주소는 봇마다 다릅니다: `POST /telegram/webhook/{SHA256(봇토큰)의 16진 문자열}` (토큰 자체는 URL에 넣지 않음).
+- 봇 토큰·허용 Chat/User ID·(선택) webhook secret은 **프로젝트 레지스트리**(`projects.json` 등)에 저장됩니다. **토큰은 평문**이므로 파일 권한과 백업 정책을 엄격히 하세요.
+- 상세 절차는 [`docs/multi-bot-setup.md`](docs/multi-bot-setup.md)를 참고하세요.
 
 ## 공개/보안 안내
 
-- `TELEGRAM_BOT_TOKEN`, Chat/User ID, webhook secret, AI API key, 개인 경로는 코드나 문서에 커밋하지 마세요.
-- `.env`, `.remote-coder/`, worktree, 로그, SQLite 대화 기억 파일은 로컬 전용 데이터입니다. 이 저장소의 `.gitignore`는 기본적으로 이 파일들을 제외합니다.
+- `TELEGRAM_BOT_TOKEN`(시드용 선택), 레지스트리의 `bot_token`, Chat/User ID, webhook secret, AI API key, 개인 경로는 코드나 문서에 커밋하지 마세요.
+- `.env`, `.remote-coder/`(특히 `projects.json`), worktree, 로그, SQLite 대화 기억 파일은 로컬 전용 데이터입니다. 이 저장소의 `.gitignore`는 기본적으로 이 파일들을 제외합니다.
 - 관리 UI(`/`, `/projects`, `/advanced`, `/logs`, `/database`)는 localhost 전용으로 설계되어 있습니다. reverse proxy, ngrok, 포트포워딩 등으로 외부에 공개하지 마세요.
 - Claude `--dangerously-skip-permissions`, Gemini `--approval-mode yolo`, Codex `danger-full-access` 같은 옵션은 로컬 파일을 수정할 수 있으므로 허용 프로젝트와 신뢰 사용자 범위를 제한한 뒤 사용하세요.
 - 대화 기억 SQLite에는 사용자의 Telegram 요청과 Job 요약이 저장될 수 있습니다. 민감한 코드를 메시지에 붙여넣지 말고, 필요 시 `/clear memory` 또는 관리 UI 고급 설정으로 정리하세요.
@@ -18,7 +25,7 @@
 ## 사전 준비
 
 - Python 3.11 이상 또는 Conda
-- Telegram Bot Token과 허용할 Chat ID/User ID
+- 프로젝트마다 Telegram Bot Token(BotFather)과 허용할 Chat ID(필수)·User ID(선택)
 - HTTPS 터널 도구(개발용 예: ngrok)
 - Claude Code CLI, Codex CLI, Gemini CLI 중 사용할 도구 1개 이상
 - 대상 Git 프로젝트와 worktree를 둘 로컬 디렉터리
@@ -85,10 +92,7 @@ cp .env.example .env
 
 `.env`에 다음 값을 채웁니다.
 
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_ALLOWED_CHAT_IDS`
-- `TELEGRAM_ALLOWED_USER_IDS` (선택)
-- 필요 시 `TELEGRAM_WEBHOOK_SECRET`
+- 선택(초기 시드): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TELEGRAM_ALLOWED_USER_IDS`, `TELEGRAM_WEBHOOK_SECRET` — 레지스트리가 비어 있을 때 첫 프로젝트 생성에만 쓰일 수 있습니다. 운영 설정은 관리 UI 또는 `projects.json`의 **프로젝트별** 필드를 우선합니다.
 - 선택: `GIT_REMOTE_NAME` (기본 `origin`) — 커밋 후 push 및 `/rebase`, `/pr`, `/clear` 시 사용
 - 선택: `PROJECTS_CONFIG_PATH` — 여러 Git 프로젝트 등록 파일(JSON 또는 `.yaml`) 경로
 - 선택: `CONVERSATION_DB_PATH` — 프로젝트+채팅별 대화 기억 SQLite 경로 (미설정 시 `PROJECT_ROOT/.remote-coder/conversations.sqlite3`)
@@ -97,16 +101,18 @@ cp .env.example .env
 - 선택: Gemini 사용 시 `npm install -g @google/gemini-cli`로 Gemini CLI를 설치하고 `gemini` 명령이 PATH에 잡히도록 설정
 - 초기 시드(1회용): `DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`
 
+기존 단일 `.env`만 쓰던 경우 → 관리 UI에서 각 프로젝트에 `bot_token`·allowlist를 옮기거나, 시드 생성 후 `.env`의 민감 값을 정리하는 것을 권장합니다. [`docs/multi-bot-setup.md`](docs/multi-bot-setup.md) 마이그레이션 절을 참고하세요.
+
 ## 2.5) 로컬 관리 UI (프로젝트 등록)
 
 서버를 띄운 뒤 **같은 머신**에서 브라우저로 접속합니다.
 
 - 관리 허브: `http://127.0.0.1:8000/` (요약·다른 페이지로 이동)
-- 프로젝트 등록: `http://127.0.0.1:8000/projects` (목록, 추가·수정·삭제, 폴백 기본값 지정)
+- 프로젝트 등록: `http://127.0.0.1:8000/projects` (목록, 추가·수정·삭제, 폴백 기본값, **봇 토큰·allowlist·webhook secret**, 봇별 webhook 경로 표시)
 - 고급 설정: `http://127.0.0.1:8000/advanced`
 - 서버 로그: `http://127.0.0.1:8000/logs` (`app` 로거 기준 인메모리 링 버퍼, 자동 새로고침·카테고리·`chat_id`/`job_id` 필터)
 - 데이터 조회: `http://127.0.0.1:8000/database` (대화 기억 SQLite 테이블 조회·CSV보내기)
-- 자연어 요청에서 `project: 프로젝트이름` 으로 대상을 바꿀 수 있습니다. 생략 시에는 이 채팅에서 `/project`로 선택한 작업 프로젝트가 있으면 그것을, 없으면 등록 파일에 저장된 기본값(폴백)이 사용됩니다.
+- 자연어 작업 대상 프로젝트는 **해당 봇에 고정**되어 있습니다. `project:` 토큰은 지원하지 않습니다.
 - `PROJECTS_CONFIG_PATH`가 없으면 기본 경로 `PROJECT_ROOT/.remote-coder/projects.json`을 사용합니다.
 - 레지스트리 파일이 없으면 `.env`의 초기 시드 값(`DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`)으로 자동 생성됩니다.
 
@@ -138,7 +144,7 @@ cp .env.example .env
 
 ## 3) 한 번에 실행하기 (권장)
 
-미리 작성된 실행 스크립트를 사용하면 Conda 환경 활성화, ngrok 실행, Webhook 등록, 서버 실행을 모두 한 번에 처리합니다.
+미리 작성된 실행 스크립트를 사용하면 Conda 환경 활성화, ngrok 실행, Webhook 등록, 서버 실행을 모두 한 번에 처리합니다. 멀티봇은 공개 HTTPS Base URL만 넘겨 활성 프로젝트마다 등록하는 `python scripts/set_webhook.py <URL>` 을 사용합니다.
 
 ```bash
 ./run.sh
@@ -175,9 +181,7 @@ ngrok version
 - `/model gemini` : 현재 chat의 기본 모델을 gemini로 변경
 - `/status` : 최근 Job 목록에서 인라인 버튼으로 선택
 - `/status <job_id>` : 작업 상태 조회
-- `/project` : 이 채팅의 현재 작업 프로젝트(인메모리) 확인
-- `/project <이름>` : 이 채팅의 작업 프로젝트를 등록된 이름으로 전환(인메모리, 레지스트리 기본값은 변경하지 않음)
-- `/init` : 이 채팅의 작업 프로젝트·기본 모델·`/clear` 확인 대기 상태를 서버 시작 직후처럼 초기화(적용 프로젝트는 등록 파일의 기본 프로젝트로 폴백)
+- `/init` : 이 채팅의 기본 모델 오버라이드·`/clear` 및 자연어 Job 확인 대기 상태를 초기화(봇에 묶인 프로젝트는 변하지 않음; SQLite·Git은 변경 없음)
 - `/reports` : 현재 채팅·현재 작업 프로젝트 기준으로 SQLite 대화 기억을 SQL 집계해 요약 리포트
 - `/branch` : 이 채팅 **적용 프로젝트** 저장소의 현재 checkout 브랜치 표시
 - `/branch <이름>` : 적용 프로젝트에서 로컬 브랜치가 있을 때만 `git switch` (없으면 오류, 원격만 있는 브랜치는 자동 생성하지 않음)
@@ -196,14 +200,14 @@ ngrok version
 - `/monitor branch` : 적용 프로젝트 저장소의 브랜치 요약(로컬/원격 개수 및 목록)
 - `/monitor worktrees` : linked worktree 목록·detached 개수·Remote Coder managed 후보 요약
 - `/monitor code` : 적용 프로젝트 루트 기준 코드 파일 수·줄 수 추정(확장자 화이트리스트, `.git`·`node_modules` 등 제외)
-- `/monitor project` : 등록 프로젝트 목록 및 이 채팅 적용 프로젝트 확인 (`/projects`와 동일)
+- `/monitor project` : **이 봇에 묶인** 프로젝트 레코드 요약(이름, 활성 여부, 경로, 기본 모델, worktree 디렉터리)
 - 자연어 메시지: 현재 프로젝트·작업 브랜치·사용 모델 확인 후 `y`/`Y` 입력 시 AI 작업 요청 생성
 
 참고:
 
-- `/model`로 변경한 기본 모델은 MVP에서는 인메모리 저장입니다. 서버 재시작 시 초기화됩니다.
-- `/project`로 선택한 작업 프로젝트도 채팅별 인메모리이며, 서버 재시작 시 초기화됩니다. `project:` 옵션이 있으면 그 값이 우선합니다. **`/branch`, `/rebase`, `/monitor memory|branch|worktrees|code|project`는 모두 이 채팅의 적용 프로젝트(없으면 등록 파일의 폴백 기본값)를 기준으로 합니다.**
-- `/init`으로 위 채팅별 설정과 `/clear` 확인 대기를 한 번에 되돌릴 수 있습니다(대화 기억 SQLite·Git 저장소는 건드리지 않음).
+- `/model`로 채팅별로 덮어쓴 기본 모델은 인메모리입니다. 서버 재시작 시 레지스트리의 프로젝트 `default_model`로 돌아갑니다.
+- **적용 프로젝트는 항상 이 봇 인스턴스에 바인딩된 이름**입니다. **`/branch`, `/rebase`, `/monitor memory|branch|worktrees|code|project` 등은 그 저장소를 기준으로 동작합니다.**
+- `/init`으로 채팅별 모델 오버라이드와 확인 대기 상태를 되돌릴 수 있습니다(대화 기억 SQLite·Git 저장소는 건드리지 않음).
 - AI Job은 **요청에 사용된 프로젝트 저장소**의 **현재 `HEAD` 커밋**에서 detached worktree를 만든 뒤 실행합니다. **워킹 트리에 변경이 있을 때만** 작업 브랜치를 만들고 커밋합니다. 커밋이 있으면 `GIT_REMOTE_NAME`(기본 `origin`)으로 push합니다. 저장소 브랜치를 바꾸려면 먼저 `/branch <이름>`으로 로컬 브랜치를 전환하세요.
 - 자동 생성 커밋 메시지는 다음 형식을 사용합니다.
 
@@ -217,7 +221,7 @@ ngrok version
 
   `title`은 기능 수정 내용을 한 줄로 요약하고, 첫 번째 본문 항목은 사용자 원문이나 최근 수정 파일 목록이 아니라 AI Agent가 수행한 변경 내용을 설명합니다. 변경 파일 목록은 Job 결과 알림에서 별도로 확인합니다.
 
-- 자연어 메시지에서 `model: codex`, `model: gemini`, `branch: my-branch`, `project: 등록이름`, `no commit` 토큰을 함께 사용할 수 있습니다. (`branch:` 값은 `/branch`와 동일 규칙으로 검증됩니다.)
+- 자연어 메시지에서 `model: codex`, `model: gemini`, `branch: my-branch`, `no commit` 토큰을 함께 사용할 수 있습니다. (`branch:` 값은 `/branch`와 동일 규칙으로 검증됩니다.)
 - 자연어 요청은 파싱 후 바로 실행되지 않습니다. 봇이 확인 메시지에 현재 프로젝트, 작업 브랜치, 사용 모델을 표시하며 `y` 또는 `Y`를 입력해야 Job이 생성됩니다.
 - **대화 기억(SQLite)**: 같은 텔레그램 채팅·같은 작업 프로젝트 기준으로 사용자 메시지와 Job 접수/결과 요약이 SQLite에 쌓입니다. 서버를 재시작해도 유지됩니다. 이전에 구체적인 지시를 보낸 뒤 `작업 시작해줘`, `진행해줘`, `그거 해줘`, `시작해줘`처럼 짧은 후속 문장만내면, 최근 기록을 합쳐 AI 지시문으로 만듭니다. 맥락이 없으면 봇이 안내 메시지를 보냅니다.
 - **Reply 체인**: 이전 메시지에 답장(reply)으로 보낸 자연어 요청마다, SQLite에 남은 조상 메시지들의 본문과 각 메시지에 연결된 Job 결과 요약을 `[Reply 체인 맥락]` 블록으로 Codex/Claude instruction 앞에 붙입니다. (봇이 해당 메시지를 수신·저장한 경우에만 복원됩니다.)
@@ -228,6 +232,7 @@ ngrok version
 
 ## 5) 모델별 사용 가이드
 
+- 멀티봇·Webhook·마이그레이션: [`docs/multi-bot-setup.md`](docs/multi-bot-setup.md)
 - Claude 사용자: [`docs/claude-guide.md`](docs/claude-guide.md)
 - Codex 사용자: [`docs/codex-guide.md`](docs/codex-guide.md)
 - Gemini 사용자: [`docs/gemini-guide.md`](docs/gemini-guide.md)

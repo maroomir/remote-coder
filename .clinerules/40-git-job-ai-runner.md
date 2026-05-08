@@ -25,7 +25,7 @@ committed by remote-coder: <job-id>
 - Make worktree cleanup/preservation behavior explicit and configurable.
 - `/monitor branch` summarizes branch lists and counts.
 - `/branch` shows the current branch.
-- `/branch <name>` switches only to an existing local branch in the selected project.
+- `/branch <name>` switches only to an existing local branch in the project bound to the current bot instance.
 - `/rebase`, `/clear`, and other broad Git/state-changing commands must run only when the user explicitly calls them.
 
 ## Job Rules

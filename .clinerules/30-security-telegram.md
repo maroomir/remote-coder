@@ -3,8 +3,8 @@
 ## Security Rules
 
 - Never hard-code bot tokens, API keys, private paths, personal Chat IDs, or credentials.
-- Store secrets in `.env` or local configuration files. Commit only examples such as `.env.example`.
-- Validate Telegram Chat ID/User ID allowlists before processing any command or natural-language job request.
+- Store secrets in `.env` or local configuration files (optional seeds). Primary bot tokens and per-project allowlists live in the projects registry; treat that file like a secret—restrict permissions and never commit tokens. Commit only examples such as `.env.example`.
+- Validate Telegram Chat ID/User ID allowlists before processing any command or natural-language job request. Allowlists are per registered project / bot instance.
 - Never run Git or AI work outside registered project paths.
 - Never execute user messages directly as shell commands.
 - Avoid `shell=True`; use list-based subprocess arguments.
@@ -23,6 +23,7 @@
 - Completion messages must include project name, branch name, commit hash, changed files, model information when available, token usage when available, and an error summary on failure.
 - Failure messages should summarize the root cause and point to the log location instead of sending long logs.
 - Keep command help available through `/help`.
-- Commands with selectable options (`/model`, `/status`, `/project`, `/branch`, `/rebase`, `/stop`) should show inline buttons when called without arguments.
+- Commands with selectable options (`/model`, `/status`, `/branch`, `/rebase`, `/stop`) should show inline buttons when called without arguments.
 - Inline button callback data must reuse the existing slash-command execution path after callback authentication.
-- `/init` resets the chat's selected project, default model, and pending confirmation state as if the server just started. It must not alter SQLite conversation memory or Git repositories.
+- `/init` resets the chat's default model override and pending confirmation state as if the server just started. It must not alter SQLite conversation memory or Git repositories.
+- There is no `/project` command: the Telegram bot is bound to one registered project; webhook URL uses a hash derived from the bot token (full SHA-256 hex), not the raw token.
