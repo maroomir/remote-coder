@@ -33,7 +33,7 @@ def test_job_manager_submit_and_run_success(test_settings, project_registry):
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
     )
     request = JobRequest(
@@ -93,7 +93,7 @@ def test_job_manager_extracts_runner_usage(test_settings, project_registry):
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
     )
     request = JobRequest(
@@ -131,7 +131,7 @@ def test_job_manager_no_changes_skips_branch_commit_push(test_settings, project_
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
     )
     request = JobRequest(
@@ -164,7 +164,7 @@ def test_job_manager_unknown_project_fails(test_settings, project_registry):
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
     )
     request = JobRequest(
@@ -201,7 +201,7 @@ def test_job_manager_marks_failed_stage_on_runner_error(test_settings, project_r
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
     )
     request = JobRequest(
@@ -243,7 +243,7 @@ def test_job_manager_push_failure_sets_stage(test_settings, project_registry):
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
     )
     request = JobRequest(
@@ -284,7 +284,7 @@ def test_job_manager_reuses_existing_branch_worktree(test_settings, project_regi
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
     )
     request = JobRequest(
@@ -329,7 +329,7 @@ def test_job_manager_truncates_runner_output_summary(test_settings, project_regi
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
     )
     request = JobRequest(
@@ -371,7 +371,7 @@ def test_job_manager_succeeds_with_no_changes_when_read_only_mentioned_in_output
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
     )
     request = JobRequest(
@@ -432,7 +432,7 @@ def test_job_manager_auto_merge_to_main_calls_rebase_after_push(test_settings, p
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
         advanced_settings_store=adv_store,
     )
@@ -480,7 +480,7 @@ def test_job_manager_auto_merge_failure_sets_integrate_stage(test_settings, proj
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
         advanced_settings_store=adv_store,
     )
@@ -520,7 +520,7 @@ def test_job_manager_logs_lifecycle_on_success(test_settings, project_registry, 
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
     )
     request = JobRequest(
@@ -559,7 +559,7 @@ def test_job_manager_logs_exception_on_runner_failure(test_settings, project_reg
         git_service,
         factory,
         branch_strategy,
-        notifier,
+        lambda _: notifier,
         project_registry,
     )
     request = JobRequest(
@@ -573,3 +573,90 @@ def test_job_manager_logs_exception_on_runner_failure(test_settings, project_reg
     with caplog.at_level(logging.ERROR, logger="app.jobs.lifecycle"):
         manager.run(job.id)
     assert any("failed" in r.getMessage() for r in caplog.records)
+
+
+def test_job_manager_notifier_resolver_invoked_with_job_project(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = []
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier = Mock()
+    resolved: list[str] = []
+
+    def resolver(project: str):
+        resolved.append(project)
+        return notifier
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        resolver,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="noop",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    manager.run(job.id)
+
+    assert resolved == ["remote-coder", "remote-coder"]
+    notifier.send_job_accepted.assert_called_once()
+    notifier.send_job_result.assert_called_once()
+
+
+def test_job_manager_routes_notifications_by_project_name(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = []
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier_primary = Mock()
+    notifier_other = Mock()
+
+    def resolver(project: str):
+        return notifier_primary if project == "remote-coder" else notifier_other
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        resolver,
+        project_registry,
+    )
+    job = manager.submit(
+        JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="noop",
+            chat_id=1,
+            requested_by=1,
+        )
+    )
+    manager.run(job.id)
+
+    notifier_primary.send_job_accepted.assert_called_once()
+    notifier_primary.send_job_result.assert_called_once()
+    notifier_other.send_job_accepted.assert_not_called()
+    notifier_other.send_job_result.assert_not_called()

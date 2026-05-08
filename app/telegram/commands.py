@@ -107,7 +107,7 @@ def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | 
 
 
 def effective_model_for_chat(ctx: CommandContext, chat_id: int, project_name: str | None) -> ModelName:
-    explicit = ctx.model_preferences.get_explicit(chat_id)
+    explicit = ctx.model_preferences.get_explicit(project_name, chat_id)
     if explicit is not None:
         return explicit
     if project_name:
@@ -302,7 +302,7 @@ class ModelCommand(TelegramCommand):
             return f"현재 기본 모델: {current.value}"
         if len(tokens) == 2 and tokens[1] in {model.value for model in ModelName}:
             selected = ModelName(tokens[1])
-            ctx.model_preferences.set(message.chat_id, selected)
+            ctx.model_preferences.set(project_name, message.chat_id, selected)
             return f"기본 모델이 {selected.value}로 변경되었습니다."
         return format_usage("/model", f"/model {MODEL_USAGE}")
 
@@ -338,9 +338,17 @@ class StatusCommand(TelegramCommand):
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if len(tokens) == 1:
+            if not project_name:
+                return (
+                    "등록된 프로젝트가 없습니다. "
+                    "브라우저에서 http://127.0.0.1:8000/projects 로 프로젝트를 등록하세요."
+                )
             limit = self._job_limit(ctx)
-            jobs = ctx.job_store.list_recent_for_chat(message.chat_id, limit)
+            jobs = ctx.job_store.list_recent_for_project_chat(
+                project_name, message.chat_id, limit
+            )
             if not jobs:
                 return "조회할 수 있는 Job이 없습니다."
             return "조회할 Job을 선택하세요."
@@ -348,6 +356,8 @@ class StatusCommand(TelegramCommand):
             return format_usage("/status <job_id>")
         job = ctx.job_store.get(tokens[1])
         if not job:
+            return "해당 Job ID를 찾을 수 없습니다."
+        if project_name and job.request.project != project_name:
             return "해당 Job ID를 찾을 수 없습니다."
         return self._format_job_detail(job)
 
@@ -446,8 +456,13 @@ class StatusCommand(TelegramCommand):
             return None
         if len(message.text.strip().split()) != 1:
             return None
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return None
         limit = self._job_limit(ctx)
-        jobs = ctx.job_store.list_recent_for_chat(message.chat_id, limit)
+        jobs = ctx.job_store.list_recent_for_project_chat(
+            project_name, message.chat_id, limit
+        )
         if not jobs:
             return None
         return _button_rows(
@@ -465,8 +480,9 @@ class InitCommand(TelegramCommand):
             return format_usage("/init")
 
         chat_id = message.chat_id
-        ctx.model_preferences.clear(chat_id)
-        ctx.confirmation_store.pop(chat_id)
+        project_name = effective_project_name_for_chat(ctx, chat_id)
+        ctx.model_preferences.clear(project_name, chat_id)
+        ctx.confirmation_store.pop(project_name, chat_id)
         _cmd_evt.info("init reset", chat_id=chat_id)
 
         project_name = effective_project_name_for_chat(ctx, chat_id)
@@ -928,7 +944,9 @@ class MonitorCommand(TelegramCommand):
             current = effective_model_for_chat(ctx, message.chat_id, project_name)
             body = format_model_monitor(
                 current,
-                recent_jobs=ctx.job_store.list_recent(50),
+                recent_jobs=ctx.job_store.list_recent_for_project_chat(
+                    project_name, message.chat_id, 50
+                ),
                 chat_id=message.chat_id,
                 project=project_name,
             )
@@ -985,6 +1003,7 @@ class ClearCommand(ConfirmableCommand):
             return "기억 저장소가 설정되지 않았습니다."
 
         ctx.confirmation_store.set(
+            effective_project_name_for_chat(ctx, message.chat_id),
             message.chat_id,
             PendingConfirmation(command_name=self.name, action=action),
         )
@@ -1086,6 +1105,10 @@ class StopCommand(TelegramCommand):
                 return "중단할 수 있는 진행 중 Job이 없습니다."
             return "중단할 Job을 선택하세요."
         job_id = tokens[1].strip()
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        existing = ctx.job_store.get(job_id)
+        if existing is not None and project_name and existing.request.project != project_name:
+            return f"Job을 찾을 수 없습니다: {job_id}"
         if ctx.job_manager is None:
             return "작업 중단 기능을 사용할 수 없습니다."
         success = ctx.job_manager.cancel(job_id)
@@ -1115,9 +1138,14 @@ class StopCommand(TelegramCommand):
 
     @staticmethod
     def _list_cancellable_jobs(message: TelegramMessage, ctx: CommandContext) -> list[Job]:
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return []
         return [
             job
-            for job in ctx.job_store.list_recent_for_chat(message.chat_id, 20)
+            for job in ctx.job_store.list_recent_for_project_chat(
+                project_name, message.chat_id, 20
+            )
             if job.status in {JobStatus.QUEUED, JobStatus.RUNNING}
         ]
 
@@ -1133,16 +1161,18 @@ class CommandRegistry:
         tokens = message.text.strip().split()
         head = tokens[0] if tokens else ""
         # `/init`은 확인 대기보다 우선합니다. 대기 중이던 확인은 취소·삭제한 뒤 초기화합니다.
+        scope_project = ctx.project_name
+
         if head == "/init":
             init_cmd = self._commands.get("/init")
             if init_cmd is not None:
-                ctx.confirmation_store.pop(message.chat_id)
+                ctx.confirmation_store.pop(scope_project, message.chat_id)
                 return init_cmd.execute(message, ctx)
 
-        pending = ctx.confirmation_store.get(message.chat_id)
+        pending = ctx.confirmation_store.get(scope_project, message.chat_id)
         if pending is not None:
             command = self._commands.get(pending.command_name)
-            confirmed = ctx.confirmation_store.pop(message.chat_id)
+            confirmed = ctx.confirmation_store.pop(scope_project, message.chat_id)
             if isinstance(command, ConfirmableCommand) and confirmed is not None:
                 return command.confirm(message, ctx, confirmed)
             return "확인 대기 작업을 처리할 수 없습니다."

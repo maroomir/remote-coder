@@ -9,7 +9,7 @@ from app.telegram.parser import CommandParseError, CommandParser
 
 def test_parse_natural_returns_job_request(project_registry: ProjectRegistry):
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
-    req = parser.parse_natural("fix login bug", chat_id=1, user_id=2)
+    req = parser.parse_natural("fix login bug", "remote-coder", chat_id=1, user_id=2)
     assert req.project == "remote-coder"
     assert req.model == ModelName.CLAUDE
     assert req.instruction == "fix login bug"
@@ -18,7 +18,7 @@ def test_parse_natural_returns_job_request(project_registry: ProjectRegistry):
 def test_parse_natural_raises_on_empty(project_registry: ProjectRegistry):
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
     with pytest.raises(CommandParseError):
-        parser.parse_natural("   ", chat_id=1, user_id=2)
+        parser.parse_natural("   ", "remote-coder", chat_id=1, user_id=2)
 
 
 def test_parse_natural_uses_model_preference(project_registry: ProjectRegistry):
@@ -29,7 +29,7 @@ def test_parse_natural_uses_model_preference(project_registry: ProjectRegistry):
         default_model=ModelName.CLAUDE,
         model_preferences=pref,
     )
-    req = parser.parse_natural("fix login bug", chat_id=1, user_id=2)
+    req = parser.parse_natural("fix login bug", "remote-coder", chat_id=1, user_id=2)
     assert req.model == ModelName.CODEX
 
 
@@ -37,6 +37,7 @@ def test_parse_natural_parses_model_branch_and_no_commit(project_registry: Proje
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
     req = parser.parse_natural(
         "model: codex branch: remote/test no commit fix login bug",
+        "remote-coder",
         chat_id=1,
         user_id=2,
     )
@@ -48,7 +49,7 @@ def test_parse_natural_parses_model_branch_and_no_commit(project_registry: Proje
 
 def test_parse_natural_parses_gemini_model(project_registry: ProjectRegistry):
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
-    req = parser.parse_natural("model: gemini fix login bug", chat_id=1, user_id=2)
+    req = parser.parse_natural("model: gemini fix login bug", "remote-coder", chat_id=1, user_id=2)
     assert req.model == ModelName.GEMINI
     assert req.instruction == "fix login bug"
 
@@ -74,8 +75,7 @@ def test_parse_natural_no_model_preferences_uses_project_default(project_registr
         default_model=ModelName.CLAUDE,
         model_preferences=None,
     )
-    project_registry.set_default_project("special")
-    req = parser.parse_natural("task", chat_id=1, user_id=2)
+    req = parser.parse_natural("task", "special", chat_id=1, user_id=2)
     assert req.model == ModelName.CODEX
 
 
@@ -103,8 +103,7 @@ def test_parse_natural_without_explicit_model_preference_uses_project_default(
         model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
     )
 
-    project_registry.set_default_project("project_default")
-    req = parser.parse_natural("task", chat_id=1, user_id=2)
+    req = parser.parse_natural("task", "project_default", chat_id=1, user_id=2)
 
     assert req.model == ModelName.CODEX
 
@@ -112,7 +111,7 @@ def test_parse_natural_without_explicit_model_preference_uses_project_default(
 def test_parse_natural_rejects_invalid_branch_token(project_registry: ProjectRegistry):
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
     with pytest.raises(CommandParseError, match="브랜치"):
-        parser.parse_natural("branch: bad..name fix bug", chat_id=1, user_id=2)
+        parser.parse_natural("branch: bad..name fix bug", "remote-coder", chat_id=1, user_id=2)
 
 
 def test_parse_natural_ambiguous_followup_merges_conversation(project_registry: ProjectRegistry):
@@ -131,7 +130,7 @@ def test_parse_natural_ambiguous_followup_merges_conversation(project_registry: 
         conversation_store=store,
         conversation_recent_limit=10,
     )
-    req = parser.parse_natural("작업 시작해줘", chat_id=99, user_id=1)
+    req = parser.parse_natural("작업 시작해줘", "remote-coder", chat_id=99, user_id=1)
     assert "README" in req.instruction
     assert "[이전 대화/작업 맥락]" in req.instruction
     assert "작업 시작해줘" in req.instruction
@@ -146,7 +145,7 @@ def test_parse_natural_ambiguous_without_history_raises(project_registry: Projec
         conversation_store=store,
     )
     with pytest.raises(CommandParseError, match="맥락"):
-        parser.parse_natural("작업 시작해줘", chat_id=42, user_id=1)
+        parser.parse_natural("작업 시작해줘", "remote-coder", chat_id=42, user_id=1)
 
 
 def test_parse_natural_reply_reuses_bound_branch(project_registry: ProjectRegistry):
@@ -167,6 +166,7 @@ def test_parse_natural_reply_reuses_bound_branch(project_registry: ProjectRegist
 
     req = parser.parse_natural(
         "추가 기능도 반영해줘",
+        "remote-coder",
         chat_id=99,
         user_id=1,
         message_id=12,
@@ -232,6 +232,7 @@ def test_parse_natural_reply_chain_includes_ancestors_and_job_results(project_re
     )
     req = parser.parse_natural(
         "task C finish",
+        "remote-coder",
         chat_id=5,
         user_id=1,
         message_id=3,
@@ -288,6 +289,7 @@ def test_parse_natural_ambiguous_on_reply_excludes_chain_from_recent_block(proje
     )
     req = parser.parse_natural(
         "진행해줘",
+        "remote-coder",
         chat_id=8,
         user_id=1,
         message_id=102,
@@ -300,3 +302,31 @@ def test_parse_natural_ambiguous_on_reply_excludes_chain_from_recent_block(proje
     body_after_reply = req.instruction.split("[/Reply 체인 맥락]", 1)[-1]
     assert "user: first instruction" not in body_after_reply
     assert "user: second instruction" not in body_after_reply
+
+
+def test_parse_natural_rejects_unknown_project_name(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    with pytest.raises(CommandParseError, match="알 수 없는 프로젝트"):
+        parser.parse_natural("do something", "no-such-project", chat_id=1, user_id=2)
+
+
+def test_parse_natural_ambiguous_followup_reads_only_named_project_history(
+    project_registry: ProjectRegistry,
+):
+    db = project_registry.config_path.parent / "parser_cross_project.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(
+        project="other-bot-project",
+        chat_id=99,
+        role="user",
+        text="다른 봇 전용 비밀 맥락",
+        job_id=None,
+    )
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=store,
+        conversation_recent_limit=10,
+    )
+    with pytest.raises(CommandParseError, match="맥락"):
+        parser.parse_natural("작업 시작해줘", "remote-coder", chat_id=99, user_id=1)

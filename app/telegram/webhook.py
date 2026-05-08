@@ -300,6 +300,7 @@ def create_webhook_router(
         try:
             parsed_request = parser.parse_natural(
                 message.text,
+                bot_instance.project_name,
                 chat_id=chat_id,
                 user_id=user_id,
                 message_id=update.message.message_id,
@@ -319,7 +320,7 @@ def create_webhook_router(
             )
             background_tasks.add_task(notifier.send_text, chat_id, str(exc))
             return {"status": "ignored"}
-        request = parsed_request.model_copy(update={"project": bot_instance.project_name})
+        request = parsed_request
 
         _cmdlog.info(
             "natural request parsed model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",

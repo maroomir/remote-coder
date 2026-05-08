@@ -108,31 +108,6 @@ runner_factory = AiRunnerFactory(codex_sandbox=settings.codex_sandbox)
 branch_strategy = TimestampSlugStrategy()
 
 
-def _primary_bot_token_for_jobs() -> str:
-    if settings.telegram_bot_token is not None:
-        return settings.telegram_bot_token.get_secret_value()
-    for record in project_registry.list_projects():
-        if record.enabled:
-            return record.bot_token.get_secret_value()
-    raise RuntimeError(
-        "Telegram 봇 토큰이 없습니다. TELEGRAM_BOT_TOKEN을 설정하거나 "
-        "projects 설정에 bot_token이 있는 활성 프로젝트를 하나 이상 두세요."
-    )
-
-
-notifier = TelegramNotifier(_primary_bot_token_for_jobs())
-job_manager = JobManager(
-    settings=settings,
-    job_store=job_store,
-    git_service=git_service,
-    runner_factory=runner_factory,
-    branch_strategy=branch_strategy,
-    notifier=notifier,
-    project_registry=project_registry,
-    advanced_settings_store=advanced_settings_store,
-    ai_commit_body_generator=AiCommitBodyGenerator(),
-)
-command_context.job_manager = job_manager
 def _build_bot_instance(record):
     return BotInstance(
         project_name=record.name,
@@ -148,6 +123,30 @@ bot_instance_manager = BotInstanceManager(_build_bot_instance)
 for project in project_registry.list_projects():
     if project.enabled:
         bot_instance_manager.register(project)
+
+
+def _notifier_for_project(project_name: str) -> TelegramNotifier:
+    instance = bot_instance_manager.get_by_name(project_name)
+    if instance is None:
+        raise RuntimeError(
+            "Telegram 알림용 봇 인스턴스를 찾을 수 없습니다. "
+            f"project={project_name!r}"
+        )
+    return instance.notifier
+
+
+job_manager = JobManager(
+    settings=settings,
+    job_store=job_store,
+    git_service=git_service,
+    runner_factory=runner_factory,
+    branch_strategy=branch_strategy,
+    notifier_resolver=_notifier_for_project,
+    project_registry=project_registry,
+    advanced_settings_store=advanced_settings_store,
+    ai_commit_body_generator=AiCommitBodyGenerator(),
+)
+command_context.job_manager = job_manager
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):

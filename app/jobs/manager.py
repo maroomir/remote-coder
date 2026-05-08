@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -39,7 +40,7 @@ class JobManager:
         git_service: GitWorktreeService,
         runner_factory: AiRunnerFactory,
         branch_strategy: BranchNamingStrategy,
-        notifier: TelegramNotifier,
+        notifier_resolver: Callable[[str], TelegramNotifier],
         project_registry: ProjectRegistry,
         advanced_settings_store: FileAdvancedSettingsStore | None = None,
         ai_commit_body_generator: AiCommitBodyGenerator | None = None,
@@ -49,12 +50,15 @@ class JobManager:
         self._git_service = git_service
         self._runner_factory = runner_factory
         self._branch_strategy = branch_strategy
-        self._notifier = notifier
+        self._notifier_resolver = notifier_resolver
         self._project_registry = project_registry
         self._advanced_settings_store = advanced_settings_store
         self._ai_commit_body_generator = ai_commit_body_generator
         self._cancel_events: dict[str, threading.Event] = {}
         self._cancelled_job_ids: set[str] = set()
+
+    def _notifier_for(self, project: str) -> TelegramNotifier:
+        return self._notifier_resolver(project)
 
     def submit(self, request: JobRequest) -> Job:
         job = Job(id=self._make_job_id(), request=request)
@@ -67,7 +71,7 @@ class JobManager:
             project=request.project,
             job_id=job.id,
         )
-        self._notifier.send_job_accepted(job)
+        self._notifier_for(request.project).send_job_accepted(job)
         return job
 
     def cancel(self, job_id: str) -> bool:
@@ -110,7 +114,7 @@ class JobManager:
             if job.status.value not in ("cancelled",):
                 job.mark_cancelled()
                 self._job_store.update(job)
-            self._notifier.send_job_result(job)
+            self._notifier_for(job.request.project).send_job_result(job)
             return job
 
         cancel_event = threading.Event()
@@ -135,7 +139,7 @@ class JobManager:
             job.mark_failed("unknown or disabled project")
             job.error_stage = "project_resolve"
             self._job_store.update(job)
-            self._notifier.send_job_result(job)
+            self._notifier_for(job.request.project).send_job_result(job)
             return job
 
         project_path = entry.root_path
@@ -495,7 +499,7 @@ class JobManager:
                         job_id=job.id,
                     )
                     pass
-            self._notifier.send_job_result(job)
+            self._notifier_for(job.request.project).send_job_result(job)
         return job
 
     @staticmethod

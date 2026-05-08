@@ -74,6 +74,7 @@ class CommandParser:
     def parse_natural(
         self,
         text: str,
+        project_name: str,
         chat_id: int,
         user_id: int | None,
         message_id: int | None = None,
@@ -83,13 +84,6 @@ class CommandParser:
         if not remaining:
             raise CommandParseError("작업 지시문이 비어 있습니다.")
 
-        default_name = self._project_registry.get_default_project_name()
-        if not default_name:
-            raise CommandParseError(
-                "등록된 프로젝트가 없습니다. 브라우저에서 http://127.0.0.1:8000/projects 로 프로젝트를 등록하세요.",
-            )
-
-        project_name = default_name
         entry = self._project_registry.get(project_name)
         if not entry:
             raise CommandParseError(f"알 수 없는 프로젝트: {project_name}")
