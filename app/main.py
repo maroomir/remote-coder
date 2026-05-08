@@ -16,7 +16,11 @@ from app.jobs.manager import JobManager
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.log_buffer import InMemoryLogBuffer, attach_app_memory_log_handler
 from app.monitoring.events import EventLogger
-from app.projects.registry import ProjectRegistry, compute_token_hash, projects_config_path_for_settings
+from app.projects.registry import (
+    ProjectRegistry,
+    compute_token_hash_prefix,
+    projects_config_path_for_settings,
+)
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import (
     BranchCommand,
@@ -111,7 +115,7 @@ branch_strategy = TimestampSlugStrategy()
 def _build_bot_instance(record):
     return BotInstance(
         project_name=record.name,
-        token_hash=compute_token_hash(record.bot_token.get_secret_value()),
+        token_hash=compute_token_hash_prefix(record.bot_token.get_secret_value()),
         notifier=TelegramNotifier(record.bot_token.get_secret_value()),
         auth_service=AllowlistAuthService(set(record.allowed_chat_ids), set(record.allowed_user_ids)),
         command_context=command_context,

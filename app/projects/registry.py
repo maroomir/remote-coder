@@ -13,9 +13,23 @@ from app.models import ModelName
 
 _NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
+WEBHOOK_TOKEN_HASH_PREFIX_LENGTH = 16
+_WEBHOOK_TOKEN_HASH_PREFIX_RE = re.compile(
+    rf"^[0-9a-f]{{{WEBHOOK_TOKEN_HASH_PREFIX_LENGTH}}}$"
+)
+
 
 def compute_token_hash(token: str) -> str:
     return sha256(token.encode("utf-8")).hexdigest()
+
+
+def compute_token_hash_prefix(token: str, length: int = WEBHOOK_TOKEN_HASH_PREFIX_LENGTH) -> str:
+    return compute_token_hash(token)[:length]
+
+
+def normalize_webhook_token_hash_path_segment(segment: str) -> str | None:
+    s = segment.strip().lower()
+    return s if _WEBHOOK_TOKEN_HASH_PREFIX_RE.fullmatch(s) else None
 
 
 def mask_bot_token(token: str) -> str:
@@ -142,10 +156,13 @@ class ProjectRegistry:
         return None
 
     def get_by_token_hash(self, token_hash: str) -> ProjectRecord | None:
+        normalized = normalize_webhook_token_hash_path_segment(token_hash)
+        if normalized is None:
+            return None
         with self._lock:
             for project in self._payload.projects:
-                project_hash = compute_token_hash(project.bot_token.get_secret_value())
-                if project_hash.startswith(token_hash):
+                prefix = compute_token_hash_prefix(project.bot_token.get_secret_value())
+                if prefix == normalized:
                     return project.model_copy(deep=True)
         return None
 
@@ -170,6 +187,7 @@ class ProjectRegistry:
         with self._lock:
             if any(p.name == record.name for p in self._payload.projects):
                 raise ValueError(f"project already exists: {record.name}")
+            ProjectRegistry._raise_if_token_hash_prefix_collides(record, list(self._payload.projects))
             projects = list(self._payload.projects)
             projects.append(record)
             self._payload = ProjectsFilePayload(
@@ -187,6 +205,7 @@ class ProjectRegistry:
             projects = [p for p in self._payload.projects if p.name != name]
             if len(projects) == len(self._payload.projects):
                 raise ValueError(f"unknown project: {name}")
+            ProjectRegistry._raise_if_token_hash_prefix_collides(record, projects)
             projects.append(record)
             self._payload = ProjectsFilePayload(
                 default_project=self._payload.default_project,
@@ -220,7 +239,7 @@ class ProjectRegistry:
     @staticmethod
     def _project_record_to_public_dict(record: ProjectRecord) -> dict:
         token_plain = record.bot_token.get_secret_value()
-        token_hash = compute_token_hash(token_plain)
+        prefix = compute_token_hash_prefix(token_plain)
         return {
             "name": record.name,
             "root_path": str(record.root_path),
@@ -231,9 +250,18 @@ class ProjectRegistry:
             "webhook_secret_set": record.webhook_secret is not None,
             "allowed_chat_ids": list(record.allowed_chat_ids),
             "allowed_user_ids": list(record.allowed_user_ids),
-            "webhook_path": f"/telegram/webhook/{token_hash}",
-            "token_hash_prefix": token_hash[:16],
+            "webhook_path": f"/telegram/webhook/{prefix}",
+            "token_hash_prefix": prefix,
         }
+
+    @staticmethod
+    def _raise_if_token_hash_prefix_collides(record: ProjectRecord, existing: list[ProjectRecord]) -> None:
+        prefix = compute_token_hash_prefix(record.bot_token.get_secret_value())
+        for p in existing:
+            if compute_token_hash_prefix(p.bot_token.get_secret_value()) == prefix:
+                raise ValueError(
+                    f"webhook token hash prefix collision with project {p.name!r}",
+                )
 
     def _read_file_unlocked(self) -> ProjectsFilePayload:
         if not self._path.exists():

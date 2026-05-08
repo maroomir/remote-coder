@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import SecretStr
 
 from app.config import Settings
 from app.models import ModelName
@@ -8,6 +9,7 @@ from app.projects.registry import (
     ProjectRecord,
     ProjectRegistry,
     compute_token_hash,
+    compute_token_hash_prefix,
     mask_bot_token,
     projects_config_path_for_settings,
 )
@@ -160,21 +162,110 @@ def test_to_public_dict_masks_bot_token_and_omits_secrets(test_settings: Setting
     token_plain = reg.get("remote-coder")
     assert token_plain is not None
     assert proj["bot_token_masked"] == mask_bot_token(token_plain.bot_token.get_secret_value())
-    assert proj["webhook_path"] == f"/telegram/webhook/{compute_token_hash(token_plain.bot_token.get_secret_value())}"
-    assert proj["token_hash_prefix"] == compute_token_hash(token_plain.bot_token.get_secret_value())[:16]
+    prefix = compute_token_hash_prefix(token_plain.bot_token.get_secret_value())
+    assert proj["webhook_path"] == f"/telegram/webhook/{prefix}"
+    assert proj["token_hash_prefix"] == prefix
     assert "bot_token" not in proj
     assert "webhook_secret" not in proj
 
 
-def test_get_by_token_hash_finds_project_by_prefix(test_settings: Settings) -> None:
+def test_get_by_token_hash_exact_prefix_match(test_settings: Settings) -> None:
     path = test_settings.project_root / "hash.json"
     reg = ProjectRegistry(path)
     reg.ensure_seeded_from_settings(test_settings)
 
     project = reg.get("remote-coder")
     assert project is not None
-    token_hash_prefix = compute_token_hash(project.bot_token.get_secret_value())[:16]
+    token_hash_prefix = compute_token_hash_prefix(project.bot_token.get_secret_value())
 
     matched = reg.get_by_token_hash(token_hash_prefix)
     assert matched is not None
     assert matched.name == "remote-coder"
+
+
+def test_get_by_token_hash_rejects_non_normalized_segment(test_settings: Settings) -> None:
+    path = test_settings.project_root / "hashnorm.json"
+    reg = ProjectRegistry(path)
+    reg.ensure_seeded_from_settings(test_settings)
+    project = reg.get("remote-coder")
+    assert project is not None
+    full = compute_token_hash(project.bot_token.get_secret_value())
+    assert reg.get_by_token_hash(full) is None
+    assert reg.get_by_token_hash(full[:15]) is None
+
+
+def test_add_project_rejects_webhook_prefix_collision(test_settings: Settings) -> None:
+    path = test_settings.project_root / "coll_add.json"
+    reg = ProjectRegistry(path)
+    reg.ensure_seeded_from_settings(test_settings)
+    existing = reg.get("remote-coder")
+    assert existing is not None
+    root2 = test_settings.project_root / "repo2"
+    root2.mkdir()
+    wt2 = test_settings.worktree_base_dir / "wt2"
+    wt2.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="prefix collision"):
+        reg.add_project(
+            ProjectRecord(
+                name="other",
+                root_path=root2,
+                worktree_base_dir=wt2,
+                default_model=ModelName.CLAUDE,
+                enabled=True,
+                bot_token=SecretStr(existing.bot_token.get_secret_value()),
+                allowed_chat_ids=[123],
+            )
+        )
+
+
+def test_update_project_rejects_webhook_prefix_collision(test_settings: Settings) -> None:
+    path = test_settings.project_root / "coll_upd.json"
+    reg = ProjectRegistry(path)
+    reg.ensure_seeded_from_settings(test_settings)
+    root_a = test_settings.project_root / "repo_a"
+    root_a.mkdir()
+    root_b = test_settings.project_root / "repo_b"
+    root_b.mkdir()
+    wt_a = test_settings.worktree_base_dir / "wta"
+    wt_a.mkdir(parents=True)
+    wt_b = test_settings.worktree_base_dir / "wtb"
+    wt_b.mkdir(parents=True)
+
+    reg.add_project(
+        ProjectRecord(
+            name="proj-a",
+            root_path=root_a,
+            worktree_base_dir=wt_a,
+            default_model=ModelName.CLAUDE,
+            enabled=True,
+            bot_token=SecretStr("token-a-only"),
+            allowed_chat_ids=[1],
+        )
+    )
+    reg.add_project(
+        ProjectRecord(
+            name="proj-b",
+            root_path=root_b,
+            worktree_base_dir=wt_b,
+            default_model=ModelName.CLAUDE,
+            enabled=True,
+            bot_token=SecretStr("token-b-only"),
+            allowed_chat_ids=[1],
+        )
+    )
+    proj_a = reg.get("proj-a")
+    assert proj_a is not None
+    with pytest.raises(ValueError, match="prefix collision"):
+        reg.update_project(
+            "proj-b",
+            ProjectRecord(
+                name="proj-b",
+                root_path=root_b,
+                worktree_base_dir=wt_b,
+                default_model=ModelName.CLAUDE,
+                enabled=True,
+                bot_token=SecretStr(proj_a.bot_token.get_secret_value()),
+                allowed_chat_ids=[1],
+            ),
+        )

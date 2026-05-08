@@ -5,7 +5,7 @@ from pydantic import SecretStr
 
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
-from app.projects.registry import ProjectRecord, compute_token_hash
+from app.projects.registry import ProjectRecord, compute_token_hash_prefix
 from app.security.auth import AllowlistAuthService
 from app.telegram.bot_instances import BotInstance, BotInstanceManager
 from app.telegram.commands import CommandContext
@@ -45,7 +45,7 @@ def _dummy_factory():
         )
         return BotInstance(
             project_name=r.name,
-            token_hash=compute_token_hash(r.bot_token.get_secret_value()),
+            token_hash=compute_token_hash_prefix(r.bot_token.get_secret_value()),
             notifier=Mock(),
             auth_service=AllowlistAuthService(set(r.allowed_chat_ids)),
             command_context=ctx,
@@ -55,37 +55,38 @@ def _dummy_factory():
     return factory
 
 
-def test_bot_instance_manager_register_and_get_full_hash(tmp_path: Path) -> None:
+def test_bot_instance_manager_register_and_get_prefix_key(tmp_path: Path) -> None:
     mgr = BotInstanceManager(_dummy_factory())
     rec = _record(tmp_path, "p1", "token-one")
     mgr.register(rec)
-    full = compute_token_hash("token-one")
-    got = mgr.get(full)
+    key = compute_token_hash_prefix("token-one")
+    got = mgr.get(key)
     assert got is not None
     assert got.project_name == "p1"
-    assert got.token_hash == full
+    assert got.token_hash == key
 
 
-def test_bot_instance_manager_get_by_hash_prefix(tmp_path: Path) -> None:
+def test_bot_instance_manager_get_wrong_length_returns_none(tmp_path: Path) -> None:
     mgr = BotInstanceManager(_dummy_factory())
     rec = _record(tmp_path, "p1", "token-prefix-test")
     mgr.register(rec)
-    full = compute_token_hash("token-prefix-test")
-    prefix = full[:16]
-    got = mgr.get(prefix)
+    key = compute_token_hash_prefix("token-prefix-test")
+    assert len(key) == 16
+    got = mgr.get(key)
     assert got is not None
     assert got.project_name == "p1"
+    assert mgr.get(key[:15]) is None
 
 
 def test_bot_instance_manager_register_same_name_replaces_hash(tmp_path: Path) -> None:
     mgr = BotInstanceManager(_dummy_factory())
     mgr.register(_record(tmp_path, "same", "old-token"))
-    old_hash = compute_token_hash("old-token")
+    old_key = compute_token_hash_prefix("old-token")
     mgr.register(_record(tmp_path, "same", "new-token"))
-    assert mgr.get(old_hash) is None
-    assert mgr.get(compute_token_hash("new-token")) is not None
+    assert mgr.get(old_key) is None
+    assert mgr.get(compute_token_hash_prefix("new-token")) is not None
     assert mgr.get_by_name("same") is not None
-    assert mgr.get_by_name("same").token_hash == compute_token_hash("new-token")
+    assert mgr.get_by_name("same").token_hash == compute_token_hash_prefix("new-token")
 
 
 def test_bot_instance_manager_unregister(tmp_path: Path) -> None:
@@ -94,7 +95,7 @@ def test_bot_instance_manager_unregister(tmp_path: Path) -> None:
     mgr.register(rec)
     assert mgr.unregister("gone") is True
     assert mgr.unregister("gone") is False
-    assert mgr.get(compute_token_hash("tok")) is None
+    assert mgr.get(compute_token_hash_prefix("tok")) is None
     assert mgr.get_by_name("gone") is None
 
 

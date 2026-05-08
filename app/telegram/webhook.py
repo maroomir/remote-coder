@@ -11,6 +11,7 @@ from app.jobs.schemas import Job, JobRequest
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.events import EventLogger
 from app.telegram.commands import CommandRegistry, CommandResponse, TelegramMessage
+from app.projects.registry import normalize_webhook_token_hash_path_segment
 from app.telegram.bot_instances import BotInstanceManager
 from app.telegram.confirmations import PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
@@ -131,7 +132,10 @@ def create_webhook_router(
         background_tasks: BackgroundTasks,
         x_telegram_bot_api_secret_token: str | None = Header(default=None),
     ) -> dict[str, str]:
-        bot_instance = bot_instance_manager.get(token_hash)
+        route_key = normalize_webhook_token_hash_path_segment(token_hash)
+        if route_key is None:
+            raise HTTPException(status_code=404, detail="bot instance not found")
+        bot_instance = bot_instance_manager.get(route_key)
         if bot_instance is None:
             raise HTTPException(status_code=404, detail="bot instance not found")
         auth_service = bot_instance.auth_service

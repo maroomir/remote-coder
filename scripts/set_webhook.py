@@ -78,7 +78,7 @@ def main() -> None:
     from app.config import get_settings
     from app.projects.registry import (
         ProjectRegistry,
-        compute_token_hash,
+        compute_token_hash_prefix,
         projects_config_path_for_settings,
     )
 
@@ -109,8 +109,8 @@ def main() -> None:
             any_failed = True
             continue
 
-        token_hash = compute_token_hash(token)
-        webhook_url = f"{public_url}/telegram/webhook/{token_hash}"
+        route_key = compute_token_hash_prefix(token)
+        webhook_url = f"{public_url}/telegram/webhook/{route_key}"
         api_url = f"https://api.telegram.org/bot{token}/setWebhook"
         secret = (
             record.webhook_secret.get_secret_value().strip()

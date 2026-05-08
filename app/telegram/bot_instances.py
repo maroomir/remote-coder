@@ -56,13 +56,7 @@ class BotInstanceManager:
         if not token_hash:
             return None
         with self._lock:
-            direct = self._by_hash.get(token_hash)
-            if direct is not None:
-                return direct
-            for instance in self._by_name.values():
-                if instance.token_hash.startswith(token_hash):
-                    return instance
-        return None
+            return self._by_hash.get(token_hash)
 
     def get_by_name(self, name: str) -> BotInstance | None:
         with self._lock:

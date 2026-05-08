@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.jobs.schemas import Job, JobRequest, JobStatus
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
-from app.projects.registry import ProjectRecord, ProjectRegistry, compute_token_hash
+from app.projects.registry import ProjectRecord, ProjectRegistry, compute_token_hash_prefix
 from app.security.auth import AllowlistAuthService
 from app.telegram.bot_instances import BotInstance, BotInstanceManager
 from app.telegram.commands import (
@@ -96,8 +96,8 @@ class DummyNotifier:
 def _webhook_url(project_registry: ProjectRegistry) -> str:
     record = project_registry.get("remote-coder")
     assert record is not None
-    token_hash = compute_token_hash(record.bot_token.get_secret_value())
-    return f"/telegram/webhook/{token_hash}"
+    route_key = compute_token_hash_prefix(record.bot_token.get_secret_value())
+    return f"/telegram/webhook/{route_key}"
 
 
 def _bot_manager_for_project(
@@ -115,7 +115,7 @@ def _bot_manager_for_project(
     def factory(r: ProjectRecord) -> BotInstance:
         return BotInstance(
             project_name=r.name,
-            token_hash=compute_token_hash(r.bot_token.get_secret_value()),
+            token_hash=compute_token_hash_prefix(r.bot_token.get_secret_value()),
             notifier=notifier,
             auth_service=auth_service,
             command_context=command_context,
@@ -961,12 +961,12 @@ def test_webhook_unknown_token_hash_returns_404(project_registry):
     assert response.status_code == 404
 
 
-def test_webhook_accepts_token_hash_prefix(project_registry):
+def test_webhook_accepts_uppercase_hex_prefix(project_registry):
     client, wh = _make_webhook_app(project_registry)
-    full_suffix = wh.removeprefix("/telegram/webhook/")
-    short_path = f"/telegram/webhook/{full_suffix[:16]}"
+    suffix = wh.removeprefix("/telegram/webhook/")
+    upper_path = f"/telegram/webhook/{suffix.upper()}"
     response = client.post(
-        short_path,
+        upper_path,
         json={
             "update_id": 1,
             "message": {"message_id": 1, "text": "/help", "chat": {"id": 123}, "from": {"id": 999}},
@@ -974,6 +974,32 @@ def test_webhook_accepts_token_hash_prefix(project_registry):
     )
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_webhook_rejects_full_sha256_path_length(project_registry):
+    client, wh = _make_webhook_app(project_registry)
+    suffix = wh.removeprefix("/telegram/webhook/")
+    long_path = f"/telegram/webhook/{suffix}{'0' * 48}"
+    response = client.post(
+        long_path,
+        json={
+            "update_id": 1,
+            "message": {"message_id": 1, "text": "/help", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert response.status_code == 404
+
+
+def test_webhook_rejects_invalid_hex_in_prefix(project_registry):
+    client, _ = _make_webhook_app(project_registry)
+    response = client.post(
+        "/telegram/webhook/" + "0" * 15 + "g",
+        json={
+            "update_id": 1,
+            "message": {"message_id": 1, "text": "/help", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert response.status_code == 404
 
 
 def test_webhook_callback_query_unauthorized_is_ignored(project_registry):
