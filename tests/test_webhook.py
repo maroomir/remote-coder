@@ -929,6 +929,53 @@ def test_webhook_callback_query_sends_help_submenu_buttons(project_registry):
     assert "cq_003" in notifier.answered_callbacks
 
 
+def test_webhook_unknown_token_hash_returns_404(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+
+    def _never_called(_: ProjectRecord) -> BotInstance:
+        raise AssertionError("factory should not run when no bot is registered")
+
+    mgr = BotInstanceManager(_never_called)
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=DummyJobManager(),
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    client = TestClient(app)
+    response = client.post(
+        "/telegram/webhook/" + "0" * 64,
+        json={
+            "update_id": 1,
+            "message": {"message_id": 1, "text": "hi", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert response.status_code == 404
+
+
+def test_webhook_accepts_token_hash_prefix(project_registry):
+    client, wh = _make_webhook_app(project_registry)
+    full_suffix = wh.removeprefix("/telegram/webhook/")
+    short_path = f"/telegram/webhook/{full_suffix[:16]}"
+    response = client.post(
+        short_path,
+        json={
+            "update_id": 1,
+            "message": {"message_id": 1, "text": "/help", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+
 def test_webhook_callback_query_unauthorized_is_ignored(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()

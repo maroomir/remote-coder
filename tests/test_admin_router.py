@@ -108,8 +108,12 @@ def test_admin_api_projects_post_and_delete(test_settings, project_registry, adv
         },
     )
     assert response.status_code == 200
-    names = [p["name"] for p in response.json()["projects"]]
+    payload = response.json()
+    names = [p["name"] for p in payload["projects"]]
     assert "extra" in names
+    extra = next(p for p in payload["projects"] if p["name"] == "extra")
+    assert extra["webhook_path"].startswith("/telegram/webhook/")
+    assert len(extra["token_hash_prefix"]) == 16
 
     del_r = client.delete("/api/projects/extra")
     assert del_r.status_code == 200
