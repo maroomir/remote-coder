@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsStore
 from app.admin.database_browser import ConversationDatabaseBrowser
@@ -51,6 +51,10 @@ class ProjectUpsertBody(BaseModel):
     worktree_base_dir: str
     default_model: ModelName = ModelName.CLAUDE
     enabled: bool = True
+    bot_token: str | None = None
+    webhook_secret: str | None = None
+    allowed_chat_ids: list[int] | None = None
+    allowed_user_ids: list[int] | None = None
 
 
 class DefaultProjectBody(BaseModel):
@@ -288,9 +292,13 @@ def create_admin_router(
 
     @router.get("/api/settings")
     def api_settings(_: LocalhostOnly) -> dict:
-        token = settings.telegram_bot_token.get_secret_value()
+        token = (
+            settings.telegram_bot_token.get_secret_value()
+            if settings.telegram_bot_token is not None
+            else ""
+        )
         _adminlog.info(
-            "settings queried allowed_chats=%d allowed_users=%d webhook_secret_set=%s default_model=%s",
+            "settings queried env_allowlist_chats=%d env_allowlist_users=%d webhook_secret_set=%s default_model=%s",
             len(settings.telegram_allowed_chat_ids),
             len(settings.telegram_allowed_user_ids),
             bool(settings.telegram_webhook_secret),
@@ -314,12 +322,20 @@ def create_admin_router(
 
     @router.post("/api/projects")
     def api_projects_create(body: ProjectUpsertBody, _: LocalhostOnly) -> JSONResponse:
+        if not body.bot_token or not body.bot_token.strip():
+            raise HTTPException(status_code=400, detail="bot_token is required")
+        if not body.allowed_chat_ids:
+            raise HTTPException(status_code=400, detail="allowed_chat_ids must have at least one entry")
         record = ProjectRecord(
             name=body.name,
             root_path=body.root_path,
             worktree_base_dir=body.worktree_base_dir,
             default_model=body.default_model,
             enabled=body.enabled,
+            bot_token=SecretStr(body.bot_token.strip()),
+            webhook_secret=SecretStr(body.webhook_secret) if body.webhook_secret else None,
+            allowed_chat_ids=list(body.allowed_chat_ids),
+            allowed_user_ids=list(body.allowed_user_ids or []),
         )
         try:
             registry.add_project(record)
@@ -331,12 +347,40 @@ def create_admin_router(
 
     @router.put("/api/projects/{name}")
     def api_projects_update(name: str, body: ProjectUpsertBody, _: LocalhostOnly) -> JSONResponse:
+        existing = registry.get(name)
+        if existing is None:
+            raise HTTPException(status_code=404, detail=f"unknown project: {name}")
+        bot_token = (
+            SecretStr(body.bot_token.strip())
+            if body.bot_token and body.bot_token.strip()
+            else existing.bot_token
+        )
+        if body.webhook_secret is not None:
+            webhook_secret = SecretStr(body.webhook_secret) if body.webhook_secret.strip() else None
+        else:
+            webhook_secret = existing.webhook_secret
+        allowed_chat_ids = (
+            list(body.allowed_chat_ids)
+            if body.allowed_chat_ids is not None
+            else existing.allowed_chat_ids
+        )
+        if not allowed_chat_ids:
+            raise HTTPException(status_code=400, detail="allowed_chat_ids must have at least one entry")
+        allowed_user_ids = (
+            list(body.allowed_user_ids)
+            if body.allowed_user_ids is not None
+            else existing.allowed_user_ids
+        )
         record = ProjectRecord(
             name=body.name,
             root_path=body.root_path,
             worktree_base_dir=body.worktree_base_dir,
             default_model=body.default_model,
             enabled=body.enabled,
+            bot_token=bot_token,
+            webhook_secret=webhook_secret,
+            allowed_chat_ids=allowed_chat_ids,
+            allowed_user_ids=allowed_user_ids,
         )
         try:
             registry.update_project(name, record)

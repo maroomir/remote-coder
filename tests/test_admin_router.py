@@ -3,7 +3,6 @@ from fastapi.testclient import TestClient
 
 from app.admin.router import create_admin_router
 from app.models import ModelName
-from app.projects.registry import ProjectRecord
 
 
 def test_admin_root_returns_html(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):
@@ -103,6 +102,9 @@ def test_admin_api_projects_post_and_delete(test_settings, project_registry, adv
             "worktree_base_dir": str(wt),
             "default_model": "codex",
             "enabled": True,
+            "bot_token": "123456:ABC-extra-bot",
+            "allowed_chat_ids": [123],
+            "allowed_user_ids": [],
         },
     )
     assert response.status_code == 200
@@ -132,21 +134,19 @@ def test_admin_api_projects_put_updates(test_settings, project_registry, advance
             "worktree_base_dir": str(entry.worktree_base_dir),
             "default_model": "codex",
             "enabled": True,
+            "allowed_chat_ids": entry.allowed_chat_ids,
+            "allowed_user_ids": entry.allowed_user_ids,
         },
     )
     assert response.status_code == 200
     updated = next(p for p in response.json()["projects"] if p["name"] == "remote-coder")
     assert updated["default_model"] == "codex"
 
+    current = project_registry.get("remote-coder")
+    assert current is not None
     project_registry.update_project(
         "remote-coder",
-        ProjectRecord(
-            name="remote-coder",
-            root_path=entry.root_path,
-            worktree_base_dir=entry.worktree_base_dir,
-            default_model=ModelName.CLAUDE,
-            enabled=True,
-        ),
+        current.model_copy(update={"default_model": ModelName.CLAUDE}),
     )
 
 

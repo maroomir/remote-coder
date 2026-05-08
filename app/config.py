@@ -11,8 +11,8 @@ from app.models import CodexSandboxMode, ModelName
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    telegram_bot_token: SecretStr
-    telegram_allowed_chat_ids: list[int]
+    telegram_bot_token: SecretStr | None = None
+    telegram_allowed_chat_ids: list[int] = []
     telegram_allowed_user_ids: list[int] = []
     telegram_webhook_secret: SecretStr | None = None
 
@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     @field_validator("telegram_allowed_chat_ids", mode="before")
     @classmethod
     def parse_allowed_chat_ids(cls, value: object) -> list[int]:
+        if value in (None, ""):
+            return []
         if isinstance(value, list):
             return [int(v) for v in value]
         if isinstance(value, (int, float)):

@@ -7,7 +7,9 @@ from fastapi.testclient import TestClient
 from app.jobs.schemas import Job, JobRequest, JobStatus
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
+from app.projects.registry import ProjectRecord, ProjectRegistry, compute_token_hash
 from app.security.auth import AllowlistAuthService
+from app.telegram.bot_instances import BotInstance, BotInstanceManager
 from app.telegram.commands import (
     BranchCommand,
     ClearCommand,
@@ -15,7 +17,6 @@ from app.telegram.commands import (
     CommandRegistry,
     HelpCommand,
     ModelCommand,
-    ProjectCommand,
     RebaseCommand,
     StartCommand,
     StatusCommand,
@@ -23,7 +24,6 @@ from app.telegram.commands import (
 from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
-from app.telegram.project_preferences import InMemoryProjectPreferenceStore
 from app.telegram.parser import CommandParser
 from app.telegram.webhook import create_webhook_router, format_job_result_memory_summary
 
@@ -93,56 +93,99 @@ class DummyNotifier:
         self.answered_callbacks.append(callback_query_id)
 
 
+def _webhook_url(project_registry: ProjectRegistry) -> str:
+    record = project_registry.get("remote-coder")
+    assert record is not None
+    token_hash = compute_token_hash(record.bot_token.get_secret_value())
+    return f"/telegram/webhook/{token_hash}"
+
+
+def _bot_manager_for_project(
+    project_registry: ProjectRegistry,
+    *,
+    auth_service: AllowlistAuthService,
+    notifier: DummyNotifier,
+    command_context: CommandContext,
+    webhook_secret: str | None = None,
+    project_name: str = "remote-coder",
+) -> BotInstanceManager:
+    record = project_registry.get(project_name)
+    assert record is not None
+
+    def factory(r: ProjectRecord) -> BotInstance:
+        return BotInstance(
+            project_name=r.name,
+            token_hash=compute_token_hash(r.bot_token.get_secret_value()),
+            notifier=notifier,
+            auth_service=auth_service,
+            command_context=command_context,
+            webhook_secret=webhook_secret,
+        )
+
+    mgr = BotInstanceManager(factory)
+    mgr.register(record)
+    return mgr
+
+
+def _commands_with_clear() -> CommandRegistry:
+    return CommandRegistry(
+        [
+            StartCommand(),
+            HelpCommand(),
+            ModelCommand(),
+            StatusCommand(),
+            BranchCommand(),
+            RebaseCommand(),
+            ClearCommand(),
+        ]
+    )
+
+
 def test_webhook_accepts_natural_message(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
     git_service = Mock()
     git_service.get_current_branch.return_value = "main"
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
     app.include_router(
         create_webhook_router(
-            auth_service=AllowlistAuthService({123}),
+            bot_instance_manager=mgr,
             parser=CommandParser(
                 project_registry=project_registry,
                 default_model=ModelName.CLAUDE,
             ),
-            command_registry=CommandRegistry(
-                [
-                    StartCommand(),
-                    HelpCommand(),
-                    ModelCommand(),
-                    StatusCommand(),
-                    ProjectCommand(),
-                    BranchCommand(),
-                    RebaseCommand(),
-                    ClearCommand(),
-                ]
-            ),
-            command_context=CommandContext(
-                job_store=store,
-                default_model=ModelName.CLAUDE,
-                project_registry=project_registry,
-                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-                project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=git_service,
-                git_remote_name="origin",
-                conversation_store=None,
-                confirmation_store=InMemoryConfirmationStore(),
-            ),
+            command_registry=_commands_with_clear(),
             job_manager=DummyJobManager(),
             job_store=store,
-            notifier=notifier,
-            webhook_secret=None,
+            conversation_store=None,
         )
     )
     client = TestClient(app)
+    wh = _webhook_url(project_registry)
     payload = {
         "update_id": 1,
         "message": {"message_id": 1, "text": "fix tests", "chat": {"id": 123}, "from": {"id": 999}},
     }
-    response = client.post("/telegram/webhook", json=payload)
+    response = client.post(wh, json=payload)
     confirm_response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 2,
             "message": {"message_id": 2, "text": "Y", "chat": {"id": 123}, "from": {"id": 999}},
@@ -162,48 +205,43 @@ def test_webhook_sends_command_response_to_telegram(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=Mock(),
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
     app.include_router(
         create_webhook_router(
-            auth_service=AllowlistAuthService({123}),
+            bot_instance_manager=mgr,
             parser=CommandParser(
                 project_registry=project_registry,
                 default_model=ModelName.CLAUDE,
             ),
-            command_registry=CommandRegistry(
-                [
-                    StartCommand(),
-                    HelpCommand(),
-                    ModelCommand(),
-                    StatusCommand(),
-                    ProjectCommand(),
-                    BranchCommand(),
-                    RebaseCommand(),
-                    ClearCommand(),
-                ]
-            ),
-            command_context=CommandContext(
-                job_store=store,
-                default_model=ModelName.CLAUDE,
-                project_registry=project_registry,
-                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-                project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=Mock(),
-                git_remote_name="origin",
-                conversation_store=None,
-                confirmation_store=InMemoryConfirmationStore(),
-            ),
+            command_registry=_commands_with_clear(),
             job_manager=DummyJobManager(),
             job_store=store,
-            notifier=notifier,
-            webhook_secret=None,
+            conversation_store=None,
         )
     )
     client = TestClient(app)
+    wh = _webhook_url(project_registry)
     payload = {
         "update_id": 1,
         "message": {"message_id": 1, "text": "/help", "chat": {"id": 123}, "from": {"id": 999}},
     }
-    response = client.post("/telegram/webhook", json=payload)
+    response = client.post(wh, json=payload)
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
@@ -223,49 +261,43 @@ def test_webhook_executes_pending_clear_confirmation(project_registry):
         default_model=ModelName.CLAUDE,
         project_registry=project_registry,
         model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-        project_preferences=InMemoryProjectPreferenceStore(),
+        project_name=None,
         git_service=git_service,
         git_remote_name="origin",
         conversation_store=None,
         confirmation_store=InMemoryConfirmationStore(),
     )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
     app.include_router(
         create_webhook_router(
-            auth_service=AllowlistAuthService({123}),
+            bot_instance_manager=mgr,
             parser=CommandParser(
                 project_registry=project_registry,
                 default_model=ModelName.CLAUDE,
             ),
-            command_registry=CommandRegistry(
-                [
-                    StartCommand(),
-                    HelpCommand(),
-                    ModelCommand(),
-                    StatusCommand(),
-                    ProjectCommand(),
-                    BranchCommand(),
-                    RebaseCommand(),
-                    ClearCommand(),
-                ]
-            ),
-            command_context=command_context,
+            command_registry=_commands_with_clear(),
             job_manager=DummyJobManager(),
             job_store=store,
-            notifier=notifier,
-            webhook_secret=None,
+            conversation_store=None,
         )
     )
     client = TestClient(app)
+    wh = _webhook_url(project_registry)
 
     prompt_response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 10,
             "message": {"message_id": 10, "text": "/clear branch", "chat": {"id": 123}, "from": {"id": 999}},
         },
     )
     confirm_response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 11,
             "message": {"message_id": 11, "text": "Y", "chat": {"id": 123}, "from": {"id": 999}},
@@ -291,49 +323,43 @@ def test_webhook_executes_pending_clear_worktrees_confirmation(project_registry)
         default_model=ModelName.CLAUDE,
         project_registry=project_registry,
         model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-        project_preferences=InMemoryProjectPreferenceStore(),
+        project_name=None,
         git_service=git_service,
         git_remote_name="origin",
         conversation_store=None,
         confirmation_store=InMemoryConfirmationStore(),
     )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
     app.include_router(
         create_webhook_router(
-            auth_service=AllowlistAuthService({123}),
+            bot_instance_manager=mgr,
             parser=CommandParser(
                 project_registry=project_registry,
                 default_model=ModelName.CLAUDE,
             ),
-            command_registry=CommandRegistry(
-                [
-                    StartCommand(),
-                    HelpCommand(),
-                    ModelCommand(),
-                    StatusCommand(),
-                    ProjectCommand(),
-                    BranchCommand(),
-                    RebaseCommand(),
-                    ClearCommand(),
-                ]
-            ),
-            command_context=command_context,
+            command_registry=_commands_with_clear(),
             job_manager=DummyJobManager(),
             job_store=store,
-            notifier=notifier,
-            webhook_secret=None,
+            conversation_store=None,
         )
     )
     client = TestClient(app)
+    wh = _webhook_url(project_registry)
 
     prompt_response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 20,
             "message": {"message_id": 20, "text": "/clear worktrees", "chat": {"id": 123}, "from": {"id": 999}},
         },
     )
     confirm_response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 21,
             "message": {"message_id": 21, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
@@ -369,50 +395,44 @@ def test_webhook_ambiguous_followup_uses_conversation_history(project_registry, 
     capture = CaptureJobManager()
     git_service = Mock()
     git_service.get_current_branch.return_value = "main"
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=conv,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
     app.include_router(
         create_webhook_router(
-            auth_service=AllowlistAuthService({123}),
+            bot_instance_manager=mgr,
             parser=parser,
-            command_registry=CommandRegistry(
-                [
-                    StartCommand(),
-                    HelpCommand(),
-                    ModelCommand(),
-                    StatusCommand(),
-                    ProjectCommand(),
-                    BranchCommand(),
-                    RebaseCommand(),
-                    ClearCommand(),
-                ]
-            ),
-            command_context=CommandContext(
-                job_store=store,
-                default_model=ModelName.CLAUDE,
-                project_registry=project_registry,
-                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-                project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=git_service,
-                git_remote_name="origin",
-                conversation_store=conv,
-                confirmation_store=InMemoryConfirmationStore(),
-            ),
+            command_registry=_commands_with_clear(),
             job_manager=capture,
             job_store=store,
-            notifier=notifier,
-            webhook_secret=None,
             conversation_store=conv,
         )
     )
     client = TestClient(app)
+    wh = _webhook_url(project_registry)
     response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 2,
             "message": {"message_id": 2, "text": "작업 시작해줘", "chat": {"id": 123}, "from": {"id": 999}},
         },
     )
     confirm_response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 3,
             "message": {"message_id": 3, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
@@ -437,43 +457,37 @@ def test_webhook_ambiguous_without_history_sends_guidance(project_registry, tmp_
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=Mock(),
+        git_remote_name="origin",
+        conversation_store=conv,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
     app.include_router(
         create_webhook_router(
-            auth_service=AllowlistAuthService({123}),
+            bot_instance_manager=mgr,
             parser=parser,
-            command_registry=CommandRegistry(
-                [
-                    StartCommand(),
-                    HelpCommand(),
-                    ModelCommand(),
-                    StatusCommand(),
-                    ProjectCommand(),
-                    BranchCommand(),
-                    RebaseCommand(),
-                    ClearCommand(),
-                ]
-            ),
-            command_context=CommandContext(
-                job_store=store,
-                default_model=ModelName.CLAUDE,
-                project_registry=project_registry,
-                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-                project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=Mock(),
-                git_remote_name="origin",
-                conversation_store=conv,
-                confirmation_store=InMemoryConfirmationStore(),
-            ),
+            command_registry=_commands_with_clear(),
             job_manager=DummyJobManager(),
             job_store=store,
-            notifier=notifier,
-            webhook_secret=None,
             conversation_store=conv,
         )
     )
     client = TestClient(app)
+    wh = _webhook_url(project_registry)
     response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 3,
             "message": {"message_id": 3, "text": "진행해줘", "chat": {"id": 123}, "from": {"id": 999}},
@@ -500,43 +514,37 @@ def test_webhook_conversation_isolated_by_chat(project_registry, tmp_path):
     capture = CaptureJobManager()
     git_service = Mock()
     git_service.get_current_branch.return_value = "main"
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=conv,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123, 999}),
+        notifier=notifier,
+        command_context=command_context,
+    )
     app.include_router(
         create_webhook_router(
-            auth_service=AllowlistAuthService({123, 999}),
+            bot_instance_manager=mgr,
             parser=parser,
-            command_registry=CommandRegistry(
-                [
-                    StartCommand(),
-                    HelpCommand(),
-                    ModelCommand(),
-                    StatusCommand(),
-                    ProjectCommand(),
-                    BranchCommand(),
-                    RebaseCommand(),
-                    ClearCommand(),
-                ]
-            ),
-            command_context=CommandContext(
-                job_store=store,
-                default_model=ModelName.CLAUDE,
-                project_registry=project_registry,
-                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-                project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=git_service,
-                git_remote_name="origin",
-                conversation_store=conv,
-                confirmation_store=InMemoryConfirmationStore(),
-            ),
+            command_registry=_commands_with_clear(),
             job_manager=capture,
             job_store=store,
-            notifier=notifier,
-            webhook_secret=None,
             conversation_store=conv,
         )
     )
     client = TestClient(app)
+    wh = _webhook_url(project_registry)
     response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 4,
             "message": {"message_id": 4, "text": "작업 시작해줘", "chat": {"id": 123}, "from": {"id": 1}},
@@ -566,43 +574,37 @@ def test_webhook_reply_reuses_bound_branch(project_registry, tmp_path):
     store = InMemoryJobStore()
     notifier = DummyNotifier()
     capture = CaptureJobManager()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=Mock(),
+        git_remote_name="origin",
+        conversation_store=conv,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
     app.include_router(
         create_webhook_router(
-            auth_service=AllowlistAuthService({123}),
+            bot_instance_manager=mgr,
             parser=parser,
-            command_registry=CommandRegistry(
-                [
-                    StartCommand(),
-                    HelpCommand(),
-                    ModelCommand(),
-                    StatusCommand(),
-                    ProjectCommand(),
-                    BranchCommand(),
-                    RebaseCommand(),
-                    ClearCommand(),
-                ]
-            ),
-            command_context=CommandContext(
-                job_store=store,
-                default_model=ModelName.CLAUDE,
-                project_registry=project_registry,
-                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-                project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=Mock(),
-                git_remote_name="origin",
-                conversation_store=conv,
-                confirmation_store=InMemoryConfirmationStore(),
-            ),
+            command_registry=_commands_with_clear(),
             job_manager=capture,
             job_store=store,
-            notifier=notifier,
-            webhook_secret=None,
             conversation_store=conv,
         )
     )
     client = TestClient(app)
+    wh = _webhook_url(project_registry)
     response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 5,
             "message": {
@@ -615,7 +617,7 @@ def test_webhook_reply_reuses_bound_branch(project_registry, tmp_path):
         },
     )
     confirm_response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 6,
             "message": {"message_id": 3, "text": "Y", "chat": {"id": 123}, "from": {"id": 999}},
@@ -645,43 +647,37 @@ def test_webhook_appends_user_message_with_telegram_ids(project_registry, tmp_pa
     notifier = DummyNotifier()
     git_service = Mock()
     git_service.get_current_branch.return_value = "main"
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=conv,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
     app.include_router(
         create_webhook_router(
-            auth_service=AllowlistAuthService({123}),
+            bot_instance_manager=mgr,
             parser=parser,
-            command_registry=CommandRegistry(
-                [
-                    StartCommand(),
-                    HelpCommand(),
-                    ModelCommand(),
-                    StatusCommand(),
-                    ProjectCommand(),
-                    BranchCommand(),
-                    RebaseCommand(),
-                    ClearCommand(),
-                ]
-            ),
-            command_context=CommandContext(
-                job_store=store,
-                default_model=ModelName.CLAUDE,
-                project_registry=project_registry,
-                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-                project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=git_service,
-                git_remote_name="origin",
-                conversation_store=conv,
-                confirmation_store=InMemoryConfirmationStore(),
-            ),
+            command_registry=_commands_with_clear(),
             job_manager=DummyJobManager(),
             job_store=store,
-            notifier=notifier,
-            webhook_secret=None,
             conversation_store=conv,
         )
     )
     client = TestClient(app)
+    wh = _webhook_url(project_registry)
     response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 50,
             "message": {
@@ -694,7 +690,7 @@ def test_webhook_appends_user_message_with_telegram_ids(project_registry, tmp_pa
         },
     )
     confirm_response = client.post(
-        "/telegram/webhook",
+        wh,
         json={
             "update_id": 51,
             "message": {"message_id": 78, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
@@ -716,58 +712,54 @@ def _make_webhook_app(project_registry, *, allowed_chats: set[int] | None = None
     notifier = DummyNotifier()
     git_service = Mock()
     git_service.get_current_branch.return_value = "main"
-    defaults = dict(
-        auth_service=AllowlistAuthService(allowed),
-        parser=CommandParser(
-            project_registry=project_registry,
-            default_model=ModelName.CLAUDE,
-        ),
-        command_registry=CommandRegistry(
-            [
-                StartCommand(),
-                HelpCommand(),
-                ModelCommand(),
-                StatusCommand(),
-                ProjectCommand(),
-                BranchCommand(),
-                RebaseCommand(),
-                ClearCommand(),
-            ]
-        ),
-        command_context=CommandContext(
-            job_store=store,
-            default_model=ModelName.CLAUDE,
-            project_registry=project_registry,
-            model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-            project_preferences=InMemoryProjectPreferenceStore(),
-            git_service=git_service,
-            git_remote_name="origin",
-            conversation_store=None,
-            confirmation_store=InMemoryConfirmationStore(),
-        ),
-        job_manager=kwargs.get("job_manager", DummyJobManager()),
+    conv_store = kwargs.get("conversation_store")
+    command_context = CommandContext(
         job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=conv_store,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService(allowed),
         notifier=notifier,
+        command_context=command_context,
         webhook_secret=kwargs.get("webhook_secret"),
-        conversation_store=kwargs.get("conversation_store"),
     )
     app = FastAPI()
-    app.include_router(create_webhook_router(**defaults))
-    return TestClient(app)
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=kwargs.get("job_manager", DummyJobManager()),
+            job_store=store,
+            conversation_store=conv_store,
+        )
+    )
+    return TestClient(app), _webhook_url(project_registry)
 
 
 def test_webhook_logs_inbound_and_job_accepted(caplog, project_registry):
     with caplog.at_level(logging.INFO):
-        client = _make_webhook_app(project_registry)
+        client, wh = _make_webhook_app(project_registry)
         client.post(
-            "/telegram/webhook",
+            wh,
             json={
                 "update_id": 1,
                 "message": {"message_id": 1, "text": "fix tests", "chat": {"id": 123}, "from": {"id": 999}},
             },
         )
         client.post(
-            "/telegram/webhook",
+            wh,
             json={
                 "update_id": 2,
                 "message": {"message_id": 2, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
@@ -782,9 +774,9 @@ def test_webhook_logs_inbound_and_job_accepted(caplog, project_registry):
 
 def test_webhook_logs_auth_reject(caplog, project_registry):
     with caplog.at_level(logging.WARNING):
-        client = _make_webhook_app(project_registry, allowed_chats={123})
+        client, wh = _make_webhook_app(project_registry, allowed_chats={123})
         client.post(
-            "/telegram/webhook",
+            wh,
             json={
                 "update_id": 2,
                 "message": {"message_id": 1, "text": "x", "chat": {"id": 999}, "from": {"id": 1}},
@@ -796,9 +788,9 @@ def test_webhook_logs_auth_reject(caplog, project_registry):
 
 def test_webhook_logs_parse_error(caplog, project_registry):
     with caplog.at_level(logging.WARNING):
-        client = _make_webhook_app(project_registry)
+        client, wh = _make_webhook_app(project_registry)
         client.post(
-            "/telegram/webhook",
+            wh,
             json={
                 "update_id": 3,
                 "message": {"message_id": 1, "text": "   ", "chat": {"id": 123}, "from": {"id": 999}},
@@ -809,9 +801,9 @@ def test_webhook_logs_parse_error(caplog, project_registry):
 
 def test_webhook_logs_secret_mismatch(caplog, project_registry):
     with caplog.at_level(logging.WARNING):
-        client = _make_webhook_app(project_registry, webhook_secret="expected")
+        client, wh = _make_webhook_app(project_registry, webhook_secret="expected")
         client.post(
-            "/telegram/webhook",
+            wh,
             json={
                 "update_id": 4,
                 "message": {"message_id": 1, "text": "hi", "chat": {"id": 123}, "from": {"id": 999}},
@@ -825,9 +817,26 @@ def test_webhook_callback_query_executes_model_change(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=Mock(),
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
     app.include_router(
         create_webhook_router(
-            auth_service=AllowlistAuthService({123}),
+            bot_instance_manager=mgr,
             parser=CommandParser(
                 project_registry=project_registry,
                 default_model=ModelName.CLAUDE,
@@ -838,24 +847,13 @@ def test_webhook_callback_query_executes_model_change(project_registry):
                     ModelCommand(),
                 ]
             ),
-            command_context=CommandContext(
-                job_store=store,
-                default_model=ModelName.CLAUDE,
-                project_registry=project_registry,
-                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-                project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=Mock(),
-                git_remote_name="origin",
-                conversation_store=None,
-                confirmation_store=InMemoryConfirmationStore(),
-            ),
             job_manager=DummyJobManager(),
             job_store=store,
-            notifier=notifier,
-            webhook_secret=None,
+            conversation_store=None,
         )
     )
     client = TestClient(app)
+    wh = _webhook_url(project_registry)
     payload = {
         "update_id": 50,
         "callback_query": {
@@ -865,7 +863,7 @@ def test_webhook_callback_query_executes_model_change(project_registry):
             "data": "/model codex",
         },
     }
-    response = client.post("/telegram/webhook", json=payload)
+    response = client.post(wh, json=payload)
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert notifier.sent_with_buttons
@@ -877,32 +875,38 @@ def test_webhook_callback_query_sends_help_submenu_buttons(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=Mock(),
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
     app.include_router(
         create_webhook_router(
-            auth_service=AllowlistAuthService({123}),
+            bot_instance_manager=mgr,
             parser=CommandParser(
                 project_registry=project_registry,
                 default_model=ModelName.CLAUDE,
             ),
             command_registry=CommandRegistry([HelpCommand(), ModelCommand()]),
-            command_context=CommandContext(
-                job_store=store,
-                default_model=ModelName.CLAUDE,
-                project_registry=project_registry,
-                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-                project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=Mock(),
-                git_remote_name="origin",
-                conversation_store=None,
-                confirmation_store=InMemoryConfirmationStore(),
-            ),
             job_manager=DummyJobManager(),
             job_store=store,
-            notifier=notifier,
-            webhook_secret=None,
+            conversation_store=None,
         )
     )
     client = TestClient(app)
+    wh = _webhook_url(project_registry)
     payload = {
         "update_id": 52,
         "callback_query": {
@@ -912,7 +916,7 @@ def test_webhook_callback_query_sends_help_submenu_buttons(project_registry):
             "data": "/help model",
         },
     }
-    response = client.post("/telegram/webhook", json=payload)
+    response = client.post(wh, json=payload)
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
@@ -929,32 +933,38 @@ def test_webhook_callback_query_unauthorized_is_ignored(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=Mock(),
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
     app.include_router(
         create_webhook_router(
-            auth_service=AllowlistAuthService({123}),
+            bot_instance_manager=mgr,
             parser=CommandParser(
                 project_registry=project_registry,
                 default_model=ModelName.CLAUDE,
             ),
             command_registry=CommandRegistry([ModelCommand()]),
-            command_context=CommandContext(
-                job_store=store,
-                default_model=ModelName.CLAUDE,
-                project_registry=project_registry,
-                model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
-                project_preferences=InMemoryProjectPreferenceStore(),
-                git_service=Mock(),
-                git_remote_name="origin",
-                conversation_store=None,
-                confirmation_store=InMemoryConfirmationStore(),
-            ),
             job_manager=DummyJobManager(),
             job_store=store,
-            notifier=notifier,
-            webhook_secret=None,
+            conversation_store=None,
         )
     )
     client = TestClient(app)
+    wh = _webhook_url(project_registry)
     payload = {
         "update_id": 51,
         "callback_query": {
@@ -964,7 +974,7 @@ def test_webhook_callback_query_unauthorized_is_ignored(project_registry):
             "data": "/model claude",
         },
     }
-    response = client.post("/telegram/webhook", json=payload)
+    response = client.post(wh, json=payload)
     assert response.status_code == 200
     assert response.json()["status"] == "ignored"
     assert not notifier.sent

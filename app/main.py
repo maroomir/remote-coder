@@ -1,6 +1,7 @@
 import logging
 import time
 from contextlib import asynccontextmanager
+from dataclasses import replace
 
 from fastapi import FastAPI, Request
 
@@ -105,7 +106,21 @@ command_context = CommandContext(
 )
 runner_factory = AiRunnerFactory(codex_sandbox=settings.codex_sandbox)
 branch_strategy = TimestampSlugStrategy()
-notifier = TelegramNotifier(settings.telegram_bot_token.get_secret_value())
+
+
+def _primary_bot_token_for_jobs() -> str:
+    if settings.telegram_bot_token is not None:
+        return settings.telegram_bot_token.get_secret_value()
+    for record in project_registry.list_projects():
+        if record.enabled:
+            return record.bot_token.get_secret_value()
+    raise RuntimeError(
+        "Telegram 봇 토큰이 없습니다. TELEGRAM_BOT_TOKEN을 설정하거나 "
+        "projects 설정에 bot_token이 있는 활성 프로젝트를 하나 이상 두세요."
+    )
+
+
+notifier = TelegramNotifier(_primary_bot_token_for_jobs())
 job_manager = JobManager(
     settings=settings,
     job_store=job_store,
@@ -136,35 +151,44 @@ for project in project_registry.list_projects():
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    instances = bot_instance_manager.list_all()
+    startup_chat_total = sum(len(inst.auth_service.allowed_chat_ids) for inst in instances)
     _systemlog.info(
         "lifespan startup notifying allowed chats count=%d projects=%d default_model=%s",
-        len(settings.telegram_allowed_chat_ids),
+        startup_chat_total,
         len(project_registry.list_projects()),
         settings.default_model.value,
     )
-    for chat_id in settings.telegram_allowed_chat_ids:
-        try:
-            response = command_registry.dispatch_rich(
-                TelegramMessage(chat_id=chat_id, user_id=None, text="/start"),
-                command_context,
-            )
-            if response:
-                text = f"✅ Remote AI Coder 서버가 시작되었습니다.\n{response.text}"
-                if response.inline_buttons:
-                    notifier.send_with_buttons(chat_id, text, response.inline_buttons)
-                else:
-                    notifier.send_text(chat_id, text)
-                _systemlog.info("startup notification sent", chat_id=chat_id)
-        except Exception:
-            _systemlog.exception("startup notification failed", chat_id=chat_id)
+    for instance in instances:
+        ctx = replace(instance.command_context, project_name=instance.project_name)
+        bot_notifier = instance.notifier
+        for chat_id in instance.auth_service.allowed_chat_ids:
+            try:
+                response = command_registry.dispatch_rich(
+                    TelegramMessage(chat_id=chat_id, user_id=None, text="/start"),
+                    ctx,
+                )
+                if response:
+                    text = f"✅ Remote AI Coder 서버가 시작되었습니다.\n{response.text}"
+                    if response.inline_buttons:
+                        bot_notifier.send_with_buttons(chat_id, text, response.inline_buttons)
+                    else:
+                        bot_notifier.send_text(chat_id, text)
+                    _systemlog.info("startup notification sent", chat_id=chat_id)
+            except Exception:
+                _systemlog.exception("startup notification failed", chat_id=chat_id)
     yield
-    _systemlog.info("lifespan shutdown notifying allowed chats count=%d", len(settings.telegram_allowed_chat_ids))
-    for chat_id in settings.telegram_allowed_chat_ids:
-        try:
-            notifier.send_text(chat_id, "🔴 Remote AI Coder 서버 연결이 종료되었습니다.")
-            _systemlog.info("shutdown notification sent", chat_id=chat_id)
-        except Exception:
-            _systemlog.exception("shutdown notification failed", chat_id=chat_id)
+    shutdown_instances = bot_instance_manager.list_all()
+    shutdown_chat_total = sum(len(inst.auth_service.allowed_chat_ids) for inst in shutdown_instances)
+    _systemlog.info("lifespan shutdown notifying allowed chats count=%d", shutdown_chat_total)
+    for instance in shutdown_instances:
+        bot_notifier = instance.notifier
+        for chat_id in instance.auth_service.allowed_chat_ids:
+            try:
+                bot_notifier.send_text(chat_id, "🔴 Remote AI Coder 서버 연결이 종료되었습니다.")
+                _systemlog.info("shutdown notification sent", chat_id=chat_id)
+            except Exception:
+                _systemlog.exception("shutdown notification failed", chat_id=chat_id)
 
 
 app = FastAPI(title="Remote AI Coder", lifespan=lifespan)

@@ -23,6 +23,27 @@ def test_projects_config_path_default_under_project_root(tmp_path: Path) -> None
     assert resolved == (tmp_path / ".remote-coder" / "projects.json").resolve()
 
 
+def test_ensure_seeded_without_token_writes_empty_projects(tmp_path: Path) -> None:
+    path = tmp_path / ".remote-coder" / "projects.json"
+    root = tmp_path / "repo"
+    root.mkdir()
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    settings = Settings(
+        telegram_bot_token=None,
+        default_project="p1",
+        default_model="claude",
+        project_root=root,
+        worktree_base_dir=wt,
+    )
+    reg = ProjectRegistry(path)
+    assert not path.exists()
+    reg.ensure_seeded_from_settings(settings)
+    assert path.exists()
+    reg.load()
+    assert reg.list_projects() == []
+
+
 def test_ensure_seeded_creates_file(test_settings: Settings) -> None:
     path = test_settings.project_root / "seed.json"
     reg = ProjectRegistry(path)

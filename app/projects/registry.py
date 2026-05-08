@@ -78,10 +78,17 @@ class ProjectRegistry:
             self._payload = self._read_file_unlocked()
 
     def ensure_seeded_from_settings(self, settings: Settings) -> None:
-        # 설정 파일이 없는 첫 실행에 한해 .env 기반 기본 프로젝트를 자동 생성합니다.
+        # 설정 파일이 없을 때만 생성합니다. TELEGRAM_* 값은 프로젝트 레코드 초기 시드에만 쓰이며,
+        # 런타임 인증은 각 프로젝트(봇)의 AllowlistAuthService 가 담당합니다.
         self._path.parent.mkdir(parents=True, exist_ok=True)
         if self._path.exists():
             self.load()
+            return
+        if settings.telegram_bot_token is None:
+            empty = ProjectsFilePayload(default_project="", projects=[])
+            with self._lock:
+                self._payload = empty
+                self._write_file_unlocked(empty)
             return
         seed = ProjectsFilePayload(
             default_project=settings.default_project,
