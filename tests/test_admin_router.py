@@ -138,6 +138,11 @@ def test_admin_api_projects_post_and_delete(test_settings, project_registry, adv
     extra = next(p for p in payload["projects"] if p["name"] == "extra")
     assert extra["webhook_path"].startswith("/telegram/webhook/")
     assert len(extra["token_hash_prefix"]) == 16
+    assert extra["webhook_secret_set"] is True
+    stored = project_registry.get("extra")
+    assert stored is not None
+    assert stored.webhook_secret is not None
+    assert stored.webhook_secret.get_secret_value() == "optional-secret"
 
     del_r = client.delete("/api/projects/extra")
     assert del_r.status_code == 200
@@ -181,7 +186,10 @@ def test_admin_api_projects_syncs_bot_instance_manager(
         },
     )
     bot_mgr.register.assert_called()
-    assert bot_mgr.register.call_args[0][0].name == "bimproj"
+    reg_arg = bot_mgr.register.call_args[0][0]
+    assert reg_arg.name == "bimproj"
+    assert reg_arg.webhook_secret is not None
+    assert reg_arg.webhook_secret.get_secret_value() == "optional-secret"
 
     bot_mgr.reset_mock()
     client.put(

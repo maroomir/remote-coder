@@ -42,6 +42,8 @@ def require_localhost(request: Request) -> None:
 
 LocalhostOnly = Annotated[None, Depends(require_localhost)]
 
+_DEFAULT_NEW_PROJECT_WEBHOOK_SECRET = "optional-secret"
+
 
 class ProjectUpsertBody(BaseModel):
     name: str
@@ -343,6 +345,10 @@ def create_admin_router(
             raise HTTPException(status_code=400, detail="bot_token is required")
         if not body.allowed_chat_ids:
             raise HTTPException(status_code=400, detail="allowed_chat_ids must have at least one entry")
+        wh_stripped = (body.webhook_secret or "").strip()
+        webhook_secret = SecretStr(
+            wh_stripped if wh_stripped else _DEFAULT_NEW_PROJECT_WEBHOOK_SECRET
+        )
         record = ProjectRecord(
             name=body.name,
             root_path=body.root_path,
@@ -350,7 +356,7 @@ def create_admin_router(
             default_model=body.default_model,
             enabled=body.enabled,
             bot_token=SecretStr(body.bot_token.strip()),
-            webhook_secret=SecretStr(body.webhook_secret) if body.webhook_secret else None,
+            webhook_secret=webhook_secret,
             allowed_chat_ids=list(body.allowed_chat_ids),
             allowed_user_ids=list(body.allowed_user_ids or []),
         )
