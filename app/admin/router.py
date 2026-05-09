@@ -22,6 +22,7 @@ from app.projects.registry import (
 )
 from app.telegram.bot_instances import BotInstanceManager
 from app.telegram.conversation import SQLiteConversationStore
+from app.telegram.webhook_registration import TelegramWebhookRegistrar
 
 _adminlog = EventLogger("app.admin", "admin.ui")
 _monitorlog = EventLogger("app.admin.monitoring", "monitoring.ui")
@@ -81,6 +82,16 @@ def _sync_bot_instance(manager: BotInstanceManager | None, record: ProjectRecord
         manager.unregister(record.name)
 
 
+def _sync_project_webhook(
+    registrar: TelegramWebhookRegistrar | None,
+    record: ProjectRecord,
+) -> None:
+    if registrar is None or not record.enabled:
+        return
+    if not registrar.sync_project(record):
+        _adminlog.warning("project webhook sync failed name=%s", record.name, project=record.name)
+
+
 def create_admin_router(
     settings: Settings,
     registry: ProjectRegistry,
@@ -88,6 +99,7 @@ def create_admin_router(
     log_buffer: InMemoryLogBuffer,
     conversation_store: SQLiteConversationStore,
     bot_instance_manager: BotInstanceManager | None = None,
+    webhook_registrar: TelegramWebhookRegistrar | None = None,
 ) -> APIRouter:
     router = APIRouter(tags=["admin"])
 
@@ -325,7 +337,8 @@ def create_admin_router(
             "webhook_route_template": "/telegram/webhook/{token_hash_prefix}",
             "webhook_public_url_rule": "<공개 HTTPS Base URL> + 각 프로젝트의 webhook_path",
             "webhook_hint": "각 프로젝트(봇)마다 webhook_path·token_hash_prefix가 다릅니다. "
-            "전체 URL은 공개 Base에 webhook_path를 이어붙입니다. 등록: python scripts/set_webhook.py <Base URL>",
+            "전체 URL은 공개 Base에 webhook_path를 이어붙입니다. ./run.sh 실행 중에는 등록·수정 시 자동 갱신됩니다. "
+            "수동 등록: python scripts/set_webhook.py <Base URL>",
             "webhook_deleted_disabled_note": (
                 "프로젝트를 비활성화하거나 삭제하면 서버는 해당 token_hash_prefix로 들어오는 업데이트를 "
                 "더 이상 처리하지 않습니다(매칭 실패·404). Telegram이 예전 URL로 호출을 보내도 이 앱에서는 "
@@ -367,6 +380,7 @@ def create_admin_router(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         _adminlog.info("project created name=%s enabled=%s", body.name, body.enabled, project=body.name)
         _sync_bot_instance(bot_instance_manager, record)
+        _sync_project_webhook(webhook_registrar, record)
         return JSONResponse(registry.to_public_dict())
 
     @router.put("/api/projects/{name}")
@@ -425,6 +439,7 @@ def create_admin_router(
             project=body.name,
         )
         _sync_bot_instance(bot_instance_manager, record)
+        _sync_project_webhook(webhook_registrar, record)
         return JSONResponse(registry.to_public_dict())
 
     @router.delete("/api/projects/{name}")

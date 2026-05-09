@@ -30,6 +30,13 @@ class Settings(BaseSettings):
         default=None,
         description="Optional seed only: initial webhook_secret for the seeded default_project record.",
     )
+    telegram_webhook_public_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Runtime public HTTPS base URL used to refresh per-project Telegram webhooks "
+            "after project create/update in the admin UI."
+        ),
+    )
 
     default_model: ModelName = ModelName.CLAUDE
     default_project: str = "remote-coder"
@@ -55,6 +62,9 @@ class Settings(BaseSettings):
         if self.telegram_webhook_secret is not None:
             if not self.telegram_webhook_secret.get_secret_value().strip():
                 self.telegram_webhook_secret = None
+        if self.telegram_webhook_public_base_url is not None:
+            base = self.telegram_webhook_public_base_url.strip().rstrip("/")
+            self.telegram_webhook_public_base_url = base or None
         return self
 
     @model_validator(mode="after")

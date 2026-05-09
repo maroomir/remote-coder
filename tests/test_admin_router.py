@@ -154,6 +154,8 @@ def test_admin_api_projects_syncs_bot_instance_manager(
     test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
 ):
     bot_mgr = MagicMock()
+    webhook_registrar = MagicMock()
+    webhook_registrar.sync_project.return_value = True
     app = FastAPI()
     app.include_router(
         create_admin_router(
@@ -163,6 +165,7 @@ def test_admin_api_projects_syncs_bot_instance_manager(
             log_buffer,
             conversation_store,
             bot_instance_manager=bot_mgr,
+            webhook_registrar=webhook_registrar,
         )
     )
     client = TestClient(app)
@@ -190,8 +193,12 @@ def test_admin_api_projects_syncs_bot_instance_manager(
     assert reg_arg.name == "bimproj"
     assert reg_arg.webhook_secret is not None
     assert reg_arg.webhook_secret.get_secret_value() == "optional-secret"
+    webhook_registrar.sync_project.assert_called_once()
+    wh_arg = webhook_registrar.sync_project.call_args[0][0]
+    assert wh_arg.name == "bimproj"
 
     bot_mgr.reset_mock()
+    webhook_registrar.reset_mock()
     client.put(
         "/api/projects/bimproj",
         json={
@@ -205,8 +212,10 @@ def test_admin_api_projects_syncs_bot_instance_manager(
         },
     )
     bot_mgr.unregister.assert_called_once_with("bimproj")
+    webhook_registrar.sync_project.assert_not_called()
 
     bot_mgr.reset_mock()
+    webhook_registrar.reset_mock()
     client.put(
         "/api/projects/bimproj",
         json={
@@ -220,10 +229,13 @@ def test_admin_api_projects_syncs_bot_instance_manager(
         },
     )
     bot_mgr.register.assert_called_once()
+    webhook_registrar.sync_project.assert_called_once()
 
     bot_mgr.reset_mock()
+    webhook_registrar.reset_mock()
     client.delete("/api/projects/bimproj")
     bot_mgr.unregister.assert_called_once_with("bimproj")
+    webhook_registrar.sync_project.assert_not_called()
 
 
 def test_admin_api_projects_put_omitted_webhook_secret_preserves(

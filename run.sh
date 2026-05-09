@@ -90,6 +90,7 @@ cleanup() {
 
 start_server() {
     echo "🚀 FastAPI 서버를 시작합니다..."
+    export TELEGRAM_WEBHOOK_PUBLIC_BASE_URL="$PUBLIC_URL"
     uvicorn app.main:app --reload
 }
 

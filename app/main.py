@@ -47,6 +47,7 @@ from app.telegram.notifier import TelegramNotifier
 from app.telegram.parser import CommandParser
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.webhook import create_webhook_router
+from app.telegram.webhook_registration import TelegramWebhookRegistrar
 
 settings = get_settings()
 _projects_path = projects_config_path_for_settings(settings.project_root, settings.projects_config_path)
@@ -151,6 +152,11 @@ job_manager = JobManager(
     ai_commit_body_generator=AiCommitBodyGenerator(),
 )
 command_context.job_manager = job_manager
+webhook_registrar = (
+    TelegramWebhookRegistrar(settings.telegram_webhook_public_base_url)
+    if settings.telegram_webhook_public_base_url
+    else None
+)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -234,6 +240,7 @@ app.include_router(
         log_buffer,
         conversation_store,
         bot_instance_manager=bot_instance_manager,
+        webhook_registrar=webhook_registrar,
     )
 )
 app.include_router(
