@@ -79,6 +79,7 @@ class CommandParser:
         user_id: int | None,
         message_id: int | None = None,
         reply_to_message_id: int | None = None,
+        reply_to_text: str | None = None,
     ) -> JobRequest:
         model, branch, commit, remaining = self._extract_options(text.strip())
         if not remaining:
@@ -122,6 +123,15 @@ class CommandParser:
                 chat_id,
                 reply_to_message_id,
             ).strip()
+        if not reply_prefix and reply_to_message_id is not None and reply_to_text:
+            reply_prefix = "\n".join(
+                [
+                    "[Reply 메시지 맥락]",
+                    f"message_id={reply_to_message_id}:",
+                    f"  text: {reply_to_text.strip()}",
+                    "[/Reply 메시지 맥락]",
+                ]
+            )
 
         chain_message_ids: set[int] = set()
         if reply_to_message_id is not None and self._conversation_store is not None:
@@ -143,11 +153,14 @@ class CommandParser:
                 if e.message_id is None or e.message_id not in chain_message_ids
             ]
             if not filtered:
-                raise CommandParseError(
-                    "이전 작업 맥락이 없습니다. 구체적인 작업 지시를 보내주세요.",
-                )
-            inner = ConversationContextBuilder.build(filtered, instruction_body)
-            instruction = f"{reply_prefix}\n\n{inner}".strip() if reply_prefix else inner
+                if not reply_prefix:
+                    raise CommandParseError(
+                        "이전 작업 맥락이 없습니다. 구체적인 작업 지시를 보내주세요.",
+                    )
+                instruction = f"{reply_prefix}\n\n{instruction_body}".strip()
+            else:
+                inner = ConversationContextBuilder.build(filtered, instruction_body)
+                instruction = f"{reply_prefix}\n\n{inner}".strip() if reply_prefix else inner
         elif reply_prefix:
             instruction = f"{reply_prefix}\n\n{instruction_body}".strip()
         else:

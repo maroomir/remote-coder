@@ -80,6 +80,7 @@ class TelegramUser(BaseModel):
 
 class TelegramReplyMessage(BaseModel):
     message_id: int
+    text: str | None = None
 
 
 class TelegramIncomingMessage(BaseModel):
@@ -311,6 +312,11 @@ def create_webhook_router(
                 message_id=update.message.message_id,
                 reply_to_message_id=(
                     update.message.reply_to_message.message_id
+                    if update.message.reply_to_message is not None
+                    else None
+                ),
+                reply_to_text=(
+                    update.message.reply_to_message.text
                     if update.message.reply_to_message is not None
                     else None
                 ),

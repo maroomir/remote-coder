@@ -25,7 +25,7 @@ from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.parser import CommandParser
-from app.telegram.webhook import create_webhook_router, format_job_result_memory_summary
+from app.telegram.webhook import TelegramUpdate, create_webhook_router, format_job_result_memory_summary
 
 
 class DummyJob:
@@ -704,6 +704,29 @@ def test_webhook_appends_user_message_with_telegram_ids(project_registry, tmp_pa
     last_user = user_rows[-1]
     assert last_user.message_id == 77
     assert last_user.reply_to_message_id == 66
+
+
+def test_telegram_update_preserves_reply_message_text():
+    update = TelegramUpdate.model_validate(
+        {
+            "update_id": 60,
+            "message": {
+                "message_id": 80,
+                "text": "이 결과 기준으로 이어서 수정해줘",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+                "reply_to_message": {
+                    "message_id": 79,
+                    "text": "작업 완료\nJob ID: job_1\nAI 응답:\nREADME를 수정했습니다.",
+                },
+            },
+        }
+    )
+
+    assert update.message is not None
+    assert update.message.reply_to_message is not None
+    assert update.message.reply_to_message.message_id == 79
+    assert "README를 수정했습니다." in update.message.reply_to_message.text
 
 
 def _make_webhook_app(project_registry, *, allowed_chats: set[int] | None = None, **kwargs):

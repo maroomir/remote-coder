@@ -275,6 +275,55 @@ def test_parse_natural_reply_chain_includes_ancestors_and_job_results(project_re
     assert "task C finish" in req.instruction
 
 
+def test_parse_natural_reply_includes_unstored_reply_text(project_registry: ProjectRegistry):
+    db = project_registry.config_path.parent / "parser_reply_text.sqlite3"
+    store = SQLiteConversationStore(db)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=store,
+    )
+
+    req = parser.parse_natural(
+        "이 응답 기준으로 이어서 수정해줘",
+        "remote-coder",
+        chat_id=5,
+        user_id=1,
+        message_id=31,
+        reply_to_message_id=30,
+        reply_to_text="작업 완료\nJob ID: job_1\nAI 응답:\nREADME를 수정했습니다.",
+    )
+
+    assert "[Reply 메시지 맥락]" in req.instruction
+    assert "message_id=30" in req.instruction
+    assert "README를 수정했습니다." in req.instruction
+    assert "이 응답 기준으로 이어서 수정해줘" in req.instruction
+
+
+def test_parse_natural_ambiguous_reply_uses_unstored_reply_text(project_registry: ProjectRegistry):
+    db = project_registry.config_path.parent / "parser_ambig_reply_text.sqlite3"
+    store = SQLiteConversationStore(db)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=store,
+    )
+
+    req = parser.parse_natural(
+        "진행해줘",
+        "remote-coder",
+        chat_id=5,
+        user_id=1,
+        message_id=32,
+        reply_to_message_id=30,
+        reply_to_text="AI 응답:\nREADME를 수정했습니다.",
+    )
+
+    assert "[Reply 메시지 맥락]" in req.instruction
+    assert "README를 수정했습니다." in req.instruction
+    assert "진행해줘" in req.instruction
+
+
 def test_parse_natural_ambiguous_on_reply_excludes_chain_from_recent_block(project_registry: ProjectRegistry):
     db = project_registry.config_path.parent / "parser_ambig_reply.sqlite3"
     store = SQLiteConversationStore(db)
