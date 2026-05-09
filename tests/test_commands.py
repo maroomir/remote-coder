@@ -30,6 +30,7 @@ from app.telegram.model_preferences import InMemoryModelPreferenceStore
 def _ctx(
     project_registry: ProjectRegistry,
     conversation_store: SQLiteConversationStore | None = None,
+    advanced_settings_store: Mock | None = None,
 ) -> CommandContext:
     store = InMemoryJobStore()
     job = Job(
@@ -55,6 +56,7 @@ def _ctx(
         git_remote_name="origin",
         conversation_store=conversation_store,
         confirmation_store=InMemoryConfirmationStore(),
+        advanced_settings_store=advanced_settings_store,
     )
 
 
@@ -313,10 +315,12 @@ def test_rebase_command_uses_latest_succeeded_branch(project_registry: ProjectRe
     registry = CommandRegistry([RebaseCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=99, user_id=1, text="/rebase remote-abc"), ctx)
 
-    assert text == "rebase ok"
+    assert text == "rebase ok\n브랜치 `remote-abc`를 로컬과 `origin`에서 삭제했습니다."
     ctx.git_service.rebase_branch_onto_main_and_merge.assert_called_once()
     args = ctx.git_service.rebase_branch_onto_main_and_merge.call_args[0]
     assert args[1] == "remote-abc"
+    ctx.git_service.delete_remote_branches.assert_called_once()
+    ctx.git_service.delete_local_branches.assert_called_once()
 
 
 def test_rebase_command_with_explicit_branch(project_registry: ProjectRegistry):
@@ -324,8 +328,24 @@ def test_rebase_command_with_explicit_branch(project_registry: ProjectRegistry):
     ctx.git_service.rebase_branch_onto_main_and_merge.return_value = "ok"
     registry = CommandRegistry([RebaseCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/rebase my-feature"), ctx)
-    assert text == "ok"
+    assert text == "ok\n브랜치 `my-feature`를 로컬과 `origin`에서 삭제했습니다."
     assert ctx.git_service.rebase_branch_onto_main_and_merge.call_args[0][1] == "my-feature"
+    ctx.git_service.delete_remote_branches.assert_called_once()
+    ctx.git_service.delete_local_branches.assert_called_once()
+
+
+def test_rebase_command_keeps_branch_when_advanced_setting_disabled(project_registry: ProjectRegistry):
+    advanced_settings_store = Mock()
+    advanced_settings_store.get.return_value.delete_rebased_branch_enabled = False
+    ctx = _ctx(project_registry, advanced_settings_store=advanced_settings_store)
+    ctx.git_service.rebase_branch_onto_main_and_merge.return_value = "ok"
+    registry = CommandRegistry([RebaseCommand()])
+
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/rebase my-feature"), ctx)
+
+    assert text == "ok"
+    ctx.git_service.delete_remote_branches.assert_not_called()
+    ctx.git_service.delete_local_branches.assert_not_called()
 
 
 def test_rebase_command_no_recent_branch(project_registry: ProjectRegistry):
@@ -676,5 +696,4 @@ def test_dispatch_rich_returns_none_for_natural_language(project_registry: Proje
         _ctx(project_registry),
     )
     assert response is None
-
 

@@ -680,9 +680,18 @@ class RebaseCommand(TelegramCommand):
                 ctx.git_remote_name,
                 ops_base,
             )
+            if self._delete_rebased_branch_enabled(ctx):
+                ctx.git_service.delete_remote_branches(entry.root_path, ctx.git_remote_name, [branch])
+                ctx.git_service.delete_local_branches(entry.root_path, [branch])
+                summary += f"\n브랜치 `{branch}`를 로컬과 `{ctx.git_remote_name}`에서 삭제했습니다."
             return summary
         except RuntimeError as exc:
             return f"/rebase 실패: {exc}"
+
+    def _delete_rebased_branch_enabled(self, ctx: CommandContext) -> bool:
+        if ctx.advanced_settings_store is None:
+            return True
+        return ctx.advanced_settings_store.get().delete_rebased_branch_enabled
 
     def get_inline_buttons(
         self,

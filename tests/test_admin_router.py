@@ -387,6 +387,7 @@ def test_admin_api_advanced_settings_get_default(test_settings, project_registry
     assert r.status_code == 200
     data = r.json()
     assert data["auto_merge_to_main_enabled"] is False
+    assert data["delete_rebased_branch_enabled"] is True
     assert data["conversation_memory_limit_enabled"] is False
 
 
@@ -398,6 +399,7 @@ def test_admin_api_advanced_settings_put_and_persist(test_settings, project_regi
     client = TestClient(app)
     body = {
         "auto_merge_to_main_enabled": True,
+        "delete_rebased_branch_enabled": False,
         "conversation_memory_limit_enabled": True,
         "conversation_memory_max_rows": 100,
         "conversation_memory_max_bytes": None,
@@ -405,8 +407,10 @@ def test_admin_api_advanced_settings_put_and_persist(test_settings, project_regi
     put = client.put("/api/advanced-settings", json=body)
     assert put.status_code == 200
     assert put.json()["auto_merge_to_main_enabled"] is True
+    assert put.json()["delete_rebased_branch_enabled"] is False
     get = client.get("/api/advanced-settings")
     assert get.json()["conversation_memory_max_rows"] == 100
+    assert get.json()["delete_rebased_branch_enabled"] is False
 
 
 def test_admin_api_advanced_settings_put_invalid_memory_returns_422(
@@ -421,6 +425,7 @@ def test_admin_api_advanced_settings_put_invalid_memory_returns_422(
         "/api/advanced-settings",
         json={
             "auto_merge_to_main_enabled": False,
+            "delete_rebased_branch_enabled": True,
             "conversation_memory_limit_enabled": True,
             "conversation_memory_max_rows": None,
             "conversation_memory_max_bytes": None,

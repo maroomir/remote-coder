@@ -9,10 +9,10 @@ from pydantic import BaseModel, model_validator
 
 
 class AdvancedSettings(BaseModel):
-    # 모든 기본값은 비활성. 켤 때마다 기존 동작 대비 부수효과가 생기므로 한 번에 하나씩 켭니다.
     model_config = {"extra": "forbid"}
 
     auto_merge_to_main_enabled: bool = False
+    delete_rebased_branch_enabled: bool = True
     conversation_memory_limit_enabled: bool = False
     conversation_memory_max_rows: int | None = None
     conversation_memory_max_bytes: int | None = None

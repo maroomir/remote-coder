@@ -473,8 +473,9 @@ def create_admin_router(
     def api_advanced_settings_put(body: AdvancedSettings, _: LocalhostOnly) -> dict:
         saved = advanced_settings_store.save(body)
         _adminlog.info(
-            "advanced settings updated auto_merge=%s status_limit=%d memory_limit=%s",
+            "advanced settings updated auto_merge=%s delete_rebased_branch=%s status_limit=%d memory_limit=%s",
             saved.auto_merge_to_main_enabled,
+            saved.delete_rebased_branch_enabled,
             saved.status_recent_job_limit,
             saved.conversation_memory_limit_enabled,
         )
