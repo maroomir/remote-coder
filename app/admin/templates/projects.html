@@ -446,6 +446,36 @@
       margin-top: 1.1rem;
     }
 
+    .optional-fields {
+      margin-top: 0.85rem;
+      padding: 0.65rem 0.85rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: rgba(0, 0, 0, 0.15);
+    }
+
+    .optional-fields summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--text);
+      list-style-position: outside;
+    }
+
+    .optional-fields summary:focus-visible {
+      outline: none;
+      box-shadow: var(--focus);
+      border-radius: 4px;
+    }
+
+    .optional-fields[open] summary {
+      margin-bottom: 0.5rem;
+    }
+
+    .optional-fields .field:first-of-type {
+      margin-top: 0;
+    }
+
     .empty-state {
       padding: 1.5rem;
       text-align: center;
@@ -465,7 +495,7 @@
       <div class="header-row">
         <div>
           <h1>프로젝트 등록</h1>
-          <p class="tagline">각 등록 항목은 <strong>하나의 Telegram 봇</strong>과 고정된 저장소에 연결됩니다. 허용 채팅·사용자 ID와 웹훅 경로는 프로젝트마다 다릅니다.</p>
+          <p class="tagline">각 등록 항목은 <strong>하나의 Telegram 봇</strong>과 고정된 저장소에 연결됩니다.</p>
         </div>
         <nav class="header-icon-nav" aria-label="페이지 이동">
           <a href="/" class="header-icon-link" title="관리 홈" aria-label="관리 홈">
@@ -492,25 +522,6 @@
     <div id="global-msg" role="status" aria-live="polite"></div>
 
     <div class="summary-grid" id="summary-grid" aria-label="요약"></div>
-
-    <section class="card" aria-labelledby="webhook-ops-heading">
-      <h2 id="webhook-ops-heading">Telegram webhook (멀티봇)</h2>
-      <p class="lead">
-        봇마다 webhook 경로가 다릅니다. 전체 주소는 <code>&lt;공개 HTTPS Base URL&gt;</code> +
-        표에서 각 행의 <code>webhook_path</code> 입니다. BotFather(<code>/newbot</code>)로 봇을 만든 뒤
-        아래 폼에 토큰을 넣어 저장하고, Base URL 칸에 ngrok 등 HTTPS 주소를 적으면 행마다 조합된 URL 예시가 나타납니다.
-      </p>
-      <label class="field" for="webhook-base-preview">공개 HTTPS Base URL (예시)</label>
-      <p class="hint" style="margin:0.35rem 0 0">
-        Telegram이 호출할 수 있는 스킴+호스트(+포트). 끝의 <code>/</code>는 생략해도 됩니다.
-      </p>
-      <input id="webhook-base-preview" type="url" inputmode="url" autocomplete="off" placeholder="https://abcd-1234.ngrok-free.app" />
-      <p class="hint" style="margin-top:0.85rem" id="webhook-ops-note"></p>
-      <p class="hint" style="margin-top:0.5rem">
-        활성 프로젝트 전체에 대해 한 번에 등록하려면 터미널에서
-        <code>python scripts/set_webhook.py &lt;위 Base URL&gt;</code> 를 실행합니다.
-      </p>
-    </section>
 
     <section class="card" aria-labelledby="projects-heading">
       <h2 id="projects-heading">등록 목록</h2>
@@ -569,19 +580,22 @@
         </label>
         <input id="f-bot-token" name="bot_token" type="password" autocomplete="new-password" placeholder="123456789:AA…" />
 
-        <label class="field" for="f-wh-secret">
-          웹훅 시크릿 (선택)
-          <span class="hint">Telegram <code>secret_token</code>. 편집 시 비우면 기존 값 유지.</span>
-        </label>
-        <input id="f-wh-secret" name="webhook_secret" type="password" autocomplete="new-password" />
-
         <label class="field" for="f-chats">허용 Chat ID</label>
         <p class="hint" style="margin:0.35rem 0 0">쉼표 또는 공백으로 구분. 최소 1개.</p>
         <input id="f-chats" name="allowed_chat_ids" required autocomplete="off" placeholder="-1001234567890, 123456789" />
 
-        <label class="field" for="f-users">허용 User ID (선택)</label>
-        <p class="hint" style="margin:0.35rem 0 0">비우면 채팅 ID만으로 허용합니다.</p>
-        <input id="f-users" name="allowed_user_ids" autocomplete="off" placeholder="123456789" />
+        <details class="optional-fields">
+          <summary>선택 항목</summary>
+          <label class="field" for="f-wh-secret">
+            웹훅 시크릿 (선택)
+            <span class="hint">Telegram <code>secret_token</code>. 편집 시 비우면 기존 값 유지.</span>
+          </label>
+          <input id="f-wh-secret" name="webhook_secret" type="password" autocomplete="new-password" />
+
+          <label class="field" for="f-users">허용 User ID (선택)</label>
+          <p class="hint" style="margin:0.35rem 0 0">비우면 채팅 ID만으로 허용합니다.</p>
+          <input id="f-users" name="allowed_user_ids" autocomplete="off" placeholder="123456789" />
+        </details>
 
         <div class="form-actions">
           <button type="submit" class="btn-primary" id="btn-submit">추가</button>
@@ -680,12 +694,6 @@
         .filter((n) => !Number.isNaN(n));
     }
 
-    function webhookBase() {
-      const el = $("#webhook-base-preview");
-      const v = el ? String(el.value || "").trim().replace(/\/+$/, "") : "";
-      return v;
-    }
-
     function renderProjectTable(projectsPayload) {
       const tb = $("#proj-tbody");
       tb.innerHTML = "";
@@ -716,8 +724,6 @@
       const secretBadge = p.webhook_secret_set
         ? '<span class="badge badge-on" title="웹훅 시크릿 설정됨">시크릿</span>'
         : "";
-      const baseRaw = webhookBase();
-      const fullUrl = baseRaw ? baseRaw + (p.webhook_path || "") : "";
       tr.innerHTML = `
         <td><code>${escapeHtml(p.name)}</code></td>
         <td>${badges}</td>
@@ -726,13 +732,6 @@
         <td>${escapeHtml(p.default_model)}</td>
         <td>
           <div title="마스킹된 봇 토큰">${escapeHtml(p.bot_token_masked || "")}</div>
-          <div class="path-cell"><code>${escapeHtml(p.token_hash_prefix || "")}</code> <span style="color:var(--text-muted)">prefix</span></div>
-          <div class="path-cell" title="상대 webhook 경로">${escapeHtml(p.webhook_path || "")}</div>
-          ${
-            fullUrl
-              ? `<div class="path-cell" title="전체 webhook URL 예시">${escapeHtml(fullUrl)}</div>`
-              : `<div class="path-cell" style="opacity:0.78">위 Base URL 입력 시 전체 주소</div>`
-          }
           ${secretBadge}
         </td>
         <td>
@@ -765,11 +764,6 @@
         lastProjects = d.projects || [];
         lastDefault = d.default_project || "";
         renderSummary(settings, d);
-
-        const policyEl = $("#webhook-ops-note");
-        if (policyEl && settings.webhook_deleted_disabled_note) {
-          policyEl.textContent = settings.webhook_deleted_disabled_note;
-        }
 
         renderProjectTable(d);
       } finally {
@@ -906,11 +900,6 @@
       } finally {
         setBusy(false);
       }
-    });
-
-    $("#webhook-base-preview").addEventListener("input", () => {
-      renderProjectTable({ projects: lastProjects });
-      updateFormModeBanner();
     });
 
     loadAll();

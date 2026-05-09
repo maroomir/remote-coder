@@ -40,6 +40,12 @@ def test_admin_projects_page_returns_html(test_settings, project_registry, advan
     assert 'id="proj-form"' in response.text
     assert 'href="/"' in response.text
     assert 'href="/advanced"' in response.text
+    assert "Telegram webhook (멀티봇)" not in response.text
+    assert "webhook-base-preview" not in response.text
+    assert 'class="optional-fields"' in response.text
+    assert "선택 항목" in response.text
+    assert 'id="f-wh-secret"' in response.text
+    assert 'id="f-users"' in response.text
 
 
 def test_admin_advanced_page_returns_html(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):
