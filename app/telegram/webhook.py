@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import replace
+from threading import Lock
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -44,6 +46,26 @@ def format_job_result_memory_summary(final_job: Job) -> str:
 
 
 _NATURAL_JOB_CONFIRMATION = "__natural_job__"
+
+
+class _RecentUpdateTracker:
+    def __init__(self, max_size: int = 1024) -> None:
+        self._max_size = max_size
+        self._seen: set[tuple[str, int]] = set()
+        self._order: deque[tuple[str, int]] = deque()
+        self._lock = Lock()
+
+    def mark_seen(self, route_key: str, update_id: int) -> bool:
+        key = (route_key, update_id)
+        with self._lock:
+            if key in self._seen:
+                return True
+            self._seen.add(key)
+            self._order.append(key)
+            while len(self._order) > self._max_size:
+                old = self._order.popleft()
+                self._seen.discard(old)
+            return False
 
 
 def _format_natural_job_confirmation(request: JobRequest, current_branch: str) -> str:
@@ -125,6 +147,7 @@ def create_webhook_router(
     conversation_store: SQLiteConversationStore | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/telegram", tags=["telegram"])
+    recent_updates = _RecentUpdateTracker()
 
     @router.post("/webhook/{token_hash}")
     def telegram_webhook(
@@ -147,6 +170,12 @@ def create_webhook_router(
         _inbound.info("update received id=%s", update.update_id)
         if webhook_secret and x_telegram_bot_api_secret_token != webhook_secret:
             _authlog.warning("webhook secret mismatch update_id=%s", update.update_id)
+            return {"status": "ignored"}
+
+        if recent_updates.mark_seen(route_key, update.update_id):
+            _inbound.info("duplicate update ignored id=%s", update.update_id)
+            if update.callback_query:
+                background_tasks.add_task(notifier.answer_callback_query, update.callback_query.id)
             return {"status": "ignored"}
 
         if update.callback_query:

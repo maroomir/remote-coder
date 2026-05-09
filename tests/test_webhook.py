@@ -25,7 +25,12 @@ from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.parser import CommandParser
-from app.telegram.webhook import TelegramUpdate, create_webhook_router, format_job_result_memory_summary
+from app.telegram.webhook import (
+    TelegramUpdate,
+    _RecentUpdateTracker,
+    create_webhook_router,
+    format_job_result_memory_summary,
+)
 
 
 class DummyJob:
@@ -892,6 +897,14 @@ def test_webhook_callback_query_executes_model_change(project_registry):
     assert notifier.sent_with_buttons
     assert "codex로 변경" in notifier.sent_with_buttons[0][1]
     assert "cq_001" in notifier.answered_callbacks
+
+
+def test_recent_update_tracker_detects_duplicate_per_route_key():
+    tracker = _RecentUpdateTracker(max_size=3)
+
+    assert tracker.mark_seen("bot-a", 51) is False
+    assert tracker.mark_seen("bot-a", 51) is True
+    assert tracker.mark_seen("bot-b", 51) is False
 
 
 def test_webhook_callback_query_sends_help_submenu_buttons(project_registry):
