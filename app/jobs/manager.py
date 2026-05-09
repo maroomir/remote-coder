@@ -255,10 +255,11 @@ class JobManager:
                 job_id=job.id,
             )
             runner = self._runner_factory.create(job.request.model)
+            timeout_seconds = self._effective_job_timeout_seconds()
             _joblog.info(
                 "runner created name=%s timeout=%d instruction_len=%d",
                 getattr(runner, "name", job.request.model.value),
-                self._settings.job_timeout_seconds,
+                timeout_seconds,
                 len(job.request.instruction),
                 chat_id=job.request.chat_id,
                 user_id=job.request.requested_by,
@@ -269,7 +270,7 @@ class JobManager:
                 RunnerInput(
                     instruction=job.request.instruction,
                     cwd=worktree_path,
-                    timeout_seconds=self._settings.job_timeout_seconds,
+                    timeout_seconds=timeout_seconds,
                     env=None,
                     cancel_event=cancel_event,
                 )
@@ -506,6 +507,12 @@ class JobManager:
     def _make_job_id() -> str:
         ts = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
         return f"job_{ts}_{uuid4().hex[:6]}"
+
+    def _effective_job_timeout_seconds(self) -> int:
+        if self._advanced_settings_store is None:
+            return self._settings.job_timeout_seconds
+        advanced_timeout = self._advanced_settings_store.get().job_timeout_seconds
+        return advanced_timeout or self._settings.job_timeout_seconds
 
     def _save_runner_log(self, job: Job, runner_result, worktree_base: Path) -> None:
         log_dir = worktree_base / "_logs"

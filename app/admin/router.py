@@ -332,6 +332,7 @@ def create_admin_router(
             "telegram_allowed_user_ids": settings.telegram_allowed_user_ids,
             "telegram_webhook_secret_set": bool(settings.telegram_webhook_secret),
             "default_model_env": settings.default_model.value,
+            "job_timeout_seconds_env": settings.job_timeout_seconds,
             "projects_config_path": str(registry.config_path),
             "webhook_token_hash_prefix_length": WEBHOOK_TOKEN_HASH_PREFIX_LENGTH,
             "webhook_route_template": "/telegram/webhook/{token_hash_prefix}",
@@ -473,10 +474,11 @@ def create_admin_router(
     def api_advanced_settings_put(body: AdvancedSettings, _: LocalhostOnly) -> dict:
         saved = advanced_settings_store.save(body)
         _adminlog.info(
-            "advanced settings updated auto_merge=%s delete_rebased_branch=%s status_limit=%d memory_limit=%s",
+            "advanced settings updated auto_merge=%s delete_rebased_branch=%s status_limit=%d job_timeout=%s memory_limit=%s",
             saved.auto_merge_to_main_enabled,
             saved.delete_rebased_branch_enabled,
             saved.status_recent_job_limit,
+            saved.job_timeout_seconds or "-",
             saved.conversation_memory_limit_enabled,
         )
         return saved.model_dump(mode="json")

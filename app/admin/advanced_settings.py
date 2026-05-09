@@ -17,6 +17,7 @@ class AdvancedSettings(BaseModel):
     conversation_memory_max_rows: int | None = None
     conversation_memory_max_bytes: int | None = None
     status_recent_job_limit: int = 10
+    job_timeout_seconds: int | None = None
 
     @model_validator(mode="after")
     def _validate_memory_limits(self) -> Self:
@@ -37,6 +38,8 @@ class AdvancedSettings(BaseModel):
             raise ValueError("conversation_memory_max_bytes는 양수이거나 비워야 합니다.")
         if self.status_recent_job_limit < 1:
             raise ValueError("status_recent_job_limit는 1 이상이어야 합니다.")
+        if self.job_timeout_seconds is not None and self.job_timeout_seconds <= 0:
+            raise ValueError("job_timeout_seconds는 양수이거나 비워야 합니다.")
         return self
 
 
