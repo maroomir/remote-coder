@@ -187,7 +187,7 @@ ngrok version
 - `/branch` : 이 채팅 **적용 프로젝트** 저장소의 현재 checkout 브랜치 표시
 - `/branch <이름>` : 적용 프로젝트에서 로컬 브랜치가 있을 때만 `git switch` (없으면 오류, 원격만 있는 브랜치는 자동 생성하지 않음)
 - `/pull` : 원격 저장소의 모든 브랜치 정보를 가져오고(fetch), 현재 브랜치를 pull 합니다. 체크아웃되지 않은 다른 로컬 브랜치(main 포함)들에 대해서도 fast-forward 업데이트를 시도합니다.
-- `/rebase` : 인라인 버튼으로 로컬 브랜치 선택 (main/master 제외) 후 `main`(또는 `master`) 기준으로 rebase → fast-forward 병합 → 원격 push
+- `/rebase` : 인라인 버튼으로 로컬과 원격에 모두 있는 브랜치 선택 (main/master 제외) 후 `main`(또는 `master`) 기준으로 rebase → fast-forward 병합 → 원격 push
 - `/rebase <branch>` : 직접 브랜치를 지정해 rebase
 - `/pr` : 인라인 버튼으로 로컬 브랜치 선택 후 GitHub Pull Request 생성. PR 본문에는 해당 브랜치 작업 시 주고받은 요청과 AI 결과가 포함됩니다. GitHub CLI(`gh`)가 필요합니다 (`gh auth login`).
 - `/pr <branch>` : 직접 브랜치를 지정해 PR 생성

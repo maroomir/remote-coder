@@ -659,6 +659,11 @@ class RebaseCommand(TelegramCommand):
             return format_usage("/rebase", "/rebase <branch>")
         if len(tokens) == 2:
             branch = tokens[1]
+            from app.git.service import GitWorktreeService
+
+            err = GitWorktreeService.validate_branch_token(branch)
+            if err:
+                return err
         else:
             branches = self._list_rebase_candidates(message, ctx)
             if not branches:
@@ -671,6 +676,12 @@ class RebaseCommand(TelegramCommand):
         entry = ctx.project_registry.get(project_name)
         if not entry or not entry.enabled:
             return f"프로젝트를 찾을 수 없거나 비활성화되어 있습니다: {project_name}"
+
+        if not self._remote_branch_exists(entry.root_path, branch, ctx):
+            return (
+                f"`{branch}` 원격 브랜치를 `{ctx.git_remote_name}`에서 찾을 수 없습니다. "
+                "이미 rebase/병합 후 삭제되었거나 아직 push되지 않은 브랜치일 수 있습니다."
+            )
 
         ops_base = entry.worktree_base_dir / "_rebase_ops"
         try:
@@ -720,8 +731,24 @@ class RebaseCommand(TelegramCommand):
             return []
         if not isinstance(branches, list):
             return []
+        try:
+            remote_branch_list = ctx.git_service.list_remote_branches_matching(entry.root_path, ctx.git_remote_name, "")
+        except RuntimeError:
+            return []
+        if not isinstance(remote_branch_list, list):
+            return []
+        remote_branches = set(remote_branch_list)
         excluded = {main_branch, "main", "master"}
-        return [branch for branch in branches if branch not in excluded]
+        return [branch for branch in branches if branch not in excluded and branch in remote_branches]
+
+    def _remote_branch_exists(self, root_path, branch: str, ctx: CommandContext) -> bool:
+        try:
+            remote_branches = ctx.git_service.list_remote_branches_matching(root_path, ctx.git_remote_name, "")
+        except RuntimeError:
+            return False
+        if not isinstance(remote_branches, list):
+            return False
+        return branch in remote_branches
 
 
 def _branch_to_pr_title(branch: str) -> str:

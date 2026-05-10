@@ -72,7 +72,7 @@ KEEP_WORKTREE_ON_SUCCESS=true
 - 자연어 요청에 `model: codex`, `branch: remote/test`, `no commit` 토큰을 함께 쓰면 요청별 옵션을 지정할 수 있습니다.
 - AI Job은 변경이 없으면 브랜치를 만들지 않습니다. 변경이 있으면 브랜치·커밋 후 `GIT_REMOTE_NAME`으로 push합니다.
 - `/monitor branch`로 브랜치 목록·요약을, `/branch`로 현재 브랜치를, `/branch <이름>`으로 로컬 브랜치가 있을 때만 `git switch` 할 수 있습니다(대상은 이 채팅의 적용 프로젝트).
-- `/rebase`는 이 채팅 적용 프로젝트 저장소에서 동작합니다. 인자 없으면 이 채팅에서 가장 최근에 성공한 Job의 브랜치를 대상으로 합니다.
+- `/rebase`는 이 채팅 적용 프로젝트 저장소에서 동작합니다. 인자 없으면 로컬과 원격에 모두 있는 브랜치를 인라인 버튼으로 선택합니다.
 - `/clear`는 등록된 enabled 프로젝트마다 `remote-*` 이름의 로컬·원격 브랜치를 삭제합니다. 실행 전 의도를 다시 확인하세요.
 - 관리 UI(`/`, `/projects`, `/advanced`, `/logs`, `/database`)는 localhost 전용으로 사용하세요. ngrok이나 reverse proxy로 외부에 공개하면 로그와 SQLite 대화 기억이 노출될 수 있습니다.
 

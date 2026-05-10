@@ -311,6 +311,7 @@ def test_rebase_command_uses_latest_succeeded_branch(project_registry: ProjectRe
     )
     ctx.job_store.create(done)
     ctx.git_service.rebase_branch_onto_main_and_merge.return_value = "rebase ok"
+    ctx.git_service.list_remote_branches_matching.return_value = ["remote-abc"]
 
     registry = CommandRegistry([RebaseCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=99, user_id=1, text="/rebase remote-abc"), ctx)
@@ -326,6 +327,7 @@ def test_rebase_command_uses_latest_succeeded_branch(project_registry: ProjectRe
 def test_rebase_command_with_explicit_branch(project_registry: ProjectRegistry):
     ctx = _ctx(project_registry)
     ctx.git_service.rebase_branch_onto_main_and_merge.return_value = "ok"
+    ctx.git_service.list_remote_branches_matching.return_value = ["my-feature"]
     registry = CommandRegistry([RebaseCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/rebase my-feature"), ctx)
     assert text == "ok\n브랜치 `my-feature`를 로컬과 `origin`에서 삭제했습니다."
@@ -334,11 +336,26 @@ def test_rebase_command_with_explicit_branch(project_registry: ProjectRegistry):
     ctx.git_service.delete_local_branches.assert_called_once()
 
 
+def test_rebase_command_reports_missing_remote_branch(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    ctx.git_service.list_remote_branches_matching.return_value = ["other-feature"]
+    registry = CommandRegistry([RebaseCommand()])
+
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/rebase stale-feature"), ctx)
+
+    assert "`stale-feature` 원격 브랜치" in (text or "")
+    assert "이미 rebase/병합 후 삭제" in (text or "")
+    ctx.git_service.rebase_branch_onto_main_and_merge.assert_not_called()
+    ctx.git_service.delete_remote_branches.assert_not_called()
+    ctx.git_service.delete_local_branches.assert_not_called()
+
+
 def test_rebase_command_keeps_branch_when_advanced_setting_disabled(project_registry: ProjectRegistry):
     advanced_settings_store = Mock()
     advanced_settings_store.get.return_value.delete_rebased_branch_enabled = False
     ctx = _ctx(project_registry, advanced_settings_store=advanced_settings_store)
     ctx.git_service.rebase_branch_onto_main_and_merge.return_value = "ok"
+    ctx.git_service.list_remote_branches_matching.return_value = ["my-feature"]
     registry = CommandRegistry([RebaseCommand()])
 
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/rebase my-feature"), ctx)
@@ -360,6 +377,7 @@ def test_rebase_command_lists_non_main_branch_buttons(project_registry: ProjectR
     ctx = _ctx(project_registry)
     ctx.git_service.resolve_integrate_branch.return_value = "main"
     ctx.git_service.list_local_branches.return_value = ["feature-a", "main", "release"]
+    ctx.git_service.list_remote_branches_matching.return_value = ["feature-a", "main"]
     registry = CommandRegistry([RebaseCommand()])
 
     response = registry.dispatch_rich(TelegramMessage(chat_id=42, user_id=1, text="/rebase"), ctx)
@@ -368,7 +386,6 @@ def test_rebase_command_lists_non_main_branch_buttons(project_registry: ProjectR
     assert response.text == "리베이스할 브랜치를 선택하세요."
     assert response.inline_buttons == [
         [InlineButton("feature-a", "/rebase feature-a")],
-        [InlineButton("release", "/rebase release")],
     ]
 
 
@@ -696,4 +713,3 @@ def test_dispatch_rich_returns_none_for_natural_language(project_registry: Proje
         _ctx(project_registry),
     )
     assert response is None
-
