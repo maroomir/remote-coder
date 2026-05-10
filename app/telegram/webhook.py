@@ -184,6 +184,7 @@ def create_webhook_router(
         auth_service = bot_instance.auth_service
         notifier = bot_instance.notifier
         command_context = replace(bot_instance.command_context, project_name=bot_instance.project_name)
+        scope_project = bot_instance.project_name
         webhook_secret = bot_instance.webhook_secret
 
         _inbound.info("update received id=%s", update.update_id)
@@ -324,7 +325,6 @@ def create_webhook_router(
             return {"status": "ignored"}
 
         message = TelegramMessage(chat_id=chat_id, user_id=user_id, text=update.message.text)
-        scope_project = bot_instance.project_name
         pending = command_context.confirmation_store.get(scope_project, chat_id)
         message_tokens = message.text.strip().split(maxsplit=1)
         message_head = message_tokens[0] if message_tokens else ""
