@@ -68,3 +68,40 @@ def test_commit_message_formatter_does_not_repeat_user_message():
     assert "user: Monitor model" not in message
     assert "ChatGPT 5.5" not in message
     assert "Claude Opus" not in message
+
+
+def test_commit_message_formatter_avoids_korean_prompt_as_title():
+    instruction = (
+        "src/utils 내 모든 소스코드에 대해 최신화된 AI AGENTS 규칙에 맞는 "
+        "리팩토링 부탁드립니다. 모든 소스코드의 책임 경계를 다시 확인해주세요."
+    )
+
+    message = CommitMessageFormatter.format(
+        job_id="job_20260510065204_74fa92",
+        instruction=instruction,
+        changed_files=["src/utils/path.py", "src/utils/text.py"],
+    )
+
+    assert message.startswith("refactor: refactor src/utils source\n\n")
+    assert "부탁드립니다" not in message.splitlines()[0]
+    assert "모든 소스코드" not in message.splitlines()[0]
+
+
+def test_commit_message_formatter_rejects_ai_title_that_repeats_prompt():
+    instruction = (
+        "src/utils 내 모든 소스코드에 대해 최신화된 AI AGENTS 규칙에 맞는 "
+        "리팩토링 부탁드립니다. 모든 소스코드의 책임 경계를 다시 확인해주세요."
+    )
+
+    message = CommitMessageFormatter.format(
+        job_id="job_20260510065204_74fa92",
+        instruction=instruction,
+        changed_files=["src/utils/path.py"],
+        ai_title=(
+            "src/utils 내 모든 소스코드에 대해 최신화된 AI AGENTS 규칙에 맞는 "
+            "리팩토링 부탁드립니다"
+        ),
+    )
+
+    assert message.startswith("refactor: refactor src/utils source\n\n")
+    assert "부탁드립니다" not in message.splitlines()[0]

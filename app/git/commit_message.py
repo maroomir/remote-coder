@@ -11,6 +11,17 @@ class CommitMessageFormatter:
     _SPEAKER_PREFIX_PATTERN = re.compile(r"^(?:user|사용자)\s*:\s*", flags=re.IGNORECASE)
     _PARENTHETICAL_EXAMPLE_PATTERN = re.compile(r"\((?:ex|예시?)>?.*?\)", flags=re.IGNORECASE)
     _WHITESPACE_PATTERN = re.compile(r"\s+")
+    _REQUEST_MARKERS = (
+        "please",
+        "can you",
+        "could you",
+        "would you",
+        "부탁",
+        "주세요",
+        "해줘",
+        "해 줘",
+        "바랍니다",
+    )
     _FIX_KEYWORDS = (
         "bug",
         "error",
@@ -33,6 +44,7 @@ class CommitMessageFormatter:
         "simplify",
         "개선",
         "리팩터링",
+        "리팩토링",
         "정리",
     )
     _CHORE_KEYWORDS = (
@@ -62,7 +74,11 @@ class CommitMessageFormatter:
         ai_title: str | None = None,
     ) -> str:
         commit_type = cls._infer_type(instruction, changed_files)
-        title = ai_title if ai_title else cls._build_title(instruction, changed_files)
+        title = cls._safe_ai_title(ai_title) or cls._build_title(
+            instruction,
+            changed_files,
+            commit_type,
+        )
         if ai_body:
             body = ai_body
         else:
@@ -84,7 +100,7 @@ class CommitMessageFormatter:
         return "feat"
 
     @classmethod
-    def _build_title(cls, instruction: str, changed_files: list[str]) -> str:
+    def _build_title(cls, instruction: str, changed_files: list[str], commit_type: str) -> str:
         summary = cls._instruction_summary(instruction)
         if summary:
             return summary
@@ -99,6 +115,9 @@ class CommitMessageFormatter:
             return "update git workflow"
         if any(path.startswith("docs/") or path == "README.md" for path in changed_files):
             return "update project documentation"
+        scoped_title = cls._build_scoped_title(commit_type, changed_files)
+        if scoped_title:
+            return scoped_title
         return "update requested behavior"
 
     @classmethod
@@ -117,7 +136,62 @@ class CommitMessageFormatter:
 
         if cls._mentions_monitor_model_metrics(line):
             return "show current model and token usage in monitor model"
+        if cls._looks_like_raw_request(line):
+            return ""
         return cls._truncate_at_word(cls._lowercase_initial_ascii(line), max_length)
+
+    @classmethod
+    def _safe_ai_title(
+        cls,
+        ai_title: str | None,
+        max_length: int = 72,
+    ) -> str | None:
+        if ai_title is None:
+            return None
+        title = cls._WHITESPACE_PATTERN.sub(" ", ai_title).strip()
+        title = title.strip().strip("-:;,.!?").strip("\"'`")
+        if not title or len(title) > max_length:
+            return None
+        if cls._looks_like_raw_request(title):
+            return None
+        return cls._lowercase_initial_ascii(title)
+
+    @classmethod
+    def _looks_like_raw_request(cls, text: str) -> bool:
+        lowered = text.casefold()
+        return any(marker in lowered for marker in cls._REQUEST_MARKERS)
+
+    @classmethod
+    def _build_scoped_title(cls, commit_type: str, changed_files: list[str]) -> str:
+        scope = cls._common_source_scope(changed_files)
+        if not scope:
+            return ""
+        verb = {
+            "fix": "fix",
+            "refactor": "refactor",
+            "chore": "maintain",
+        }.get(commit_type, "update")
+        return f"{verb} {scope}"
+
+    @staticmethod
+    def _common_source_scope(changed_files: list[str]) -> str:
+        source_files = [
+            path
+            for path in changed_files
+            if "/" in path and not path.startswith(("tests/", "docs/", "."))
+        ]
+        if not source_files:
+            return ""
+
+        split_paths = [path.split("/")[:-1] for path in source_files]
+        common: list[str] = []
+        for parts in zip(*split_paths):
+            if len(set(parts)) != 1:
+                break
+            common.append(parts[0])
+        if common:
+            return f"{'/'.join(common)} source"
+        return f"{source_files[0].split('/', 1)[0]} source"
 
     @staticmethod
     def _first_meaningful_instruction_line(instruction: str) -> str:

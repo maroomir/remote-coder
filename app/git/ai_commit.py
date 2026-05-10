@@ -14,6 +14,7 @@ class AiCommitBodyGenerator:
         "First, output one line: \"title: <concise summary under 72 chars>\"\n"
         "Then output 2-3 bullet points describing what was changed.\n"
         "Focus on WHAT changed, not how.\n\n"
+        "Do not copy the raw user request into the title.\n"
         "User request: {instruction}\n"
         "Changed files: {files}\n\n"
         "Output format (exactly):\n"
