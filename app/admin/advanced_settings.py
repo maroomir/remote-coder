@@ -13,6 +13,7 @@ class AdvancedSettings(BaseModel):
 
     auto_merge_to_main_enabled: bool = False
     delete_rebased_branch_enabled: bool = True
+    natural_job_confirmation_buttons_enabled: bool = False
     conversation_memory_limit_enabled: bool = False
     conversation_memory_max_rows: int | None = None
     conversation_memory_max_bytes: int | None = None

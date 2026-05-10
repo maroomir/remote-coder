@@ -389,6 +389,7 @@ def test_admin_api_advanced_settings_get_default(test_settings, project_registry
     data = r.json()
     assert data["auto_merge_to_main_enabled"] is False
     assert data["delete_rebased_branch_enabled"] is True
+    assert data["natural_job_confirmation_buttons_enabled"] is False
     assert data["conversation_memory_limit_enabled"] is False
     assert data["job_timeout_seconds"] is None
 
@@ -402,6 +403,7 @@ def test_admin_api_advanced_settings_put_and_persist(test_settings, project_regi
     body = {
         "auto_merge_to_main_enabled": True,
         "delete_rebased_branch_enabled": False,
+        "natural_job_confirmation_buttons_enabled": True,
         "conversation_memory_limit_enabled": True,
         "conversation_memory_max_rows": 100,
         "conversation_memory_max_bytes": None,
@@ -412,10 +414,12 @@ def test_admin_api_advanced_settings_put_and_persist(test_settings, project_regi
     assert put.status_code == 200
     assert put.json()["auto_merge_to_main_enabled"] is True
     assert put.json()["delete_rebased_branch_enabled"] is False
+    assert put.json()["natural_job_confirmation_buttons_enabled"] is True
     assert put.json()["job_timeout_seconds"] == 3600
     get = client.get("/api/advanced-settings")
     assert get.json()["conversation_memory_max_rows"] == 100
     assert get.json()["delete_rebased_branch_enabled"] is False
+    assert get.json()["natural_job_confirmation_buttons_enabled"] is True
     assert get.json()["status_recent_job_limit"] == 7
 
 
@@ -432,6 +436,7 @@ def test_admin_api_advanced_settings_put_invalid_memory_returns_422(
         json={
             "auto_merge_to_main_enabled": False,
             "delete_rebased_branch_enabled": True,
+            "natural_job_confirmation_buttons_enabled": False,
             "conversation_memory_limit_enabled": True,
             "conversation_memory_max_rows": None,
             "conversation_memory_max_bytes": None,

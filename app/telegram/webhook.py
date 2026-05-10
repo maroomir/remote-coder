@@ -12,7 +12,7 @@ from app.jobs.manager import JobManager
 from app.jobs.schemas import Job, JobRequest
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.events import EventLogger
-from app.telegram.commands import CommandRegistry, CommandResponse, TelegramMessage
+from app.telegram.commands import CommandRegistry, CommandResponse, InlineButton, TelegramMessage
 from app.projects.registry import normalize_webhook_token_hash_path_segment
 from app.telegram.bot_instances import BotInstanceManager
 from app.telegram.confirmations import PendingConfirmation
@@ -46,6 +46,8 @@ def format_job_result_memory_summary(final_job: Job) -> str:
 
 
 _NATURAL_JOB_CONFIRMATION = "__natural_job__"
+_NATURAL_JOB_CONFIRM_YES = "__natural_job__:yes"
+_NATURAL_JOB_CONFIRM_NO = "__natural_job__:no"
 
 
 class _RecentUpdateTracker:
@@ -68,7 +70,12 @@ class _RecentUpdateTracker:
             return False
 
 
-def _format_natural_job_confirmation(request: JobRequest, current_branch: str) -> str:
+def _format_natural_job_confirmation(
+    request: JobRequest,
+    current_branch: str,
+    *,
+    use_buttons: bool = False,
+) -> str:
     lines = [
         "현재 할 작업을 확인하세요.",
         f"프로젝트: {request.project}",
@@ -80,10 +87,22 @@ def _format_natural_job_confirmation(request: JobRequest, current_branch: str) -
     lines.extend(
         [
             "",
-            "실행하려면 `y` 또는 `Y`를 입력하세요. 그 외 응답은 취소됩니다.",
+            "실행 여부를 선택하세요."
+            if use_buttons
+            else "실행하려면 `y` 또는 `Y`를 입력하세요. 그 외 응답은 취소됩니다.",
         ]
     )
     return "\n".join(lines)
+
+
+def _natural_job_confirmation_buttons() -> list[list[InlineButton]]:
+    return [[InlineButton("네", _NATURAL_JOB_CONFIRM_YES), InlineButton("아니오", _NATURAL_JOB_CONFIRM_NO)]]
+
+
+def _natural_job_confirmation_buttons_enabled(command_context: CommandContext) -> bool:
+    if command_context.advanced_settings_store is None:
+        return False
+    return command_context.advanced_settings_store.get().natural_job_confirmation_buttons_enabled
 
 
 def _format_natural_job_cancelled(request: JobRequest | None) -> str:
@@ -208,6 +227,29 @@ def create_webhook_router(
                 )
                 background_tasks.add_task(notifier.answer_callback_query, cq.id)
                 return {"status": "ignored"}
+            if cq.data in {_NATURAL_JOB_CONFIRM_YES, _NATURAL_JOB_CONFIRM_NO}:
+                background_tasks.add_task(notifier.answer_callback_query, cq.id)
+                pending = command_context.confirmation_store.get(scope_project, cq_chat_id)
+                if pending is None or pending.command_name != _NATURAL_JOB_CONFIRMATION:
+                    background_tasks.add_task(notifier.send_text, cq_chat_id, "확인 대기 작업이 없습니다.")
+                    return {"status": "ignored"}
+                confirmed = command_context.confirmation_store.pop(scope_project, cq_chat_id)
+                if cq.data == _NATURAL_JOB_CONFIRM_NO:
+                    background_tasks.add_task(
+                        notifier.send_text,
+                        cq_chat_id,
+                        _format_natural_job_cancelled(confirmed.job_request if confirmed else None),
+                    )
+                    return {"status": "ok"}
+                if confirmed is None or confirmed.job_request is None or confirmed.original_text is None:
+                    background_tasks.add_task(notifier.send_text, cq_chat_id, "확인 대기 작업을 처리할 수 없습니다.")
+                    return {"status": "ignored"}
+                job = _submit_confirmed_natural_request(
+                    request=confirmed.job_request,
+                    original_text=confirmed.original_text,
+                    background_tasks=background_tasks,
+                )
+                return {"status": "accepted", "job_id": job.id}
             cq_message = TelegramMessage(chat_id=cq_chat_id, user_id=cq_user_id, text=cq.data)
             cq_response = command_registry.dispatch_rich(cq_message, command_context)
             background_tasks.add_task(notifier.answer_callback_query, cq.id)
@@ -398,11 +440,21 @@ def create_webhook_router(
                 original_text=message.text.strip(),
             ),
         )
-        background_tasks.add_task(
-            notifier.send_text,
-            chat_id,
-            _format_natural_job_confirmation(request, current_branch),
+        use_confirmation_buttons = _natural_job_confirmation_buttons_enabled(command_context)
+        confirmation_text = _format_natural_job_confirmation(
+            request,
+            current_branch,
+            use_buttons=use_confirmation_buttons,
         )
+        if use_confirmation_buttons:
+            background_tasks.add_task(
+                notifier.send_with_buttons,
+                chat_id,
+                confirmation_text,
+                _natural_job_confirmation_buttons(),
+            )
+        else:
+            background_tasks.add_task(notifier.send_text, chat_id, confirmation_text)
         return {"status": "ok"}
 
     def _submit_confirmed_natural_request(
