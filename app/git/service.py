@@ -183,6 +183,20 @@ class GitWorktreeService:
         _gitlog.info("find_linked_worktree_for_branch miss branch=%s", branch_name)
         return None
 
+    def branch_is_checked_out(self, project_path: Path, branch_name: str) -> bool:
+        _gitlog.info("branch_is_checked_out start branch=%s", branch_name)
+        result = self._run_git(project_path, ["worktree", "list", "--porcelain"])
+        if result.returncode != 0:
+            _gitlog.warning(
+                "branch_is_checked_out failed branch=%s stderr_len=%d",
+                branch_name,
+                len(result.stderr),
+            )
+            raise RuntimeError(f"failed to list worktrees: {result.stderr.strip()}")
+        checked_out = any(branch == branch_name for _, branch in self._parse_worktree_list_porcelain(result.stdout))
+        _gitlog.info("branch_is_checked_out branch=%s checked_out=%s", branch_name, checked_out)
+        return checked_out
+
     def collect_changes(self, worktree_path: Path) -> list[str]:
         result = self._run_git(worktree_path, ["status", "--porcelain"])
         if result.returncode != 0:

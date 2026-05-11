@@ -177,6 +177,7 @@ class JobManager:
                 job_id=job.id,
             )
             worktree_on_branch = False
+            commit_to_requested_branch = False
             requested_branch = job.request.branch
             if requested_branch and self._git_service.local_branch_exists(project_path, requested_branch):
                 _joblog.info(
@@ -203,23 +204,45 @@ class JobManager:
                         job_id=job.id,
                     )
                 else:
-                    worktree_path = self._git_service.prepare_branch_worktree(
-                        project_path,
-                        requested_branch,
-                        job.id,
-                        worktree_base_dir=worktree_base,
-                    )
-                    created_worktree_for_job = True
-                    _joblog.info(
-                        "created branch worktree branch=%s worktree=%s",
-                        requested_branch,
-                        worktree_path.name,
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
-                    )
-                worktree_on_branch = True
+                    if self._git_service.branch_is_checked_out(project_path, requested_branch):
+                        worktree_path = self._git_service.prepare_detached_worktree(
+                            project_path,
+                            job.id,
+                            worktree_base_dir=worktree_base,
+                            base_branch=requested_branch,
+                        )
+                        created_worktree_for_job = True
+                        _joblog.info(
+                            "created detached worktree from checked-out branch branch=%s worktree=%s",
+                            requested_branch,
+                            worktree_path.name,
+                            chat_id=job.request.chat_id,
+                            user_id=job.request.requested_by,
+                            project=job.request.project,
+                            job_id=job.id,
+                        )
+                    else:
+                        worktree_path = self._git_service.prepare_branch_worktree(
+                            project_path,
+                            requested_branch,
+                            job.id,
+                            worktree_base_dir=worktree_base,
+                        )
+                        created_worktree_for_job = True
+                        worktree_on_branch = True
+                        commit_to_requested_branch = True
+                        _joblog.info(
+                            "created branch worktree branch=%s worktree=%s",
+                            requested_branch,
+                            worktree_path.name,
+                            chat_id=job.request.chat_id,
+                            user_id=job.request.requested_by,
+                            project=job.request.project,
+                            job_id=job.id,
+                        )
+                if existing_worktree is not None:
+                    worktree_on_branch = True
+                    commit_to_requested_branch = True
             else:
                 worktree_path = self._git_service.prepare_detached_worktree(
                     project_path,
@@ -227,6 +250,7 @@ class JobManager:
                     worktree_base_dir=worktree_base,
                 )
                 created_worktree_for_job = True
+                commit_to_requested_branch = requested_branch is not None
                 _joblog.info(
                     "created detached worktree requested_branch=%s worktree=%s",
                     requested_branch or "-",
@@ -323,12 +347,16 @@ class JobManager:
                     job_id=job.id,
                 )
             else:
-                job.branch = job.request.branch or self._branch_strategy.make_branch_name(job.request.instruction)
+                job.branch = (
+                    job.request.branch
+                    if commit_to_requested_branch
+                    else self._branch_strategy.make_branch_name(job.request.instruction)
+                )
                 self._job_store.update(job)
                 _joblog.info(
                     "branch selected branch=%s requested=%s",
                     job.branch,
-                    bool(job.request.branch),
+                    commit_to_requested_branch,
                     chat_id=job.request.chat_id,
                     user_id=job.request.requested_by,
                     project=job.request.project,

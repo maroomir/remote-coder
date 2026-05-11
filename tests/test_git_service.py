@@ -291,6 +291,21 @@ def test_find_linked_worktree_for_branch_ignores_root(mock_run, tmp_path: Path):
 
 
 @patch("app.git.service.subprocess.run")
+def test_branch_is_checked_out_includes_root_worktree(mock_run, tmp_path: Path):
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stderr = ""
+    root = tmp_path / "repo"
+    mock_run.return_value.stdout = (
+        f"worktree {root}\n"
+        "HEAD abc\n"
+        "branch refs/heads/main\n"
+    )
+
+    service = GitWorktreeService(base_dir=tmp_path)
+    assert service.branch_is_checked_out(root, "main") is True
+
+
+@patch("app.git.service.subprocess.run")
 def test_list_remote_branches_matching_raises_on_failure(mock_run, tmp_path: Path):
     mock_run.return_value.returncode = 1
     mock_run.return_value.stderr = "connection refused"

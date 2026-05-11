@@ -348,6 +348,60 @@ def test_job_manager_reuses_existing_branch_worktree(test_settings, project_regi
     assert runner_input.cwd == existing_worktree
 
 
+def test_job_manager_uses_detached_worktree_when_requested_branch_is_checked_out(
+    test_settings,
+    project_registry,
+):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.local_branch_exists.return_value = True
+    git_service.find_linked_worktree_for_branch.return_value = None
+    git_service.branch_is_checked_out.return_value = True
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = ["a.py"]
+    git_service.commit_all.return_value = "abc123"
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    branch_strategy.make_branch_name.return_value = "remote-test"
+    notifier = Mock()
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="fix bug",
+        branch="main",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    final_job = manager.run(job.id)
+
+    assert final_job.status.value == "succeeded"
+    assert final_job.branch == "remote-test"
+    git_service.prepare_branch_worktree.assert_not_called()
+    git_service.prepare_detached_worktree.assert_called_once_with(
+        test_settings.project_root,
+        job.id,
+        worktree_base_dir=test_settings.worktree_base_dir,
+        base_branch="main",
+    )
+    git_service.create_branch_in_worktree.assert_called_once_with(Path("/tmp/wt"), "remote-test")
+
+
 def test_job_manager_truncates_runner_output_summary(test_settings, project_registry):
     store = InMemoryJobStore()
     git_service = Mock()
