@@ -101,6 +101,12 @@ def _job_button_label(job: Job) -> str:
     return f"{job.id} ({job.status.value})"
 
 
+def _confirmation_buttons_enabled(ctx: CommandContext) -> bool:
+    if ctx.advanced_settings_store is None:
+        return False
+    return ctx.advanced_settings_store.get().natural_job_confirmation_buttons_enabled
+
+
 def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | None:
     _ = chat_id
     return ctx.project_name
@@ -159,6 +165,8 @@ class StartCommand(TelegramCommand):
         tokens = message.text.strip().split()
         if len(tokens) == 2:
             topic = tokens[1].lower()
+            if topic == "clear" and _confirmation_buttons_enabled(ctx):
+                return "정리할 항목을 선택하세요. 실행 전 확인이 필요합니다."
             topic_text = self._TOPIC_TEXT.get(topic)
             if topic_text is not None:
                 return topic_text
@@ -1050,10 +1058,27 @@ class ClearCommand(ConfirmableCommand):
             summary = "이 봇 프로젝트의 관리 대상 worktree를 정리하고 stale 엔트리를 prune 합니다."
         else:
             summary = "이 봇 프로젝트에서 이 채팅방의 대화 기억만 삭제합니다."
+        if _confirmation_buttons_enabled(ctx):
+            return f"현재 할 작업: {summary}\n실행 여부를 선택하세요."
         return (
             f"현재 할 작업: {summary}\n"
             "실행하려면 `y` 또는 `Y`를 입력하세요. 그 외 응답은 취소됩니다."
         )
+
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        if message is None or ctx is None or not _confirmation_buttons_enabled(ctx):
+            return None
+        pending = ctx.confirmation_store.get(
+            effective_project_name_for_chat(ctx, message.chat_id),
+            message.chat_id,
+        )
+        if pending is None or pending.command_name != self.name:
+            return None
+        return [[InlineButton("네", "Y"), InlineButton("아니오", "n")]]
 
     def confirm(
         self,

@@ -1,6 +1,7 @@
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from app.admin.advanced_settings import AdvancedSettings
 from app.jobs.schemas import Job, JobRequest, JobStatus
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
@@ -395,6 +396,25 @@ def test_clear_branch_command_requests_confirmation(project_registry: ProjectReg
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
     assert "현재 할 작업" in (text or "")
     assert "remote-*" in (text or "")
+    ctx.git_service.delete_remote_branches.assert_not_called()
+    ctx.git_service.delete_local_branches.assert_not_called()
+
+
+def test_clear_branch_command_uses_confirmation_buttons_when_enabled(project_registry: ProjectRegistry):
+    advanced_settings_store = Mock()
+    advanced_settings_store.get.return_value = AdvancedSettings(
+        natural_job_confirmation_buttons_enabled=True,
+    )
+    ctx = _ctx(project_registry, advanced_settings_store=advanced_settings_store)
+    registry = CommandRegistry([ClearCommand()])
+
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
+
+    assert response is not None
+    assert "현재 할 작업" in response.text
+    assert "실행 여부를 선택하세요." in response.text
+    assert "y 또는 `Y`" not in response.text
+    assert response.inline_buttons == [[InlineButton("네", "Y"), InlineButton("아니오", "n")]]
     ctx.git_service.delete_remote_branches.assert_not_called()
     ctx.git_service.delete_local_branches.assert_not_called()
 

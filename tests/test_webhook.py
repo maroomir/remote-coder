@@ -465,6 +465,84 @@ def test_webhook_executes_pending_clear_confirmation(project_registry):
     assert "원격 1개" in notifier.sent[1][1]
 
 
+def test_webhook_executes_pending_clear_confirmation_with_buttons(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.list_remote_branches_matching.return_value = ["remote-x"]
+    git_service.list_local_branches_matching.return_value = ["remote-y"]
+    advanced_settings_store = Mock()
+    advanced_settings_store.get.return_value = AdvancedSettings(
+        natural_job_confirmation_buttons_enabled=True,
+    )
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+        advanced_settings_store=advanced_settings_store,
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=DummyJobManager(),
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    prompt_response = client.post(
+        wh,
+        json={
+            "update_id": 10,
+            "message": {"message_id": 10, "text": "/clear branch", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    buttons = notifier.sent_with_buttons[0][2]
+    confirm_response = client.post(
+        wh,
+        json={
+            "update_id": 11,
+            "callback_query": {
+                "id": "cq_clear_confirm_yes",
+                "from": {"id": 999},
+                "message": {"chat": {"id": 123}},
+                "data": buttons[0][0].callback_data,
+            },
+        },
+    )
+
+    assert prompt_response.status_code == 200
+    assert prompt_response.json()["status"] == "ok"
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "ok"
+    assert notifier.sent_with_buttons[0][0] == 123
+    assert "실행 여부를 선택하세요." in notifier.sent_with_buttons[0][1]
+    assert buttons[0][0].label == "네"
+    assert buttons[0][1].label == "아니오"
+    assert "cq_clear_confirm_yes" in notifier.answered_callbacks
+    assert "원격 1개" in notifier.sent[0][1]
+
+
 def test_webhook_executes_pending_clear_worktrees_confirmation(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
