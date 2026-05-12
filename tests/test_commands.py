@@ -123,7 +123,7 @@ def test_model_command_updates_preference(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     ctx = _ctx(project_registry)
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model codex"), ctx)
-    assert text == "모델 설정이 변경되었습니다.\n\n- 기본 모델: codex"
+    assert text == "모델 설정이 변경되었습니다.\n\n- 기본 모델을 codex로 변경했습니다."
     current = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model"), ctx)
     assert current == "모델 설정\n\n- 현재 기본 모델: codex"
 
@@ -151,7 +151,7 @@ def test_model_command_keeps_model_buttons_after_selection(project_registry: Pro
     )
 
     assert response is not None
-    assert response.text == "모델 설정이 변경되었습니다.\n\n- 기본 모델: codex"
+    assert response.text == "모델 설정이 변경되었습니다.\n\n- 기본 모델을 codex로 변경했습니다."
     assert response.inline_buttons == [
         [
             InlineButton("claude", "/model claude"),
@@ -165,7 +165,7 @@ def test_model_command_updates_preference_to_gemini(project_registry: ProjectReg
     registry = CommandRegistry([ModelCommand()])
     ctx = _ctx(project_registry)
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model gemini"), ctx)
-    assert text == "모델 설정이 변경되었습니다.\n\n- 기본 모델: gemini"
+    assert text == "모델 설정이 변경되었습니다.\n\n- 기본 모델을 gemini로 변경했습니다."
     assert ctx.model_preferences.get(ctx.project_name, 77) == ModelName.GEMINI
 
 

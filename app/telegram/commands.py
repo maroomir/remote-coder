@@ -318,7 +318,7 @@ class ModelCommand(TelegramCommand):
         if len(tokens) == 2 and tokens[1] in {model.value for model in ModelName}:
             selected = ModelName(tokens[1])
             ctx.model_preferences.set(project_name, message.chat_id, selected)
-            return f"모델 설정이 변경되었습니다.\n\n- 기본 모델: {selected.value}"
+            return f"모델 설정이 변경되었습니다.\n\n- 기본 모델을 {selected.value}로 변경했습니다."
         return format_usage("/model", f"/model {MODEL_USAGE}")
 
     def get_inline_buttons(
