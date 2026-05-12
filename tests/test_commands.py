@@ -123,6 +123,44 @@ def test_help_command_returns_text_with_no_buttons(project_registry: ProjectRegi
     assert response.inline_buttons is None
 
 
+def test_start_menu_places_model_under_manage(project_registry: ProjectRegistry):
+    registry = CommandRegistry([StartCommand()])
+    ctx = _ctx(project_registry)
+
+    start_response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/start"), ctx)
+    manage_response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/start manage"), ctx)
+
+    assert start_response is not None
+    assert start_response.inline_buttons == [
+        [InlineButton("계획 모드 안내", "/help plan"), InlineButton("질문 모드 안내", "/help ask")],
+        [InlineButton("모니터링", "/start monitor"), InlineButton("정리", "/start clear")],
+        [InlineButton("관리", "/start manage"), InlineButton("리포트", "/reports")],
+    ]
+    assert manage_response is not None
+    assert manage_response.inline_buttons == [
+        [InlineButton("브랜치 확인", "/branch"), InlineButton("Pull", "/pull")],
+        [InlineButton("리베이스", "/rebase"), InlineButton("PR 올리기", "/pr")],
+        [InlineButton("중단", "/stop"), InlineButton("상태", "/status")],
+        [InlineButton("모델", "/start model"), InlineButton("초기화", "/init")],
+        [InlineButton("뒤로", "/start")],
+    ]
+
+
+def test_start_model_goes_back_to_manage(project_registry: ProjectRegistry):
+    registry = CommandRegistry([StartCommand()])
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/start model"), _ctx(project_registry))
+
+    assert response is not None
+    assert response.inline_buttons == [
+        [
+            InlineButton("claude", "/model claude"),
+            InlineButton("codex", "/model codex"),
+            InlineButton("gemini", "/model gemini"),
+        ],
+        [InlineButton("뒤로", "/start manage")],
+    ]
+
+
 def test_dispatch_plan_and_ask_returns_none_for_natural_flow(project_registry: ProjectRegistry):
     registry = CommandRegistry(build_default_commands())
     ctx = _ctx(project_registry)

@@ -253,7 +253,7 @@ class StartCommand(TelegramCommand):
                     InlineButton("codex", "/model codex"),
                     InlineButton("gemini", "/model gemini"),
                 ],
-                [InlineButton("뒤로", "/start")],
+                [InlineButton("뒤로", "/start manage")],
             ]
         if topic == "monitor":
             return [
@@ -293,13 +293,15 @@ class StartCommand(TelegramCommand):
                     InlineButton("상태", "/status"),
                 ],
                 [
+                    InlineButton("모델", "/start model"),
                     InlineButton("초기화", "/init"),
+                ],
+                [
                     InlineButton("뒤로", "/start"),
                 ],
             ]
         return [
             [InlineButton("계획 모드 안내", "/help plan"), InlineButton("질문 모드 안내", "/help ask")],
-            [InlineButton("모델", "/start model")],
             [InlineButton("모니터링", "/start monitor"), InlineButton("정리", "/start clear")],
             [InlineButton("관리", "/start manage"), InlineButton("리포트", "/reports")],
         ]
