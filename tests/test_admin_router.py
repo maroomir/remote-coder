@@ -24,8 +24,8 @@ def test_admin_root_returns_html(test_settings, project_registry, advanced_setti
     assert 'id="proj-form"' not in response.text
     assert 'id="adv-form"' not in response.text
     assert 'id="active-projects-view"' in response.text
-    assert "등록 프로젝트" in response.text
-    assert "활성 프로젝트" in response.text
+    assert 'id="summary-grid"' in response.text
+    assert "/admin-static/summary.js" in response.text
 
 
 def test_admin_projects_page_returns_html(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):

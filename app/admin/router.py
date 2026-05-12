@@ -484,6 +484,13 @@ def create_admin_router(
         )
         return saved.model_dump(mode="json")
 
+    @router.get("/admin-static/summary.js")
+    def admin_summary_js(_: LocalhostOnly) -> FileResponse:
+        path = Path(__file__).parent / "static" / "summary.js"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(path, media_type="application/javascript; charset=utf-8")
+
     @router.get("/admin-static/icons/{filename}")
     def admin_icon(filename: str, _: LocalhostOnly) -> FileResponse:
         if filename not in _ADMIN_ICON_NAMES:

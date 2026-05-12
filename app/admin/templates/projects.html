@@ -605,6 +605,7 @@
     </section>
   </div>
 
+  <script src="/admin-static/summary.js"></script>
   <script>
     const $ = (s) => document.querySelector(s);
     const globalMsg = $("#global-msg");
@@ -664,24 +665,6 @@
       const editing = f.name.readOnly;
       banner.className = "form-mode " + (editing ? "mode-edit" : "mode-add");
       banner.textContent = editing ? "편집 중: " + f.name.value : "새 프로젝트 추가";
-    }
-
-    function renderSummary(settings, projectsPayload) {
-      const grid = $("#summary-grid");
-      const list = projectsPayload.projects || [];
-      const enabled = list.filter((p) => p.enabled).length;
-      const defName = projectsPayload.default_project || "(없음)";
-      const envModel = settings.default_model_env || "—";
-      const tokenOk = settings.telegram_bot_token_masked && settings.telegram_bot_token_masked !== "(설정 안 됨)";
-
-      grid.innerHTML = `
-        <div class="stat-card"><p class="label">등록 프로젝트</p><p class="value">${list.length}</p></div>
-        <div class="stat-card"><p class="label">활성</p><p class="value">${enabled}</p></div>
-        <div class="stat-card"><p class="label">폴백 기본</p><p class="value" style="font-size:1rem">${escapeHtml(defName)}</p></div>
-        <div class="stat-card"><p class="label">환경 기본 모델</p><p class="value" style="font-size:1rem">${escapeHtml(envModel)}</p></div>
-        <div class="stat-card"><p class="label">봇 토큰</p><p class="value" style="font-size:0.95rem">${tokenOk ? "설정됨" : "미설정"}</p>
-          <p class="sub">${escapeHtml(settings.telegram_bot_token_masked || "")}</p></div>
-      `;
     }
 
     function parseIdList(raw) {
@@ -748,23 +731,11 @@
       setGlobalMsg("", "");
       setBusy(true);
       try {
-        const [rs, rp] = await Promise.all([fetch("/api/settings"), fetch("/api/projects")]);
-        const settingsText = await rs.text();
-        const projectsText = await rp.text();
-        if (!rs.ok) {
-          setGlobalMsg("err", await parseApiError(rs, settingsText));
-          return;
-        }
-        if (!rp.ok) {
-          setGlobalMsg("err", await parseApiError(rp, projectsText));
-          return;
-        }
-        const settings = JSON.parse(settingsText);
-        const d = JSON.parse(projectsText);
+        const result = await adminSummary.loadSummaryGrid((msg) => setGlobalMsg("err", msg));
+        if (!result.ok) return;
+        const d = result.projectsPayload;
         lastProjects = d.projects || [];
         lastDefault = d.default_project || "";
-        renderSummary(settings, d);
-
         renderProjectTable(d);
       } finally {
         setBusy(false);

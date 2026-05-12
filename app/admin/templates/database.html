@@ -399,6 +399,43 @@
       font-family: ui-monospace, monospace;
     }
 
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .stat-card {
+      padding: 1rem 1.1rem;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .stat-card .label {
+      margin: 0;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+
+    .stat-card .value {
+      margin: 0.25rem 0 0;
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .stat-card .sub {
+      margin: 0.2rem 0 0;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      word-break: break-all;
+    }
+
     @media (max-width: 640px) {
       .app-header h1 { font-size: 1.25rem; }
     }
@@ -435,6 +472,8 @@
     </header>
 
     <div id="global-msg" role="status" aria-live="polite"></div>
+
+    <div class="summary-grid" id="summary-grid" aria-label="요약"></div>
 
     <section class="card" aria-labelledby="db-heading">
       <h2 id="db-heading">표</h2>
@@ -511,6 +550,7 @@
     </div>
   </dialog>
 
+  <script src="/admin-static/summary.js"></script>
   <script>
     const $ = (s) => document.querySelector(s);
     const globalMsg = $("#global-msg");
@@ -819,6 +859,7 @@
     });
 
     (async function init() {
+      adminSummary.loadSummaryGrid();
       try {
         await loadTablesMeta();
         await loadRows();
