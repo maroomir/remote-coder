@@ -474,7 +474,9 @@ def create_admin_router(
     def api_advanced_settings_put(body: AdvancedSettings, _: LocalhostOnly) -> dict:
         saved = advanced_settings_store.save(body)
         _adminlog.info(
-            "advanced settings updated auto_merge=%s delete_rebased_branch=%s natural_confirm_buttons=%s status_limit=%d job_timeout=%s memory_limit=%s",
+            "advanced settings updated lifecycle_notify=%s pull_startup=%s auto_merge=%s delete_rebased_branch=%s natural_confirm_buttons=%s status_limit=%d job_timeout=%s memory_limit=%s",
+            saved.server_lifecycle_notify_enabled,
+            saved.pull_projects_on_server_startup_enabled,
             saved.auto_merge_to_main_enabled,
             saved.delete_rebased_branch_enabled,
             saved.natural_job_confirmation_buttons_enabled,

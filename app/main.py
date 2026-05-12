@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -22,6 +23,7 @@ from app.projects.registry import (
     projects_config_path_for_settings,
 )
 from app.security.auth import AllowlistAuthService
+from app.system_startup import run_startup_project_pulls
 from app.telegram.commands import (
     CommandContext,
     CommandRegistry,
@@ -143,7 +145,16 @@ async def lifespan(_app: FastAPI):
         len(project_registry.list_projects()),
         settings.default_model.value,
     )
-    if advanced_settings_store.get().server_lifecycle_notify_enabled:
+    adv = advanced_settings_store.get()
+    await asyncio.to_thread(
+        run_startup_project_pulls,
+        pull_projects_on_server_startup_enabled=adv.pull_projects_on_server_startup_enabled,
+        project_registry=project_registry,
+        git_service=git_service,
+        remote=settings.git_remote_name,
+        system_log=_systemlog,
+    )
+    if adv.server_lifecycle_notify_enabled:
         for instance in instances:
             ctx = replace(instance.command_context, project_name=instance.project_name)
             bot_notifier = instance.notifier

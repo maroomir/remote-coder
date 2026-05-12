@@ -12,6 +12,7 @@ class AdvancedSettings(BaseModel):
     model_config = {"extra": "forbid"}
 
     server_lifecycle_notify_enabled: bool = True
+    pull_projects_on_server_startup_enabled: bool = False
     auto_merge_to_main_enabled: bool = False
     delete_rebased_branch_enabled: bool = True
     natural_job_confirmation_buttons_enabled: bool = False
