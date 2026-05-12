@@ -79,6 +79,8 @@ HELP_TEXT = "\n".join(
         "- model:",
         "- branch:",
         "- no commit",
+        "- plan: <자연어> - 계획 모드 (코드 수정 없이 변경 계획만 응답)",
+        "- ask: <자연어> - 질문 모드 (코드 분석 후 응답)",
         "",
         "명령어 목록:",
         "- /model <claude|codex|gemini>: 기본 모델 변경",

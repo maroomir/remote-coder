@@ -83,6 +83,45 @@ def test_format_job_result_memory_summary_includes_usage():
     assert "tokens=1,500" in summary
 
 
+def test_format_job_result_memory_summary_plan_includes_stdout_preview():
+    long_out = "X" * 900
+    job = Job(
+        id="job-plan",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="plan me",
+            chat_id=1,
+            requested_by=1,
+            mode=JobMode.PLAN,
+        ),
+        status=JobStatus.SUCCEEDED,
+        runner_stdout_summary=long_out,
+    )
+    summary = format_job_result_memory_summary(job)
+    assert "stdout_preview=" in summary
+    _, preview = summary.split("stdout_preview=", 1)
+    assert preview == "X" * 800
+
+
+def test_format_job_result_memory_summary_agent_no_stdout_preview_key():
+    job = Job(
+        id="job-agent",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="go",
+            chat_id=1,
+            requested_by=1,
+            mode=JobMode.AGENT,
+        ),
+        status=JobStatus.SUCCEEDED,
+        runner_stdout_summary="full agent output",
+    )
+    summary = format_job_result_memory_summary(job)
+    assert "stdout_preview=" not in summary
+
+
 class DummyNotifier:
     def __init__(self):
         self.sent: list[tuple[int, str]] = []

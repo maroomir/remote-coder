@@ -32,6 +32,9 @@ def _telegram_text_preview(text: str, max_len: int = 80) -> str:
     return first[:max_len]
 
 
+_JOB_RESULT_MEMORY_READ_ONLY_STDOUT_PREVIEW = 800
+
+
 def format_job_result_memory_summary(final_job: Job) -> str:
     summary = f"status={final_job.status.value}"
     if final_job.error_stage:
@@ -42,6 +45,9 @@ def format_job_result_memory_summary(final_job: Job) -> str:
     token_usage = format_token_usage(final_job.runner_token_usage)
     if token_usage:
         summary += f" tokens={token_usage}"
+    if final_job.request.mode in (JobMode.PLAN, JobMode.ASK) and final_job.runner_stdout_summary:
+        preview = final_job.runner_stdout_summary[:_JOB_RESULT_MEMORY_READ_ONLY_STDOUT_PREVIEW]
+        summary += f" stdout_preview={preview}"
     return summary
 
 

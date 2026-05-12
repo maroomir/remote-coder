@@ -5,9 +5,144 @@ import respx
 from httpx import Response
 from pathlib import Path
 
-from app.jobs.schemas import Job, JobRequest, JobStatus
+from app.jobs.schemas import Job, JobMode, JobRequest, JobStatus
 from app.models import ModelName
 from app.telegram.notifier import TelegramNotifier
+
+
+@respx.mock
+def test_notifier_send_job_accepted_includes_mode_for_plan_ask():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    for mode, expected in ((JobMode.PLAN, "모드: plan"), (JobMode.ASK, "모드: ask")):
+        route.calls.clear()
+        job = Job(
+            id="j-mode",
+            request=JobRequest(
+                project="proj",
+                model=ModelName.CLAUDE,
+                instruction="x",
+                chat_id=1,
+                requested_by=1,
+                mode=mode,
+            ),
+        )
+        notifier.send_job_accepted(job)
+        payload = json.loads(route.calls[0].request.content.decode())
+        assert expected in payload["text"]
+        assert "모델: claude" in payload["text"]
+
+
+@respx.mock
+def test_notifier_send_job_result_plan_succeeded_compact_format():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    job = Job(
+        id="j-plan",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+            mode=JobMode.PLAN,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="ignored-branch",
+        commit_hash="dead",
+        changed_files=["should_not_show.py"],
+        runner_stdout_summary="step one then two",
+        runner_actual_model="claude-3",
+        runner_token_usage={"input": 10, "output": 5},
+    )
+    notifier.send_job_result(job)
+    payload = route.calls[0].request.content.decode()
+    assert "[plan] 응답 완료" in payload
+    assert "step one then two" in payload
+    assert "브랜치" not in payload
+    assert "커밋" not in payload
+    assert "변경 파일" not in payload
+    assert "사용 모델: claude-3" in payload
+    assert "토큰 사용량: 15" in payload
+
+
+@respx.mock
+def test_notifier_send_job_result_ask_succeeded_compact_format():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    job = Job(
+        id="j-ask",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CODEX,
+            instruction="q",
+            chat_id=2,
+            requested_by=1,
+            mode=JobMode.ASK,
+        ),
+        status=JobStatus.SUCCEEDED,
+        runner_stdout_summary="answer text",
+    )
+    notifier.send_job_result(job)
+    payload = route.calls[0].request.content.decode()
+    assert "[ask] 응답 완료" in payload
+    assert "answer text" in payload
+    assert "브랜치" not in payload
+
+
+@respx.mock
+def test_notifier_send_job_result_plan_failure_prefix_only():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    job = Job(
+        id="j-fail",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.GEMINI,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+            mode=JobMode.PLAN,
+        ),
+        status=JobStatus.FAILED,
+        error="boom",
+        error_stage="runner",
+    )
+    notifier.send_job_result(job)
+    payload = route.calls[0].request.content.decode()
+    assert "[plan] ❌ 작업 실패" in payload
+    assert "boom" in payload
+
+
+@respx.mock
+def test_notifier_send_job_result_plan_cancelled_has_mode_prefix():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    job = Job(
+        id="j-can",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+            mode=JobMode.PLAN,
+        ),
+        status=JobStatus.CANCELLED,
+    )
+    notifier.send_job_result(job)
+    payload = route.calls[0].request.content.decode()
+    assert "[plan] ⛔ 작업 중단됨" in payload
 
 
 @respx.mock
