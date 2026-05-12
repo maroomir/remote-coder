@@ -246,7 +246,7 @@ def test_webhook_accepts_natural_message(project_registry):
     assert confirm_response.json()["status"] == "accepted"
 
 
-def test_webhook_plan_mode_submits_without_confirmation(project_registry):
+def test_webhook_plan_mode_requires_confirmation_then_accepts_y(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
@@ -298,16 +298,32 @@ def test_webhook_plan_mode_submits_without_confirmation(project_registry):
         },
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "accepted"
-    assert response.json()["job_id"] == "job_1"
+    assert response.json()["status"] == "ok"
+    assert response.json().get("job_id") is None
+    pending = command_context.confirmation_store.get("remote-coder", 123)
+    assert pending is not None
+    assert pending.job_request is not None
+    assert pending.job_request.mode == JobMode.PLAN
+    assert "outline the refactor" in pending.job_request.instruction
+    assert "- 모드: plan" in notifier.sent[0][1]
+    git_service.get_current_branch.assert_called_once()
+
+    confirm_response = client.post(
+        wh,
+        json={
+            "update_id": 11,
+            "message": {"message_id": 11, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "accepted"
+    assert confirm_response.json()["job_id"] == "job_1"
     assert command_context.confirmation_store.get("remote-coder", 123) is None
     assert job_manager.last_request is not None
     assert job_manager.last_request.mode == JobMode.PLAN
-    assert "outline the refactor" in job_manager.last_request.instruction
-    git_service.get_current_branch.assert_not_called()
 
 
-def test_webhook_slash_plan_submits_without_confirmation(project_registry):
+def test_webhook_slash_plan_requires_confirmation_then_accepts_y(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
@@ -359,14 +375,29 @@ def test_webhook_slash_plan_submits_without_confirmation(project_registry):
         },
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "accepted"
+    assert response.json()["status"] == "ok"
+    assert response.json().get("job_id") is None
+    pending = command_context.confirmation_store.get("remote-coder", 123)
+    assert pending is not None
+    assert pending.job_request.mode == JobMode.PLAN
+    assert pending.job_request.model == ModelName.CODEX
+    assert "outline only" in pending.job_request.instruction
+    git_service.get_current_branch.assert_called_once()
+
+    confirm_response = client.post(
+        wh,
+        json={
+            "update_id": 13,
+            "message": {"message_id": 13, "text": "Y", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "accepted"
     assert job_manager.last_request.mode == JobMode.PLAN
     assert job_manager.last_request.model == ModelName.CODEX
-    assert "outline only" in job_manager.last_request.instruction
-    git_service.get_current_branch.assert_not_called()
 
 
-def test_webhook_ask_mode_submits_without_confirmation(project_registry):
+def test_webhook_ask_mode_requires_confirmation_then_accepts_y(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
@@ -418,13 +449,168 @@ def test_webhook_ask_mode_submits_without_confirmation(project_registry):
         },
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "accepted"
-    assert response.json()["job_id"] == "job_1"
-    assert command_context.confirmation_store.get("remote-coder", 123) is None
-    assert job_manager.last_request is not None
+    assert response.json()["status"] == "ok"
+    assert response.json().get("job_id") is None
+    pending = command_context.confirmation_store.get("remote-coder", 123)
+    assert pending is not None
+    assert pending.job_request.mode == JobMode.ASK
+    assert "routing" in pending.job_request.instruction
+    assert "- 모드: ask" in notifier.sent[0][1]
+    git_service.get_current_branch.assert_called_once()
+
+    confirm_response = client.post(
+        wh,
+        json={
+            "update_id": 12,
+            "message": {"message_id": 12, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "accepted"
     assert job_manager.last_request.mode == JobMode.ASK
-    assert "routing" in job_manager.last_request.instruction
-    git_service.get_current_branch.assert_not_called()
+
+
+def test_webhook_natural_pending_replaced_silently_when_new_message_parses(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    job_manager = CaptureJobManager()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=job_manager,
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+    client.post(
+        wh,
+        json={
+            "update_id": 20,
+            "message": {"message_id": 20, "text": "fix tests", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert command_context.confirmation_store.get("remote-coder", 123) is not None
+    assert not any(m[1].startswith("작업 요청을 취소") for m in notifier.sent)
+
+    replace = client.post(
+        wh,
+        json={
+            "update_id": 21,
+            "message": {
+                "message_id": 21,
+                "text": "plan: outline only",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+            },
+        },
+    )
+    assert replace.status_code == 200
+    assert replace.json()["status"] == "ok"
+    assert not any(m[1].startswith("작업 요청을 취소") for m in notifier.sent)
+    pending = command_context.confirmation_store.get("remote-coder", 123)
+    assert pending is not None
+    assert pending.job_request is not None
+    assert pending.job_request.mode == JobMode.PLAN
+    assert "outline only" in pending.job_request.instruction
+    assert notifier.sent[-1][1].count("- 모드: plan") >= 1
+
+    confirm = client.post(
+        wh,
+        json={
+            "update_id": 22,
+            "message": {"message_id": 22, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert confirm.json()["status"] == "accepted"
+    assert job_manager.last_request is not None
+    assert job_manager.last_request.mode == JobMode.PLAN
+
+
+def test_webhook_natural_pending_parse_failure_sends_cancel_and_error(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=DummyJobManager(),
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+    client.post(
+        wh,
+        json={
+            "update_id": 30,
+            "message": {"message_id": 30, "text": "fix tests", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    fail = client.post(
+        wh,
+        json={
+            "update_id": 31,
+            "message": {"message_id": 31, "text": "plan:", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert fail.status_code == 200
+    assert fail.json()["status"] == "ignored"
+    assert command_context.confirmation_store.get("remote-coder", 123) is None
+    bodies = [m[1] for m in notifier.sent]
+    assert any(t.startswith("작업 요청을 취소") for t in bodies)
+    assert any("작업 지시문이 비어" in t for t in bodies)
 
 
 def test_webhook_accepts_natural_message_with_confirmation_buttons(project_registry):

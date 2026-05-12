@@ -95,16 +95,23 @@ def _format_natural_job_confirmation(
         f"- 작업 브랜치: {current_branch}",
         f"- 사용 모델: {request.model.value}",
     ]
+    if request.mode is JobMode.PLAN:
+        lines.append("- 모드: plan (읽기 전용 · 커밋·push 없음)")
+    elif request.mode is JobMode.ASK:
+        lines.append("- 모드: ask (읽기 전용 · 커밋·push 없음)")
+    else:
+        lines.append("- 모드: agent (코드 수정·커밋·push 가능)")
     if request.branch:
         lines.append(f"- 요청 브랜치: {request.branch}")
-    lines.extend(
-        [
-            "",
-            "실행 여부를 선택하세요."
-            if use_buttons
-            else "실행하려면 `y` 또는 `Y`를 입력하세요. 그 외 응답은 취소됩니다.",
-        ]
-    )
+    if use_buttons:
+        footer = "실행 여부를 선택하세요."
+    else:
+        footer = (
+            "실행하려면 `y` 또는 `Y`를 입력하세요. "
+            "새 자연어 요청으로 이 확인을 바꿀 수 있습니다. "
+            "파싱되지 않는 입력은 대기 작업이 취소됩니다."
+        )
+    lines.extend(["", footer])
     return "\n".join(lines)
 
 
@@ -341,28 +348,117 @@ def create_webhook_router(
         pending = command_context.confirmation_store.get(scope_project, chat_id)
         message_tokens = message.text.strip().split(maxsplit=1)
         message_head = message_tokens[0] if message_tokens else ""
+
+        def _queue_natural_confirmation(req: JobRequest, original_text_stripped: str) -> bool:
+            ent = command_context.project_registry.get(bot_instance.project_name)
+            if ent is None:
+                background_tasks.add_task(
+                    notifier.send_text,
+                    chat_id,
+                    f"알 수 없는 프로젝트: {bot_instance.project_name}",
+                )
+                return False
+            try:
+                current_branch = str(command_context.git_service.get_current_branch(ent.root_path))
+            except RuntimeError as exc:
+                background_tasks.add_task(notifier.send_text, chat_id, f"작업 브랜치 확인 실패: {exc}")
+                return False
+            command_context.confirmation_store.set(
+                scope_project,
+                chat_id,
+                PendingConfirmation(
+                    command_name=_NATURAL_JOB_CONFIRMATION,
+                    action="submit",
+                    job_request=req,
+                    original_text=original_text_stripped,
+                ),
+            )
+            use_confirmation_buttons = _natural_job_confirmation_buttons_enabled(command_context)
+            confirmation_text = _format_natural_job_confirmation(
+                req,
+                current_branch,
+                use_buttons=use_confirmation_buttons,
+            )
+            if use_confirmation_buttons:
+                background_tasks.add_task(
+                    notifier.send_with_buttons,
+                    chat_id,
+                    confirmation_text,
+                    _natural_job_confirmation_buttons(),
+                )
+            else:
+                background_tasks.add_task(notifier.send_text, chat_id, confirmation_text)
+            return True
+
+        reply_mid = (
+            update.message.reply_to_message.message_id
+            if update.message.reply_to_message is not None
+            else None
+        )
+        reply_txt = (
+            update.message.reply_to_message.text
+            if update.message.reply_to_message is not None
+            else None
+        )
+
         if (
             pending is not None
             and pending.command_name == _NATURAL_JOB_CONFIRMATION
             and message_head != "/init"
         ):
-            confirmed = command_context.confirmation_store.pop(scope_project, chat_id)
-            if message.text.strip() not in {"y", "Y"}:
+            if message.text.strip() in {"y", "Y"}:
+                confirmed = command_context.confirmation_store.pop(scope_project, chat_id)
+                if confirmed is None or confirmed.job_request is None or confirmed.original_text is None:
+                    background_tasks.add_task(notifier.send_text, chat_id, "확인 대기 작업을 처리할 수 없습니다.")
+                    return {"status": "ignored"}
+                job = _submit_confirmed_natural_request(
+                    request=confirmed.job_request,
+                    original_text=confirmed.original_text,
+                    background_tasks=background_tasks,
+                )
+                return {"status": "accepted", "job_id": job.id}
+            try:
+                parsed_request = parser.parse_natural(
+                    message.text,
+                    bot_instance.project_name,
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    message_id=update.message.message_id,
+                    reply_to_message_id=reply_mid,
+                    reply_to_text=reply_txt,
+                )
+            except CommandParseError as exc:
+                command_context.confirmation_store.pop(scope_project, chat_id)
+                _cmdlog.warning(
+                    "parse error replacing pending message_id=%s err=%s",
+                    update.message.message_id,
+                    str(exc)[:120],
+                    chat_id=chat_id,
+                    user_id=user_id,
+                )
                 background_tasks.add_task(
                     notifier.send_text,
                     chat_id,
-                    _format_natural_job_cancelled(confirmed.job_request if confirmed else None),
+                    _format_natural_job_cancelled(pending.job_request),
                 )
-                return {"status": "ok"}
-            if confirmed is None or confirmed.job_request is None or confirmed.original_text is None:
-                background_tasks.add_task(notifier.send_text, chat_id, "확인 대기 작업을 처리할 수 없습니다.")
+                background_tasks.add_task(notifier.send_text, chat_id, str(exc))
                 return {"status": "ignored"}
-            job = _submit_confirmed_natural_request(
-                request=confirmed.job_request,
-                original_text=confirmed.original_text,
-                background_tasks=background_tasks,
+            command_context.confirmation_store.pop(scope_project, chat_id)
+            _cmdlog.info(
+                "natural pending replaced mode=%s model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
+                parsed_request.mode.value,
+                parsed_request.model.value,
+                parsed_request.branch or "-",
+                parsed_request.commit,
+                len(parsed_request.instruction),
+                parsed_request.reply_to_message_id or "-",
+                chat_id=chat_id,
+                user_id=user_id,
+                project=parsed_request.project,
             )
-            return {"status": "accepted", "job_id": job.id}
+            if _queue_natural_confirmation(parsed_request, message.text.strip()):
+                return {"status": "ok"}
+            return {"status": "ignored"}
 
         command_response: CommandResponse | None = command_registry.dispatch_rich(message, command_context)
         if command_response:
@@ -417,37 +513,9 @@ def create_webhook_router(
             return {"status": "ignored"}
         request = parsed_request
 
-        entry = command_context.project_registry.get(bot_instance.project_name)
-        if entry is None:
-            background_tasks.add_task(
-                notifier.send_text,
-                chat_id,
-                f"알 수 없는 프로젝트: {bot_instance.project_name}",
-            )
-            return {"status": "ignored"}
-
-        if request.mode != JobMode.AGENT:
-            _cmdlog.info(
-                "natural request parsed mode=%s model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
-                request.mode.value,
-                request.model.value,
-                request.branch or "-",
-                request.commit,
-                len(request.instruction),
-                request.reply_to_message_id or "-",
-                chat_id=chat_id,
-                user_id=user_id,
-                project=request.project,
-            )
-            job = _submit_confirmed_natural_request(
-                request=request,
-                original_text=message.text.strip(),
-                background_tasks=background_tasks,
-            )
-            return {"status": "accepted", "job_id": job.id}
-
         _cmdlog.info(
-            "natural request parsed model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
+            "natural request parsed mode=%s model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
+            request.mode.value,
             request.model.value,
             request.branch or "-",
             request.commit,
@@ -458,38 +526,9 @@ def create_webhook_router(
             project=request.project,
         )
 
-        try:
-            current_branch = str(command_context.git_service.get_current_branch(entry.root_path))
-        except RuntimeError as exc:
-            background_tasks.add_task(notifier.send_text, chat_id, f"작업 브랜치 확인 실패: {exc}")
-            return {"status": "ignored"}
-
-        command_context.confirmation_store.set(
-            scope_project,
-            chat_id,
-            PendingConfirmation(
-                command_name=_NATURAL_JOB_CONFIRMATION,
-                action="submit",
-                job_request=request,
-                original_text=message.text.strip(),
-            ),
-        )
-        use_confirmation_buttons = _natural_job_confirmation_buttons_enabled(command_context)
-        confirmation_text = _format_natural_job_confirmation(
-            request,
-            current_branch,
-            use_buttons=use_confirmation_buttons,
-        )
-        if use_confirmation_buttons:
-            background_tasks.add_task(
-                notifier.send_with_buttons,
-                chat_id,
-                confirmation_text,
-                _natural_job_confirmation_buttons(),
-            )
-        else:
-            background_tasks.add_task(notifier.send_text, chat_id, confirmation_text)
-        return {"status": "ok"}
+        if _queue_natural_confirmation(request, message.text.strip()):
+            return {"status": "ok"}
+        return {"status": "ignored"}
 
     def _submit_confirmed_natural_request(
         request: JobRequest,

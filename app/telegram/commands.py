@@ -103,7 +103,7 @@ HELP_PLAN_TOPIC = "\n".join(
     [
         "계획 모드 (plan)",
         "",
-        "코드를 수정하지 않고 변경 계획만 받습니다. `y`/`Y` 확인 없이 곧바로 Job이 접수됩니다.",
+        "코드를 수정하지 않고 변경 계획만 받습니다. 일반 자연어(agent)와 같이 확인(`y`/`Y` 또는 인라인 버튼) 후 Job이 접수됩니다.",
         "",
         "입력 예",
         "- plan: 로그인 검증 흐름 정리해줘",
@@ -118,7 +118,7 @@ HELP_ASK_TOPIC = "\n".join(
     [
         "질문 모드 (ask)",
         "",
-        "저장소를 읽고 질문에 답합니다. 코드 수정·커밋·push 없이 `y`/`Y` 확인 없이 Job이 접수됩니다.",
+        "저장소를 읽고 질문에 답합니다. 코드 수정·커밋·push는 하지 않으며, Job 접수는 agent와 같이 확인(`y`/`Y` 또는 인라인 버튼) 후입니다.",
         "",
         "입력 예",
         "- ask: 이 프로젝트에서 pytest 어떻게 돌려?",
@@ -314,7 +314,9 @@ class HelpCommand(TelegramCommand):
         _ = ctx
         tokens = message.text.strip().split()
         if len(tokens) >= 2:
-            topic = tokens[1].lower()
+            raw = tokens[1]
+            topic_aliases = {"계획": "plan", "질문": "ask"}
+            topic = topic_aliases.get(raw, raw.lower())
             if topic == "plan":
                 return HELP_PLAN_TOPIC
             if topic == "ask":

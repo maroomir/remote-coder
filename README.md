@@ -204,7 +204,7 @@ ngrok version
 - `/monitor worktrees` : linked worktree 목록·detached 개수·Remote Coder managed 후보 요약
 - `/monitor code` : 적용 프로젝트 루트 기준 코드 파일 수·줄 수 추정(확장자 화이트리스트, `.git`·`node_modules` 등 제외)
 - `/monitor project` : **이 봇에 묶인** 프로젝트 레코드 요약(이름, 활성 여부, 경로, 기본 모델, worktree 디렉터리)
-- 자연어 메시지: 기본(agent)은 현재 프로젝트·작업 브랜치·사용 모델 확인 후 `y`/`Y` 입력 시 AI 작업 요청 생성. `plan:`/`ask:`/`계획:`/`질문:` 접두(콜론 `:` 또는 `：`) 또는 `/plan`/`/ask`로 시작하면 읽기 전용 모드로 확인 없이 곧바로 실행되며 커밋·push는 하지 않습니다.
+- 자연어 메시지: agent·plan·ask 모두 파싱 성공 후 현재 프로젝트·작업 브랜치·사용 모델·모드를 표시하고 `y`/`Y`(또는 고급 설정 시 인라인 확인 버튼)를 받은 뒤 AI 작업 요청(Job)을 생성합니다. `plan:`/`ask:`/`계획:`/`질문:` 접두(콜론 `:` 또는 `：`) 또는 `/plan`/`/ask`로 시작하면 **읽기 전용** plan/ask 모드이며, Job 실행 시에는 커밋·push를 하지 않습니다.
 
   예: `plan: 로그인 플로우 리팩터링 방안만 정리해줘`, `/plan model: codex 위험만`, `ask: 이 저장소에서 테스트 실행 명령이 뭐야?`, `/ask JobManager 역할`
 
@@ -227,7 +227,7 @@ ngrok version
   `title`은 기능 수정 내용을 한 줄로 요약하고, 첫 번째 본문 항목은 사용자 원문이나 최근 수정 파일 목록이 아니라 AI Agent가 수행한 변경 내용을 설명합니다. 변경 파일 목록은 Job 결과 알림에서 별도로 확인합니다.
 
 - 자연어 메시지에서 `model: codex`, `model: gemini`, `branch: my-branch`, `no commit` 토큰을 함께 사용할 수 있습니다. (`branch:` 값은 `/branch`와 동일 규칙으로 검증됩니다. `plan:`/`ask:` 모드에서는 `branch:`·`no commit`은 무시됩니다.)
-- 일반(agent) 자연어 요청은 파싱 후 바로 실행되지 않습니다. 봇이 확인 메시지에 현재 프로젝트, 작업 브랜치, 사용 모델을 표시하며 `y` 또는 `Y`를 입력해야 Job이 생성됩니다. `plan:`/`ask:` 접두가 있는 요청은 확인 없이 Job이 생성됩니다.
+- 자연어 요청은 파싱 직후 실행되지 않습니다. 확인 메시지에 현재 프로젝트, 작업 브랜치, 사용 모델·모드를 표시하며 `y` 또는 `Y`(또는 인라인 확인) 후에만 Job이 생성됩니다. 확인 대기 중 파싱 가능한 새 자연어가 오면 이전 대기를 조용히 바꾸고, 파싱되지 않는 입력이 오면 대기가 취소됩니다.
 - **대화 기억(SQLite)**: 같은 텔레그램 채팅·같은 작업 프로젝트 기준으로 사용자 메시지와 Job 접수/결과 요약이 SQLite에 쌓입니다. 서버를 재시작해도 유지됩니다. 이전에 구체적인 지시를 보낸 뒤 `작업 시작해줘`, `진행해줘`, `그거 해줘`, `시작해줘`처럼 짧은 후속 문장만내면, 최근 기록을 합쳐 AI 지시문으로 만듭니다. 맥락이 없으면 봇이 안내 메시지를 보냅니다.
 - **Reply 체인**: 이전 메시지에 답장(reply)으로 보낸 자연어 요청마다, SQLite에 남은 조상 메시지들의 본문과 각 메시지에 연결된 Job 결과 요약을 `[Reply 체인 맥락]` 블록으로 Codex/Claude instruction 앞에 붙입니다. (봇이 해당 메시지를 수신·저장한 경우에만 복원됩니다.)
 - `/reports 7`처럼 최근 표시 개수를 함께 줄 수 있습니다. 허용 범위는 `1~10`이며, 기본값은 `5`입니다.
@@ -242,6 +242,8 @@ ngrok version
 - Codex 사용자: [`docs/codex-guide.md`](docs/codex-guide.md)
 - Gemini 사용자: [`docs/gemini-guide.md`](docs/gemini-guide.md)
 - Worktree가 read-only로 실패할 때: [`docs/read-only-workspace.md`](docs/read-only-workspace.md)
+
+**Runner 운영 시 참고:** Gemini CLI는 비대화형 실행 위주로 붙어 있어 대화형 TUI와 기대가 다를 수 있습니다. Codex CLI는 샌드박스·승인 정책에 따라 네트워크나 일부 도구 호출이 제한될 수 있습니다.
 
 ## 6) 테스트
 

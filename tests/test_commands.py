@@ -137,10 +137,13 @@ def test_help_plan_and_ask_topics(project_registry: ProjectRegistry):
     assert plan_text is not None
     assert "계획 모드" in plan_text
     assert "plan:" in plan_text
+    assert "y" in plan_text or "Y" in plan_text
     ask_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help ask"), ctx)
     assert ask_text is not None
     assert "질문 모드" in ask_text
     assert "/ask" in ask_text
+    assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help 계획"), ctx) == plan_text
+    assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help 질문"), ctx) == ask_text
 
 
 def test_help_plan_topic_shows_back_button(project_registry: ProjectRegistry):
