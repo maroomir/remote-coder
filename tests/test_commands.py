@@ -82,6 +82,7 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert text.startswith("도움말")
     assert "작업 지시는 일반 메시지로 보내세요." in text
     assert "옵션\n- model:\n- branch:\n- no commit" in text
+    assert "/plan" in text and "/ask" in text
     assert "명령어 목록:" in text
     assert "/clear branch:" not in text
 
@@ -106,6 +107,8 @@ def test_default_bot_commands_expose_telegram_menu_entries():
         "monitor",
         "clear",
         "stop",
+        "plan",
+        "ask",
     ]
     assert all("/" not in item["command"] for item in commands)
     assert all(item["description"] for item in commands)
@@ -118,6 +121,36 @@ def test_help_command_returns_text_with_no_buttons(project_registry: ProjectRegi
     assert response is not None
     assert response.text.startswith("도움말")
     assert response.inline_buttons is None
+
+
+def test_dispatch_plan_and_ask_returns_none_for_natural_flow(project_registry: ProjectRegistry):
+    registry = CommandRegistry(build_default_commands())
+    ctx = _ctx(project_registry)
+    assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/plan outline only"), ctx) is None
+    assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/ask explain routing"), ctx) is None
+
+
+def test_help_plan_and_ask_topics(project_registry: ProjectRegistry):
+    registry = CommandRegistry(build_default_commands())
+    ctx = _ctx(project_registry)
+    plan_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help plan"), ctx)
+    assert plan_text is not None
+    assert "계획 모드" in plan_text
+    assert "plan:" in plan_text
+    ask_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help ask"), ctx)
+    assert ask_text is not None
+    assert "질문 모드" in ask_text
+    assert "/ask" in ask_text
+
+
+def test_help_plan_topic_shows_back_button(project_registry: ProjectRegistry):
+    registry = CommandRegistry(build_default_commands())
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="/help plan"),
+        _ctx(project_registry),
+    )
+    assert response is not None
+    assert response.inline_buttons == [[InlineButton("← 뒤로", "/help")]]
 
 
 def test_status_command_dispatch(project_registry: ProjectRegistry):

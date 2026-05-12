@@ -506,3 +506,36 @@ def test_parse_natural_default_mode_is_agent(project_registry: ProjectRegistry):
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
     req = parser.parse_natural("fix login bug", "remote-coder", chat_id=1, user_id=2)
     assert req.mode == JobMode.AGENT
+
+
+def test_parse_natural_slash_plan_and_ask(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    req = parser.parse_natural("/PLAN  step one", "remote-coder", chat_id=1, user_id=2)
+    assert req.mode == JobMode.PLAN
+    assert req.instruction == "step one"
+    req2 = parser.parse_natural("/ask   what is pytest?", "remote-coder", chat_id=1, user_id=2)
+    assert req2.mode == JobMode.ASK
+    assert "pytest" in req2.instruction
+
+
+def test_parse_natural_fullwidth_colon_prefix(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    req = parser.parse_natural("plan：전각 콜론 본문", "remote-coder", chat_id=1, user_id=2)
+    assert req.mode == JobMode.PLAN
+    assert "전각" in req.instruction
+
+
+def test_parse_natural_korean_prefix_aliases(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    req = parser.parse_natural("계획: 한글 접두", "remote-coder", chat_id=1, user_id=2)
+    assert req.mode == JobMode.PLAN
+    assert req.instruction == "한글 접두"
+    req2 = parser.parse_natural("질문: 설명해줘", "remote-coder", chat_id=1, user_id=2)
+    assert req2.mode == JobMode.ASK
+    assert req2.instruction == "설명해줘"
+
+
+def test_parse_natural_plan_empty_body_shows_examples(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    with pytest.raises(CommandParseError, match="예:"):
+        parser.parse_natural("plan:", "remote-coder", chat_id=1, user_id=2)

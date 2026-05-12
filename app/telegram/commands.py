@@ -79,8 +79,9 @@ HELP_TEXT = "\n".join(
         "- model:",
         "- branch:",
         "- no commit",
-        "- plan: <자연어> - 계획 모드 (코드 수정 없이 변경 계획만 응답)",
-        "- ask: <자연어> - 질문 모드 (코드 분석 후 응답)",
+        "- plan: <자연어> 또는 /plan <자연어> - 계획 모드 (코드 수정 없이 변경 계획만 응답)",
+        "- ask: <자연어> 또는 /ask <자연어> - 질문 모드 (코드 분석 후 응답)",
+        "- 계획: 또는 질문: (한글 접두, 콜론 `:` 또는 `：` 가능)",
         "",
         "명령어 목록:",
         "- /model <claude|codex|gemini>: 기본 모델 변경",
@@ -95,6 +96,36 @@ HELP_TEXT = "\n".join(
         "- /init: 이 채팅 설정 초기화",
         "- /stop <job_id>: 진행 중인 작업 중단",
         "- /start: 인라인 메뉴",
+    ]
+)
+
+HELP_PLAN_TOPIC = "\n".join(
+    [
+        "계획 모드 (plan)",
+        "",
+        "코드를 수정하지 않고 변경 계획만 받습니다. `y`/`Y` 확인 없이 곧바로 Job이 접수됩니다.",
+        "",
+        "입력 예",
+        "- plan: 로그인 검증 흐름 정리해줘",
+        "- /plan model: codex API 경계 리스크만 나열해줘",
+        "- 계획：리팩터링 단계 (전각 콜론)",
+        "",
+        "자세한 옵션은 /help 를 참고하세요.",
+    ]
+)
+
+HELP_ASK_TOPIC = "\n".join(
+    [
+        "질문 모드 (ask)",
+        "",
+        "저장소를 읽고 질문에 답합니다. 코드 수정·커밋·push 없이 `y`/`Y` 확인 없이 Job이 접수됩니다.",
+        "",
+        "입력 예",
+        "- ask: 이 프로젝트에서 pytest 어떻게 돌려?",
+        "- /ask JobManager.run 단계 설명해줘",
+        "- 질문：에러 로그 이 줄 의미",
+        "",
+        "자세한 옵션은 /help 를 참고하세요.",
     ]
 )
 
@@ -267,6 +298,7 @@ class StartCommand(TelegramCommand):
                 ],
             ]
         return [
+            [InlineButton("계획 모드 안내", "/help plan"), InlineButton("질문 모드 안내", "/help ask")],
             [InlineButton("모델", "/start model")],
             [InlineButton("모니터링", "/start monitor"), InlineButton("정리", "/start clear")],
             [InlineButton("관리", "/start manage"), InlineButton("리포트", "/reports")],
@@ -281,6 +313,12 @@ class HelpCommand(TelegramCommand):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         _ = ctx
         tokens = message.text.strip().split()
+        if len(tokens) >= 2:
+            topic = tokens[1].lower()
+            if topic == "plan":
+                return HELP_PLAN_TOPIC
+            if topic == "ask":
+                return HELP_ASK_TOPIC
         if len(tokens) >= 2 and self._registry is not None:
             subcmd = self._registry.get("/" + tokens[1])
             if subcmd is not None and subcmd.menu_text:
@@ -296,6 +334,9 @@ class HelpCommand(TelegramCommand):
             return None
         tokens = message.text.strip().split() if message else []
         if len(tokens) >= 2:
+            topic = tokens[1].lower()
+            if topic in ("plan", "ask"):
+                return [[InlineButton("← 뒤로", "/help")]]
             subcmd = self._registry.get("/" + tokens[1])
             if subcmd is not None:
                 sub_buttons = subcmd.get_inline_buttons(None, ctx) or []
@@ -1268,6 +1309,9 @@ class CommandRegistry:
                 ctx.confirmation_store.pop(scope_project, message.chat_id)
                 return init_cmd.execute(message, ctx)
 
+        if head in {"/plan", "/ask"}:
+            return None
+
         pending = ctx.confirmation_store.get(scope_project, message.chat_id)
         if pending is not None:
             command = self._commands.get(pending.command_name)
@@ -1294,10 +1338,20 @@ class CommandRegistry:
         return CommandResponse(text=text, inline_buttons=buttons)
 
     def bot_commands(self) -> list[dict[str, str]]:
-        return [
+        base = [
             {"command": command.name.removeprefix("/"), "description": command.description}
             for command in self._commands.values()
             if command.description
+        ]
+        return base + [
+            {
+                "command": "plan",
+                "description": "계획 모드 메시지 (예: /plan 로그인 흐름 검토)",
+            },
+            {
+                "command": "ask",
+                "description": "질문 모드 메시지 (예: /ask JobManager 역할 설명)",
+            },
         ]
 
 

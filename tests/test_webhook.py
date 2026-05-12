@@ -307,6 +307,65 @@ def test_webhook_plan_mode_submits_without_confirmation(project_registry):
     git_service.get_current_branch.assert_not_called()
 
 
+def test_webhook_slash_plan_submits_without_confirmation(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    job_manager = CaptureJobManager()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=job_manager,
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+    response = client.post(
+        wh,
+        json={
+            "update_id": 12,
+            "message": {
+                "message_id": 12,
+                "text": "/plan model: codex outline only",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+            },
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "accepted"
+    assert job_manager.last_request.mode == JobMode.PLAN
+    assert job_manager.last_request.model == ModelName.CODEX
+    assert "outline only" in job_manager.last_request.instruction
+    git_service.get_current_branch.assert_not_called()
+
+
 def test_webhook_ask_mode_submits_without_confirmation(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()

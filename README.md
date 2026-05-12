@@ -204,9 +204,9 @@ ngrok version
 - `/monitor worktrees` : linked worktree 목록·detached 개수·Remote Coder managed 후보 요약
 - `/monitor code` : 적용 프로젝트 루트 기준 코드 파일 수·줄 수 추정(확장자 화이트리스트, `.git`·`node_modules` 등 제외)
 - `/monitor project` : **이 봇에 묶인** 프로젝트 레코드 요약(이름, 활성 여부, 경로, 기본 모델, worktree 디렉터리)
-- 자연어 메시지: 기본(agent)은 현재 프로젝트·작업 브랜치·사용 모델 확인 후 `y`/`Y` 입력 시 AI 작업 요청 생성. `plan:` 또는 `ask:`로 시작하면 읽기 전용 모드로 확인 없이 곧바로 실행되며 커밋·push는 하지 않습니다.
+- 자연어 메시지: 기본(agent)은 현재 프로젝트·작업 브랜치·사용 모델 확인 후 `y`/`Y` 입력 시 AI 작업 요청 생성. `plan:`/`ask:`/`계획:`/`질문:` 접두(콜론 `:` 또는 `：`) 또는 `/plan`/`/ask`로 시작하면 읽기 전용 모드로 확인 없이 곧바로 실행되며 커밋·push는 하지 않습니다.
 
-  예: `plan: 로그인 플로우 리팩터링 방안만 정리해줘`, `ask: 이 저장소에서 테스트 실행 명령이 뭐야?`
+  예: `plan: 로그인 플로우 리팩터링 방안만 정리해줘`, `/plan model: codex 위험만`, `ask: 이 저장소에서 테스트 실행 명령이 뭐야?`, `/ask JobManager 역할`
 
 참고:
 

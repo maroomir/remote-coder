@@ -12,7 +12,13 @@ from app.jobs.manager import JobManager
 from app.jobs.schemas import Job, JobMode, JobRequest
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.events import EventLogger
-from app.telegram.commands import CommandRegistry, CommandResponse, InlineButton, TelegramMessage
+from app.telegram.commands import (
+    CommandContext,
+    CommandRegistry,
+    CommandResponse,
+    InlineButton,
+    TelegramMessage,
+)
 from app.projects.registry import normalize_webhook_token_hash_path_segment
 from app.telegram.bot_instances import BotInstanceManager
 from app.telegram.confirmations import PendingConfirmation

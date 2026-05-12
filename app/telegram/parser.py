@@ -20,6 +20,21 @@ class CommandParseError(ValueError):
 
 _MODEL_OPTION_PATTERN = "|".join(model.value for model in ModelName)
 
+_SLASH_PLAN_ASK = re.compile(r"^/(plan|ask)\b\s*", re.IGNORECASE)
+_PREFIX_PLAN_ASK = re.compile(
+    r"^(plan|ask|계획|질문)\s*[:：]\s*",
+    re.IGNORECASE,
+)
+
+
+def _job_mode_from_plan_ask_keyword(key: str) -> JobMode:
+    lowered = key.lower()
+    if lowered in ("plan", "계획"):
+        return JobMode.PLAN
+    if lowered in ("ask", "질문"):
+        return JobMode.ASK
+    raise AssertionError(key)
+
 
 class CommandParser:
     def __init__(
@@ -71,6 +86,20 @@ class CommandParser:
 
         return model, branch, commit, remaining
 
+    @staticmethod
+    def _strip_leading_job_mode(text: str) -> tuple[JobMode, str]:
+        stripped = text.strip()
+        slash = _SLASH_PLAN_ASK.match(stripped)
+        if slash:
+            key = slash.group(1).lower()
+            mode = JobMode.PLAN if key == "plan" else JobMode.ASK
+            return mode, stripped[slash.end() :].strip()
+        prefix = _PREFIX_PLAN_ASK.match(stripped)
+        if prefix:
+            mode = _job_mode_from_plan_ask_keyword(prefix.group(1))
+            return mode, stripped[prefix.end() :].strip()
+        return JobMode.AGENT, stripped
+
     def parse_natural(
         self,
         text: str,
@@ -81,13 +110,7 @@ class CommandParser:
         reply_to_message_id: int | None = None,
         reply_to_text: str | None = None,
     ) -> JobRequest:
-        stripped = text.strip()
-        mode = JobMode.AGENT
-        prefix_match = re.match(r"^(plan|ask)\s*:\s*", stripped, flags=re.IGNORECASE)
-        if prefix_match:
-            key = prefix_match.group(1).lower()
-            mode = JobMode.PLAN if key == "plan" else JobMode.ASK
-            stripped = stripped[prefix_match.end() :].strip()
+        mode, stripped = self._strip_leading_job_mode(text)
 
         model, branch, commit, remaining = self._extract_options(stripped)
         if mode in (JobMode.PLAN, JobMode.ASK):
@@ -95,6 +118,12 @@ class CommandParser:
             commit = False
 
         if not remaining:
+            if mode in (JobMode.PLAN, JobMode.ASK):
+                raise CommandParseError(
+                    "작업 지시문이 비어 있습니다.\n\n"
+                    "예: plan: 로그인 수정 계획 세워줘\n"
+                    "예: /ask JobManager 흐름 설명해줘",
+                )
             raise CommandParseError("작업 지시문이 비어 있습니다.")
 
         entry = self._project_registry.get(project_name)
