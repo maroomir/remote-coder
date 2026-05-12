@@ -51,7 +51,7 @@ class CommandContext:
 
 
 def format_usage(*lines: str) -> str:
-    return "사용법:\n" + "\n".join(lines)
+    return "사용법\n\n" + "\n".join(f"- {line}" for line in lines)
 
 
 MODEL_USAGE = "<claude|codex|gemini>"
@@ -74,21 +74,25 @@ HELP_TEXT = "\n".join(
         "도움말",
         "",
         "작업 지시는 일반 메시지로 보내세요.",
-        "옵션: model:, branch:, no commit",
+        "",
+        "옵션",
+        "- model:",
+        "- branch:",
+        "- no commit",
         "",
         "명령어 목록:",
-        "/model <claude|codex|gemini> - 기본 모델 변경",
-        "/status <job_id> - 작업 상태 확인",
-        "/branch [이름] - 브랜치 조회 또는 전환",
-        "/pull - 원격 저장소의 모든 브랜치 pull",
-        "/rebase [브랜치] - 브랜치 리베이스",
-        "/pr [브랜치] - 브랜치를 GitHub PR로 올리기",
-        "/monitor <model|memory|branch|worktrees|code|project> - 모니터링",
-        "/clear <branch|worktrees|memory> - 정리 (확인 필요)",
-        "/reports [개수] - 대화 기억 리포트",
-        "/init - 이 채팅 설정 초기화",
-        "/stop <job_id> - 진행 중인 작업 중단",
-        "/start - 인라인 메뉴",
+        "- /model <claude|codex|gemini>: 기본 모델 변경",
+        "- /status <job_id>: 작업 상태 확인",
+        "- /branch [이름]: 브랜치 조회 또는 전환",
+        "- /pull: 원격 저장소의 모든 브랜치 pull",
+        "- /rebase [브랜치]: 브랜치 리베이스",
+        "- /pr [브랜치]: 브랜치를 GitHub PR로 올리기",
+        "- /monitor <model|memory|branch|worktrees|code|project>: 모니터링",
+        "- /clear <branch|worktrees|memory>: 정리 (확인 필요)",
+        "- /reports [개수]: 대화 기억 리포트",
+        "- /init: 이 채팅 설정 초기화",
+        "- /stop <job_id>: 진행 중인 작업 중단",
+        "- /start: 인라인 메뉴",
     ]
 )
 
@@ -166,18 +170,19 @@ class StartCommand(TelegramCommand):
         if len(tokens) == 2:
             topic = tokens[1].lower()
             if topic == "clear" and _confirmation_buttons_enabled(ctx):
-                return "정리할 항목을 선택하세요. 실행 전 확인이 필요합니다."
+                return "정리할 항목을 선택하세요.\n\n- 실행 전 확인이 필요합니다."
             topic_text = self._TOPIC_TEXT.get(topic)
             if topic_text is not None:
                 return topic_text
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
-            return "Remote AI Coder에 오신 것을 환영합니다."
+            return "✅ Remote AI Coder가 준비되었습니다.\n\nRemote AI Coder에 오신 것을 환영합니다."
         entry = ctx.project_registry.get(project_name)
         if not entry:
             return (
+                "✅ Remote AI Coder가 준비되었습니다.\n\n"
                 "Remote AI Coder에 오신 것을 환영합니다.\n"
-                f"프로젝트: {project_name} (등록 정보 없음)"
+                f"- 프로젝트: {project_name} (등록 정보 없음)"
             )
         try:
             current_branch = ctx.git_service.get_current_branch(entry.root_path)
@@ -186,13 +191,15 @@ class StartCommand(TelegramCommand):
         state = "enabled" if entry.enabled else "disabled"
         return "\n".join(
             [
+                "✅ Remote AI Coder가 준비되었습니다.",
+                "",
                 "Remote AI Coder에 오신 것을 환영합니다.",
-                f"프로젝트: {entry.name}",
-                f"root_path: {entry.root_path}",
-                f"default_model: {entry.default_model.value}",
-                f"current_branch: {current_branch}",
-                f"worktree_base_dir: {entry.worktree_base_dir}",
-                f"enabled: {state}",
+                f"- 프로젝트: {entry.name}",
+                f"- root_path: {entry.root_path}",
+                f"- default_model: {entry.default_model.value}",
+                f"- current_branch: {current_branch}",
+                f"- worktree_base_dir: {entry.worktree_base_dir}",
+                f"- enabled: {state}",
             ]
         )
 
@@ -307,11 +314,11 @@ class ModelCommand(TelegramCommand):
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         current = effective_model_for_chat(ctx, message.chat_id, project_name)
         if len(tokens) == 1:
-            return f"현재 기본 모델: {current.value}"
+            return f"모델 설정\n\n- 현재 기본 모델: {current.value}"
         if len(tokens) == 2 and tokens[1] in {model.value for model in ModelName}:
             selected = ModelName(tokens[1])
             ctx.model_preferences.set(project_name, message.chat_id, selected)
-            return f"기본 모델이 {selected.value}로 변경되었습니다."
+            return f"모델 설정이 변경되었습니다.\n\n- 기본 모델: {selected.value}"
         return format_usage("/model", f"/model {MODEL_USAGE}")
 
     def get_inline_buttons(
@@ -383,15 +390,17 @@ class StatusCommand(TelegramCommand):
         lines: list[str] = []
         emoji = _STATUS_EMOJI.get(job.status.value, "")
         lines.append(f"Job {job.id}")
-        lines.append(f"상태: {job.status.value} {emoji}")
-        lines.append(f"프로젝트: {job.request.project} | 모델: {job.request.model.value}")
-        lines.append(f"사용 모델: {job.runner_actual_model or job.request.model.value}")
-        lines.append(f"토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}")
+        lines.append("")
+        lines.append(f"- 상태: {job.status.value} {emoji}")
+        lines.append(f"- 프로젝트: {job.request.project}")
+        lines.append(f"- 요청 모델: {job.request.model.value}")
+        lines.append(f"- 사용 모델: {job.runner_actual_model or job.request.model.value}")
+        lines.append(f"- 토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}")
 
         instr = job.request.instruction.strip().replace("\n", " ")
         if len(instr) > 80:
             instr = instr[:80].rstrip() + "..."
-        lines.append(f"지시: {instr}")
+        lines.append(f"- 지시: {instr}")
 
         now = datetime.now(UTC)
         started = job.started_at
@@ -400,30 +409,31 @@ class StatusCommand(TelegramCommand):
             if finished:
                 elapsed = int((finished - started).total_seconds())
                 lines.append(
-                    f"시작: {cls._fmt_time(started)} → 완료: {cls._fmt_time(finished)}"
+                    f"- 시작: {cls._fmt_time(started)} → 완료: {cls._fmt_time(finished)}"
                     f" (소요: {cls._duration_str(elapsed)})"
                 )
             else:
                 elapsed = int((now - started).total_seconds())
                 lines.append(
-                    f"시작: {cls._fmt_time(started)} (경과: {cls._duration_str(elapsed)})"
+                    f"- 시작: {cls._fmt_time(started)} (경과: {cls._duration_str(elapsed)})"
                 )
         else:
-            lines.append(f"생성: {cls._fmt_time(job.created_at)}")
+            lines.append(f"- 생성: {cls._fmt_time(job.created_at)}")
 
         if job.status.value == "succeeded":
             if job.branch:
-                lines.append(f"브랜치: {job.branch}")
+                lines.append(f"- 브랜치: {job.branch}")
             if job.commit_hash:
-                lines.append(f"커밋: {job.commit_hash[:8]}")
+                lines.append(f"- 커밋: {job.commit_hash[:8]}")
             if job.changed_files:
-                lines.append(f"변경 파일 ({len(job.changed_files)}개):")
+                lines.append("")
+                lines.append(f"변경 파일 ({len(job.changed_files)}개)")
                 for f in job.changed_files[:_MAX_CHANGED_FILES]:
-                    lines.append(f"  - {f}")
+                    lines.append(f"- {f}")
                 if len(job.changed_files) > _MAX_CHANGED_FILES:
-                    lines.append(f"  ... 외 {len(job.changed_files) - _MAX_CHANGED_FILES}개")
+                    lines.append(f"- ... 외 {len(job.changed_files) - _MAX_CHANGED_FILES}개")
             else:
-                lines.append("변경 파일: 없음 (no-op)")
+                lines.append("- 변경 파일: 없음 (no-op)")
             if job.runner_stdout_summary:
                 lines.append("")
                 lines.append("[AI 출력 요약]")
@@ -434,9 +444,9 @@ class StatusCommand(TelegramCommand):
 
         elif job.status.value == "failed":
             if job.error_stage:
-                lines.append(f"오류 단계: {job.error_stage}")
+                lines.append(f"- 오류 단계: {job.error_stage}")
             if job.error:
-                lines.append(f"오류: {job.error[:300]}")
+                lines.append(f"- 오류: {job.error[:300]}")
             if job.runner_stderr_summary:
                 lines.append("")
                 lines.append("[stderr]")

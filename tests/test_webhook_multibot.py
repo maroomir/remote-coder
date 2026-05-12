@@ -133,8 +133,8 @@ def test_natural_message_routes_to_bound_project_and_notifier(project_registry, 
 
     assert notifiers["remote-coder"].sent
     assert notifiers["svc-b"].sent
-    assert "프로젝트: remote-coder" in notifiers["remote-coder"].sent[0][1]
-    assert "프로젝트: svc-b" in notifiers["svc-b"].sent[0][1]
+    assert "- 프로젝트: remote-coder" in notifiers["remote-coder"].sent[0][1]
+    assert "- 프로젝트: svc-b" in notifiers["svc-b"].sent[0][1]
 
 
 def test_webhook_posts_do_not_cross_notify_between_bots(project_registry, tmp_path):

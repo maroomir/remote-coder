@@ -200,9 +200,9 @@ def test_webhook_accepts_natural_message(project_registry):
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert notifier.sent[0][1].startswith("현재 할 작업을 확인하세요.")
-    assert "프로젝트: remote-coder" in notifier.sent[0][1]
-    assert "작업 브랜치: main" in notifier.sent[0][1]
-    assert "사용 모델: claude" in notifier.sent[0][1]
+    assert "- 프로젝트: remote-coder" in notifier.sent[0][1]
+    assert "- 작업 브랜치: main" in notifier.sent[0][1]
+    assert "- 사용 모델: claude" in notifier.sent[0][1]
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "accepted"
 

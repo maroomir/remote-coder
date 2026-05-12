@@ -80,7 +80,7 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert text is not None
     assert text.startswith("도움말")
     assert "작업 지시는 일반 메시지로 보내세요." in text
-    assert "옵션: model:, branch:, no commit" in text
+    assert "옵션\n- model:\n- branch:\n- no commit" in text
     assert "명령어 목록:" in text
     assert "/clear branch:" not in text
 
@@ -123,9 +123,9 @@ def test_model_command_updates_preference(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     ctx = _ctx(project_registry)
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model codex"), ctx)
-    assert text == "기본 모델이 codex로 변경되었습니다."
+    assert text == "모델 설정이 변경되었습니다.\n\n- 기본 모델: codex"
     current = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model"), ctx)
-    assert current == "현재 기본 모델: codex"
+    assert current == "모델 설정\n\n- 현재 기본 모델: codex"
 
 
 def test_model_command_shows_model_buttons(project_registry: ProjectRegistry):
@@ -133,7 +133,7 @@ def test_model_command_shows_model_buttons(project_registry: ProjectRegistry):
     response = registry.dispatch_rich(TelegramMessage(chat_id=77, user_id=1, text="/model"), _ctx(project_registry))
 
     assert response is not None
-    assert response.text == "현재 기본 모델: claude"
+    assert response.text == "모델 설정\n\n- 현재 기본 모델: claude"
     assert response.inline_buttons == [
         [
             InlineButton("claude", "/model claude"),
@@ -151,7 +151,7 @@ def test_model_command_keeps_model_buttons_after_selection(project_registry: Pro
     )
 
     assert response is not None
-    assert response.text == "기본 모델이 codex로 변경되었습니다."
+    assert response.text == "모델 설정이 변경되었습니다.\n\n- 기본 모델: codex"
     assert response.inline_buttons == [
         [
             InlineButton("claude", "/model claude"),
@@ -165,14 +165,14 @@ def test_model_command_updates_preference_to_gemini(project_registry: ProjectReg
     registry = CommandRegistry([ModelCommand()])
     ctx = _ctx(project_registry)
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model gemini"), ctx)
-    assert text == "기본 모델이 gemini로 변경되었습니다."
+    assert text == "모델 설정이 변경되었습니다.\n\n- 기본 모델: gemini"
     assert ctx.model_preferences.get(ctx.project_name, 77) == ModelName.GEMINI
 
 
 def test_model_command_returns_consistent_usage(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model nope"), _ctx(project_registry))
-    assert text == "사용법:\n/model\n/model <claude|codex|gemini>"
+    assert text == "사용법\n\n- /model\n- /model <claude|codex|gemini>"
 
 
 def test_monitor_project_lists_registry(project_registry: ProjectRegistry):
@@ -241,7 +241,7 @@ def test_init_command_rejects_extra_args(project_registry: ProjectRegistry):
         TelegramMessage(chat_id=1, user_id=1, text="/init extra"),
         _ctx(project_registry),
     )
-    assert text == "사용법:\n/init"
+    assert text == "사용법\n\n- /init"
 
 
 def test_branch_command_shows_current_branch(project_registry: ProjectRegistry):
@@ -293,7 +293,7 @@ def test_branch_command_rejects_invalid_token(project_registry: ProjectRegistry)
     ctx = _ctx(project_registry)
     registry = CommandRegistry([BranchCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=5, user_id=1, text="/branch bad name"), ctx)
-    assert text == "사용법:\n/branch\n/branch <브랜치이름>"
+    assert text == "사용법\n\n- /branch\n- /branch <브랜치이름>"
 
 
 def test_rebase_command_uses_latest_succeeded_branch(project_registry: ProjectRegistry):

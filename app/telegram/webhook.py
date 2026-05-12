@@ -78,12 +78,13 @@ def _format_natural_job_confirmation(
 ) -> str:
     lines = [
         "현재 할 작업을 확인하세요.",
-        f"프로젝트: {request.project}",
-        f"작업 브랜치: {current_branch}",
-        f"사용 모델: {request.model.value}",
+        "",
+        f"- 프로젝트: {request.project}",
+        f"- 작업 브랜치: {current_branch}",
+        f"- 사용 모델: {request.model.value}",
     ]
     if request.branch:
-        lines.append(f"요청 브랜치: {request.branch}")
+        lines.append(f"- 요청 브랜치: {request.branch}")
     lines.extend(
         [
             "",

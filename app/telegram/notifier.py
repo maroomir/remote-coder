@@ -150,7 +150,15 @@ class TelegramNotifier:
 
         self.send_with_buttons(
             job.request.chat_id,
-            f"작업 접수 완료\nJob ID: {job.id}\n프로젝트: {job.request.project}\n모델: {job.request.model.value}",
+            "\n".join(
+                [
+                    "✅ 작업 접수 완료",
+                    "",
+                    f"- Job ID: {job.id}",
+                    f"- 프로젝트: {job.request.project}",
+                    f"- 모델: {job.request.model.value}",
+                ]
+            ),
             [[_Btn("작업 중단", f"/stop {job.id}")]],
         )
 
@@ -165,9 +173,9 @@ class TelegramNotifier:
         )
         if job.status.value == "cancelled":
             text = (
-                f"작업 중단됨\n"
-                f"Job ID: {job.id}\n"
-                f"프로젝트: {job.request.project}"
+                f"⛔ 작업 중단됨\n\n"
+                f"- Job ID: {job.id}\n"
+                f"- 프로젝트: {job.request.project}"
             )
             self.send_long_text(job.request.chat_id, text)
             return
@@ -180,28 +188,28 @@ class TelegramNotifier:
             elif job.changed_files and job.request.commit and not job.commit_hash:
                 commit_line = "(스테이징된 변경 없음 — push 생략)"
             text = (
-                f"작업 완료\n"
-                f"Job ID: {job.id}\n"
-                f"프로젝트: {job.request.project}\n"
-                f"브랜치: {branch_line}\n"
-                f"커밋: {commit_line}\n"
-                f"변경 파일: {changed}\n"
-                f"사용 모델: {job.runner_actual_model or job.request.model.value}\n"
-                f"토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}"
+                f"✅ 작업 완료\n\n"
+                f"- Job ID: {job.id}\n"
+                f"- 프로젝트: {job.request.project}\n"
+                f"- 브랜치: {branch_line}\n"
+                f"- 커밋: {commit_line}\n"
+                f"- 변경 파일: {changed}\n"
+                f"- 사용 모델: {job.runner_actual_model or job.request.model.value}\n"
+                f"- 토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}"
             )
             if job.runner_stdout_summary:
                 text += f"\n\nAI 응답:\n{job.runner_stdout_summary}"
         else:
             details = []
             if job.error_stage:
-                details.append(f"실패 단계: {job.error_stage}")
+                details.append(f"- 실패 단계: {job.error_stage}")
             if job.log_path:
-                details.append(f"로그 경로: {job.log_path}")
+                details.append(f"- 로그 경로: {job.log_path}")
             text = (
-                f"작업 실패\n"
-                f"Job ID: {job.id}\n"
-                f"프로젝트: {job.request.project}\n"
-                f"오류: {job.error or 'unknown error'}"
+                f"❌ 작업 실패\n\n"
+                f"- Job ID: {job.id}\n"
+                f"- 프로젝트: {job.request.project}\n"
+                f"- 오류: {job.error or 'unknown error'}"
             )
             if details:
                 text += "\n" + "\n".join(details)
