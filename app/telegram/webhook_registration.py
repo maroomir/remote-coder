@@ -8,6 +8,30 @@ from app.projects.registry import ProjectRecord, build_public_webhook_url
 _webhooklog = EventLogger("app.telegram.webhook_registration", "telegram.webhook")
 
 
+def build_bot_command_payloads(
+    commands: list[dict[str, str]],
+    chat_ids: list[int] | None = None,
+) -> list[dict[str, object]]:
+    if not commands:
+        return []
+
+    payloads: list[dict[str, object]] = [
+        {"commands": commands},
+        {
+            "commands": commands,
+            "scope": {"type": "all_private_chats"},
+        },
+    ]
+    for chat_id in dict.fromkeys(chat_ids or []):
+        payloads.append(
+            {
+                "commands": commands,
+                "scope": {"type": "chat", "chat_id": chat_id},
+            }
+        )
+    return payloads
+
+
 class TelegramWebhookRegistrar:
     def __init__(
         self,
@@ -61,37 +85,38 @@ class TelegramWebhookRegistrar:
             return False
 
         _webhooklog.info("setWebhook synced project=%s", record.name, project=record.name)
-        if self._bot_commands and not self._sync_bot_commands(record.name, token):
+        if self._bot_commands and not self._sync_bot_commands(record.name, token, record.allowed_chat_ids):
             return False
         return True
 
-    def _sync_bot_commands(self, project_name: str, token: str) -> bool:
+    def _sync_bot_commands(self, project_name: str, token: str, chat_ids: list[int]) -> bool:
         api_url = f"https://api.telegram.org/bot{token}/setMyCommands"
-        try:
-            response = httpx.post(
-                api_url,
-                json={"commands": self._bot_commands},
-                timeout=self._timeout_seconds,
-            )
-            response.raise_for_status()
-            result = response.json()
-        except Exception as exc:
-            _webhooklog.warning(
-                "setMyCommands request failed project=%s err=%s",
-                project_name,
-                exc,
-                project=project_name,
-            )
-            return False
+        for payload in build_bot_command_payloads(self._bot_commands, chat_ids):
+            try:
+                response = httpx.post(
+                    api_url,
+                    json=payload,
+                    timeout=self._timeout_seconds,
+                )
+                response.raise_for_status()
+                result = response.json()
+            except Exception as exc:
+                _webhooklog.warning(
+                    "setMyCommands request failed project=%s err=%s",
+                    project_name,
+                    exc,
+                    project=project_name,
+                )
+                return False
 
-        if not result.get("ok"):
-            _webhooklog.warning(
-                "setMyCommands rejected project=%s response=%s",
-                project_name,
-                result,
-                project=project_name,
-            )
-            return False
+            if not result.get("ok"):
+                _webhooklog.warning(
+                    "setMyCommands rejected project=%s response=%s",
+                    project_name,
+                    result,
+                    project=project_name,
+                )
+                return False
 
         _webhooklog.info("setMyCommands synced project=%s", project_name, project=project_name)
         return True

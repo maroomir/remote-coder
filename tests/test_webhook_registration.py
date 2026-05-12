@@ -6,7 +6,7 @@ from pydantic import SecretStr
 
 from app.models import ModelName
 from app.projects.registry import ProjectRecord, build_public_webhook_url
-from app.telegram.webhook_registration import TelegramWebhookRegistrar
+from app.telegram.webhook_registration import TelegramWebhookRegistrar, build_bot_command_payloads
 
 
 @respx.mock
@@ -63,9 +63,24 @@ def test_webhook_registrar_sets_bot_commands(tmp_path):
 
     assert TelegramWebhookRegistrar(public_base_url, bot_commands=bot_commands).sync_project(record) is True
 
-    assert commands_route.called
-    payload = json.loads(commands_route.calls[0].request.content)
-    assert payload == {"commands": bot_commands}
+    assert commands_route.call_count == 3
+    payloads = [json.loads(call.request.content) for call in commands_route.calls]
+    assert payloads == [
+        {"commands": bot_commands},
+        {"commands": bot_commands, "scope": {"type": "all_private_chats"}},
+        {"commands": bot_commands, "scope": {"type": "chat", "chat_id": 123}},
+    ]
+
+
+def test_build_bot_command_payloads_deduplicates_chat_scopes():
+    bot_commands = [{"command": "help", "description": "사용 가능한 명령어를 확인합니다"}]
+
+    assert build_bot_command_payloads(bot_commands, [123, 123, -456]) == [
+        {"commands": bot_commands},
+        {"commands": bot_commands, "scope": {"type": "all_private_chats"}},
+        {"commands": bot_commands, "scope": {"type": "chat", "chat_id": 123}},
+        {"commands": bot_commands, "scope": {"type": "chat", "chat_id": -456}},
+    ]
 
 
 @respx.mock

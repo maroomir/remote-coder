@@ -66,37 +66,42 @@ def register_webhook(
     return False
 
 
-def register_bot_commands(api_url: str, commands: list[dict[str, str]]) -> bool:
+def register_bot_commands(api_url: str, payloads: list[dict[str, object]]) -> bool:
     max_attempts = 3
     connect_timeout = 10.0
     request_timeout = 30.0
 
-    for attempt in range(1, max_attempts + 1):
-        print(f"  텔레그램 명령어 메뉴 등록 중... ({attempt}/{max_attempts})")
-        try:
-            response = httpx.post(
-                api_url,
-                json={"commands": commands},
-                timeout=httpx.Timeout(request_timeout, connect=connect_timeout),
-            )
-            response.raise_for_status()
-            result = response.json()
+    for payload in payloads:
+        scope = payload.get("scope")
+        scope_label = scope if scope else {"type": "default"}
+        for attempt in range(1, max_attempts + 1):
+            print(f"  텔레그램 명령어 메뉴 등록 중... scope={scope_label} ({attempt}/{max_attempts})")
+            try:
+                response = httpx.post(
+                    api_url,
+                    json=payload,
+                    timeout=httpx.Timeout(request_timeout, connect=connect_timeout),
+                )
+                response.raise_for_status()
+                result = response.json()
 
-            if result.get("ok"):
-                print("  ✅ 명령어 메뉴 등록 성공!")
-                return True
+                if result.get("ok"):
+                    print("  ✅ 명령어 메뉴 등록 성공!")
+                    break
 
-            print("  ❌ 명령어 메뉴 등록 실패!")
-            print(f"  에러: {result}")
+                print("  ❌ 명령어 메뉴 등록 실패!")
+                print(f"  에러: {result}")
+                return False
+            except httpx.HTTPError as e:
+                print(f"  ❌ HTTP 요청 실패: {e}")
+                if attempt < max_attempts:
+                    wait_seconds = attempt * 2
+                    print(f"  ⏳ {wait_seconds}초 후 재시도합니다...")
+                    time.sleep(wait_seconds)
+        else:
             return False
-        except httpx.HTTPError as e:
-            print(f"  ❌ HTTP 요청 실패: {e}")
-            if attempt < max_attempts:
-                wait_seconds = attempt * 2
-                print(f"  ⏳ {wait_seconds}초 후 재시도합니다...")
-                time.sleep(wait_seconds)
 
-    return False
+    return True
 
 
 def main() -> None:
@@ -122,6 +127,7 @@ def main() -> None:
         projects_config_path_for_settings,
     )
     from app.telegram.commands import default_telegram_bot_commands
+    from app.telegram.webhook_registration import build_bot_command_payloads
 
     settings = get_settings()
     config_path = projects_config_path_for_settings(
@@ -173,7 +179,10 @@ def main() -> None:
                 webhook_secret=secret,
             ):
                 any_failed = True
-            if not register_bot_commands(commands_api_url, bot_commands):
+            if not register_bot_commands(
+                commands_api_url,
+                build_bot_command_payloads(bot_commands, record.allowed_chat_ids),
+            ):
                 any_failed = True
         except Exception as e:
             print(f"[{record.name}] ❌ 알 수 없는 에러: {e}")
