@@ -405,13 +405,34 @@ def create_webhook_router(
             return {"status": "ignored"}
         request = parsed_request
 
-        if request.mode != JobMode.AGENT:
+        entry = command_context.project_registry.get(bot_instance.project_name)
+        if entry is None:
             background_tasks.add_task(
                 notifier.send_text,
                 chat_id,
-                "plan/ask 모드는 다음 단계에서 지원됩니다.",
+                f"알 수 없는 프로젝트: {bot_instance.project_name}",
             )
-            return {"status": "ok"}
+            return {"status": "ignored"}
+
+        if request.mode != JobMode.AGENT:
+            _cmdlog.info(
+                "natural request parsed mode=%s model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
+                request.mode.value,
+                request.model.value,
+                request.branch or "-",
+                request.commit,
+                len(request.instruction),
+                request.reply_to_message_id or "-",
+                chat_id=chat_id,
+                user_id=user_id,
+                project=request.project,
+            )
+            job = _submit_confirmed_natural_request(
+                request=request,
+                original_text=message.text.strip(),
+                background_tasks=background_tasks,
+            )
+            return {"status": "accepted", "job_id": job.id}
 
         _cmdlog.info(
             "natural request parsed model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
@@ -425,14 +446,6 @@ def create_webhook_router(
             project=request.project,
         )
 
-        entry = command_context.project_registry.get(bot_instance.project_name)
-        if entry is None:
-            background_tasks.add_task(
-                notifier.send_text,
-                chat_id,
-                f"알 수 없는 프로젝트: {bot_instance.project_name}",
-            )
-            return {"status": "ignored"}
         try:
             current_branch = str(command_context.git_service.get_current_branch(entry.root_path))
         except RuntimeError as exc:

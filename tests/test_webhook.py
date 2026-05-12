@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.admin.advanced_settings import AdvancedSettings
-from app.jobs.schemas import Job, JobRequest, JobStatus
+from app.jobs.schemas import Job, JobMode, JobRequest, JobStatus
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
 from app.projects.registry import ProjectRecord, ProjectRegistry, compute_token_hash_prefix
@@ -207,7 +207,7 @@ def test_webhook_accepts_natural_message(project_registry):
     assert confirm_response.json()["status"] == "accepted"
 
 
-def test_webhook_plan_mode_rejects_without_submit_or_confirmation(project_registry):
+def test_webhook_plan_mode_submits_without_confirmation(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
@@ -259,14 +259,16 @@ def test_webhook_plan_mode_rejects_without_submit_or_confirmation(project_regist
         },
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
-    assert notifier.sent[0][1] == "plan/ask 모드는 다음 단계에서 지원됩니다."
+    assert response.json()["status"] == "accepted"
+    assert response.json()["job_id"] == "job_1"
     assert command_context.confirmation_store.get("remote-coder", 123) is None
-    assert job_manager.last_request is None
+    assert job_manager.last_request is not None
+    assert job_manager.last_request.mode == JobMode.PLAN
+    assert "outline the refactor" in job_manager.last_request.instruction
     git_service.get_current_branch.assert_not_called()
 
 
-def test_webhook_ask_mode_rejects_without_submit_or_confirmation(project_registry):
+def test_webhook_ask_mode_submits_without_confirmation(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
@@ -318,10 +320,12 @@ def test_webhook_ask_mode_rejects_without_submit_or_confirmation(project_registr
         },
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
-    assert notifier.sent[0][1] == "plan/ask 모드는 다음 단계에서 지원됩니다."
+    assert response.json()["status"] == "accepted"
+    assert response.json()["job_id"] == "job_1"
     assert command_context.confirmation_store.get("remote-coder", 123) is None
-    assert job_manager.last_request is None
+    assert job_manager.last_request is not None
+    assert job_manager.last_request.mode == JobMode.ASK
+    assert "routing" in job_manager.last_request.instruction
     git_service.get_current_branch.assert_not_called()
 
 

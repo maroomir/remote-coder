@@ -9,6 +9,22 @@ from pathlib import Path
 from app.jobs.schemas import JobMode
 
 
+def instruction_for_runner_mode(instruction: str, mode: JobMode) -> str:
+    if mode == JobMode.PLAN:
+        return (
+            "You are in PLAN mode. Read the codebase and produce a concrete change plan. "
+            "Do not modify files.\n\n"
+            f"사용자 요청:\n{instruction}"
+        )
+    if mode == JobMode.ASK:
+        return (
+            "You are in ASK mode. Analyze the codebase and answer the user's question. "
+            "Do not modify files.\n\n"
+            f"사용자 질문:\n{instruction}"
+        )
+    return instruction
+
+
 @dataclass
 class RunnerInput:
     instruction: str

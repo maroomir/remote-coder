@@ -4,7 +4,8 @@ import subprocess
 import threading
 from datetime import UTC, datetime
 
-from app.ai.base import AiRunner, RunnerInput, RunnerResult
+from app.ai.base import AiRunner, RunnerInput, RunnerResult, instruction_for_runner_mode
+from app.jobs.schemas import JobMode
 from app.monitoring.events import EventLogger
 
 _log = EventLogger("app.ai.gemini", "ai.runner")
@@ -22,8 +23,13 @@ class GeminiRunner(AiRunner):
             len(runner_input.instruction),
         )
         started_at = datetime.now(UTC)
+        if runner_input.mode in (JobMode.PLAN, JobMode.ASK):
+            prompt = instruction_for_runner_mode(runner_input.instruction, runner_input.mode)
+            argv = ["gemini", "-p", prompt]
+        else:
+            argv = ["gemini", "--approval-mode", "yolo", "--skip-trust", "-p", runner_input.instruction]
         proc = subprocess.Popen(
-            ["gemini", "--approval-mode", "yolo", "--skip-trust", "-p", runner_input.instruction],
+            argv,
             cwd=runner_input.cwd,
             env=runner_input.env,
             stdout=subprocess.PIPE,

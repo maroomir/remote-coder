@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from app.ai.base import RunnerInput
 from app.ai.gemini import GeminiRunner
+from app.jobs.schemas import JobMode
 
 
 @patch("app.ai.gemini.subprocess.Popen")
@@ -21,3 +22,26 @@ def test_gemini_runner_invokes_subprocess(mock_popen, caplog):
     assert any(r.name == "app.ai.gemini" for r in caplog.records)
     command = mock_popen.call_args.args[0]
     assert command == ["gemini", "--approval-mode", "yolo", "--skip-trust", "-p", "test"]
+
+
+@patch("app.ai.gemini.subprocess.Popen")
+def test_gemini_runner_plan_mode_skips_yolo_flags(mock_popen, caplog):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("answer", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
+    with caplog.at_level(logging.INFO, logger="app.ai.gemini"):
+        GeminiRunner().run(
+            RunnerInput(
+                instruction="what is X",
+                cwd=Path("."),
+                timeout_seconds=10,
+                mode=JobMode.ASK,
+            )
+        )
+    command = mock_popen.call_args.args[0]
+    assert command[0] == "gemini" and command[1] == "-p"
+    assert "ASK mode" in command[2]
+    assert "what is X" in command[2]
+    assert "--approval-mode" not in command

@@ -4,7 +4,8 @@ import subprocess
 import threading
 from datetime import UTC, datetime
 
-from app.ai.base import AiRunner, RunnerInput, RunnerResult
+from app.ai.base import AiRunner, RunnerInput, RunnerResult, instruction_for_runner_mode
+from app.jobs.schemas import JobMode
 from app.monitoring.events import EventLogger
 from app.models import CodexSandboxMode
 
@@ -23,12 +24,22 @@ class CodexRunner(AiRunner):
             "start cwd=%s timeout=%d sandbox=%s instruction_len=%d",
             cwd_name,
             runner_input.timeout_seconds,
-            self._sandbox.value,
+            (
+                CodexSandboxMode.READ_ONLY.value
+                if runner_input.mode in (JobMode.PLAN, JobMode.ASK)
+                else self._sandbox.value
+            ),
             len(runner_input.instruction),
         )
         started_at = datetime.now(UTC)
+        if runner_input.mode in (JobMode.PLAN, JobMode.ASK):
+            sandbox = CodexSandboxMode.READ_ONLY
+            instruction = instruction_for_runner_mode(runner_input.instruction, runner_input.mode)
+        else:
+            sandbox = self._sandbox
+            instruction = runner_input.instruction
         proc = subprocess.Popen(
-            ["codex", "exec", "--sandbox", self._sandbox.value, runner_input.instruction],
+            ["codex", "exec", "--sandbox", sandbox.value, instruction],
             cwd=runner_input.cwd,
             env=runner_input.env,
             stdout=subprocess.PIPE,

@@ -16,7 +16,7 @@ from app.git.ai_commit import AiCommitBodyGenerator
 from app.git.branch_naming import BranchNamingStrategy
 from app.git.commit_message import CommitMessageFormatter
 from app.git.service import GitWorktreeService
-from app.jobs.schemas import Job, JobRequest
+from app.jobs.schemas import Job, JobMode, JobRequest
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.events import EventLogger
 from app.projects.registry import ProjectRegistry
@@ -176,10 +176,27 @@ class JobManager:
                 project=job.request.project,
                 job_id=job.id,
             )
+            read_only_job = job.request.mode in (JobMode.PLAN, JobMode.ASK)
             worktree_on_branch = False
             commit_to_requested_branch = False
             requested_branch = job.request.branch
-            if requested_branch and self._git_service.local_branch_exists(project_path, requested_branch):
+            if read_only_job:
+                worktree_path = self._git_service.prepare_detached_worktree(
+                    project_path,
+                    job.id,
+                    worktree_base_dir=worktree_base,
+                )
+                created_worktree_for_job = True
+                _joblog.info(
+                    "created detached worktree mode=%s worktree=%s",
+                    job.request.mode.value,
+                    worktree_path.name,
+                    chat_id=job.request.chat_id,
+                    user_id=job.request.requested_by,
+                    project=job.request.project,
+                    job_id=job.id,
+                )
+            elif requested_branch and self._git_service.local_branch_exists(project_path, requested_branch):
                 _joblog.info(
                     "requested branch exists branch=%s",
                     requested_branch,
@@ -297,6 +314,7 @@ class JobManager:
                     timeout_seconds=timeout_seconds,
                     env=None,
                     cancel_event=cancel_event,
+                    mode=job.request.mode,
                 )
             )
             self._save_runner_log(job, runner_result, worktree_base)
@@ -314,156 +332,171 @@ class JobManager:
             if runner_result.exit_code != 0:
                 raise RuntimeError(runner_result.stderr.strip() or "runner failed")
 
-            failed_stage = "git_commit"
-            _joblog.info(
-                "stage=git_commit",
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job.id,
-            )
-            job.changed_files = self._git_service.collect_changes(worktree_path)
-            _joblog.info(
-                "changes=%d",
-                len(job.changed_files),
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job.id,
-            )
-
-            if not job.changed_files:
+            if read_only_job:
                 job.branch = None
                 job.commit_hash = None
+                job.changed_files = []
                 job.mark_succeeded()
                 self._job_store.update(job)
                 _joblog.info(
-                    "succeeded branch=%s commit=%s",
-                    "-",
-                    "-",
+                    "succeeded read_only mode=%s",
+                    job.request.mode.value,
                     chat_id=job.request.chat_id,
                     user_id=job.request.requested_by,
                     project=job.request.project,
                     job_id=job.id,
                 )
             else:
-                job.branch = (
-                    job.request.branch
-                    if commit_to_requested_branch
-                    else self._branch_strategy.make_branch_name(job.request.instruction)
-                )
-                self._job_store.update(job)
+                failed_stage = "git_commit"
                 _joblog.info(
-                    "branch selected branch=%s requested=%s",
-                    job.branch,
-                    commit_to_requested_branch,
+                    "stage=git_commit",
                     chat_id=job.request.chat_id,
                     user_id=job.request.requested_by,
                     project=job.request.project,
                     job_id=job.id,
                 )
-                if not worktree_on_branch:
-                    self._git_service.create_branch_in_worktree(worktree_path, job.branch)
-                    worktree_on_branch = True
-                    _joblog.info(
-                        "branch created in worktree branch=%s",
-                        job.branch,
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
-                    )
                 job.changed_files = self._git_service.collect_changes(worktree_path)
+                _joblog.info(
+                    "changes=%d",
+                    len(job.changed_files),
+                    chat_id=job.request.chat_id,
+                    user_id=job.request.requested_by,
+                    project=job.request.project,
+                    job_id=job.id,
+                )
 
-                if job.request.commit:
-                    ai_title = None
-                    ai_body = None
-                    if self._ai_commit_body_generator is not None:
-                        ai_title, ai_body = self._ai_commit_body_generator.generate(
-                            instruction=job.request.instruction,
-                            changed_files=job.changed_files,
-                        )
-                    commit_message = CommitMessageFormatter.format(
-                        job_id=job.id,
-                        instruction=job.request.instruction,
-                        changed_files=job.changed_files,
-                        ai_body=ai_body,
-                        ai_title=ai_title,
-                    )
+                if not job.changed_files:
+                    job.branch = None
+                    job.commit_hash = None
+                    job.mark_succeeded()
+                    self._job_store.update(job)
                     _joblog.info(
-                        "commit message ready changed_files=%d ai_title=%s ai_body=%s",
-                        len(job.changed_files),
-                        ai_title is not None,
-                        ai_body is not None,
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
-                    )
-                    job.commit_hash = self._git_service.commit_all(worktree_path, commit_message)
-                    _joblog.info(
-                        "commit result hash=%s",
-                        job.commit_hash or "-",
+                        "succeeded branch=%s commit=%s",
+                        "-",
+                        "-",
                         chat_id=job.request.chat_id,
                         user_id=job.request.requested_by,
                         project=job.request.project,
                         job_id=job.id,
                     )
                 else:
-                    job.commit_hash = None
-                    _joblog.info(
-                        "commit skipped by request",
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
+                    job.branch = (
+                        job.request.branch
+                        if commit_to_requested_branch
+                        else self._branch_strategy.make_branch_name(job.request.instruction)
                     )
-
-                if job.request.commit and job.commit_hash:
-                    failed_stage = "git_push"
+                    self._job_store.update(job)
                     _joblog.info(
-                        "stage=git_push",
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
-                    )
-                    self._git_service.push_branch(project_path, remote, job.branch)
-
-                if (
-                    self._advanced_settings_store is not None
-                    and self._advanced_settings_store.get().auto_merge_to_main_enabled
-                    and job.request.commit
-                    and job.commit_hash
-                    and job.branch
-                ):
-                    failed_stage = "git_integrate_main"
-                    _joblog.info(
-                        "stage=git_integrate_main",
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
-                    )
-                    ops_base = worktree_base / "_rebase_ops"
-                    self._git_service.rebase_branch_onto_main_and_merge(
-                        project_path,
+                        "branch selected branch=%s requested=%s",
                         job.branch,
-                        remote,
-                        ops_base,
+                        commit_to_requested_branch,
+                        chat_id=job.request.chat_id,
+                        user_id=job.request.requested_by,
+                        project=job.request.project,
+                        job_id=job.id,
                     )
+                    if not worktree_on_branch:
+                        self._git_service.create_branch_in_worktree(worktree_path, job.branch)
+                        worktree_on_branch = True
+                        _joblog.info(
+                            "branch created in worktree branch=%s",
+                            job.branch,
+                            chat_id=job.request.chat_id,
+                            user_id=job.request.requested_by,
+                            project=job.request.project,
+                            job_id=job.id,
+                        )
+                    job.changed_files = self._git_service.collect_changes(worktree_path)
 
-                job.mark_succeeded()
-                self._job_store.update(job)
-                _joblog.info(
-                    "succeeded branch=%s commit=%s",
-                    job.branch or "-",
-                    job.commit_hash or "-",
-                    chat_id=job.request.chat_id,
-                    user_id=job.request.requested_by,
-                    project=job.request.project,
-                    job_id=job.id,
-                )
+                    if job.request.commit:
+                        ai_title = None
+                        ai_body = None
+                        if self._ai_commit_body_generator is not None:
+                            ai_title, ai_body = self._ai_commit_body_generator.generate(
+                                instruction=job.request.instruction,
+                                changed_files=job.changed_files,
+                            )
+                        commit_message = CommitMessageFormatter.format(
+                            job_id=job.id,
+                            instruction=job.request.instruction,
+                            changed_files=job.changed_files,
+                            ai_body=ai_body,
+                            ai_title=ai_title,
+                        )
+                        _joblog.info(
+                            "commit message ready changed_files=%d ai_title=%s ai_body=%s",
+                            len(job.changed_files),
+                            ai_title is not None,
+                            ai_body is not None,
+                            chat_id=job.request.chat_id,
+                            user_id=job.request.requested_by,
+                            project=job.request.project,
+                            job_id=job.id,
+                        )
+                        job.commit_hash = self._git_service.commit_all(worktree_path, commit_message)
+                        _joblog.info(
+                            "commit result hash=%s",
+                            job.commit_hash or "-",
+                            chat_id=job.request.chat_id,
+                            user_id=job.request.requested_by,
+                            project=job.request.project,
+                            job_id=job.id,
+                        )
+                    else:
+                        job.commit_hash = None
+                        _joblog.info(
+                            "commit skipped by request",
+                            chat_id=job.request.chat_id,
+                            user_id=job.request.requested_by,
+                            project=job.request.project,
+                            job_id=job.id,
+                        )
+
+                    if job.request.commit and job.commit_hash:
+                        failed_stage = "git_push"
+                        _joblog.info(
+                            "stage=git_push",
+                            chat_id=job.request.chat_id,
+                            user_id=job.request.requested_by,
+                            project=job.request.project,
+                            job_id=job.id,
+                        )
+                        self._git_service.push_branch(project_path, remote, job.branch)
+
+                    if (
+                        self._advanced_settings_store is not None
+                        and self._advanced_settings_store.get().auto_merge_to_main_enabled
+                        and job.request.commit
+                        and job.commit_hash
+                        and job.branch
+                    ):
+                        failed_stage = "git_integrate_main"
+                        _joblog.info(
+                            "stage=git_integrate_main",
+                            chat_id=job.request.chat_id,
+                            user_id=job.request.requested_by,
+                            project=job.request.project,
+                            job_id=job.id,
+                        )
+                        ops_base = worktree_base / "_rebase_ops"
+                        self._git_service.rebase_branch_onto_main_and_merge(
+                            project_path,
+                            job.branch,
+                            remote,
+                            ops_base,
+                        )
+
+                    job.mark_succeeded()
+                    self._job_store.update(job)
+                    _joblog.info(
+                        "succeeded branch=%s commit=%s",
+                        job.branch or "-",
+                        job.commit_hash or "-",
+                        chat_id=job.request.chat_id,
+                        user_id=job.request.requested_by,
+                        project=job.request.project,
+                        job_id=job.id,
+                    )
         except Exception as exc:  # pylint: disable=broad-except
             if job_id in self._cancelled_job_ids:
                 _joblog.info(
@@ -492,11 +525,15 @@ class JobManager:
         finally:
             self._cancel_events.pop(job_id, None)
             self._cancelled_job_ids.discard(job_id)
+            read_only_succeeded = (
+                job.request.mode in (JobMode.PLAN, JobMode.ASK) and job.status.value == "succeeded"
+            )
+            cleanup_on_success = read_only_succeeded or not self._settings.keep_worktree_on_success
             _joblog.info(
                 "job finalizing status=%s created_worktree=%s cleanup_on_success=%s",
                 job.status.value,
                 created_worktree_for_job,
-                not self._settings.keep_worktree_on_success,
+                cleanup_on_success,
                 chat_id=job.request.chat_id,
                 user_id=job.request.requested_by,
                 project=job.request.project,
@@ -506,7 +543,7 @@ class JobManager:
                 worktree_path
                 and created_worktree_for_job
                 and job.status.value == "succeeded"
-                and not self._settings.keep_worktree_on_success
+                and cleanup_on_success
             ):
                 try:
                     self._git_service.cleanup_worktree(project_path, worktree_path)

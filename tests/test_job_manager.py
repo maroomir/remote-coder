@@ -6,7 +6,7 @@ from app.admin.advanced_settings import AdvancedSettings
 from app.ai.base import RunnerResult
 from app.git.commit_message import CommitMessageFormatter
 from app.jobs.manager import JobManager
-from app.jobs.schemas import JobRequest
+from app.jobs.schemas import JobMode, JobRequest
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
 
@@ -149,6 +149,92 @@ def test_job_manager_uses_advanced_job_timeout(test_settings, project_registry):
 
     runner_input = runner.run.call_args.args[0]
     assert runner_input.timeout_seconds == 3600
+
+
+def test_job_manager_plan_mode_skips_git_commit_push_and_branch(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt-plan")
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="plan text", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier = Mock()
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="outline steps",
+        mode=JobMode.PLAN,
+        branch="feature-x",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    final_job = manager.run(job.id)
+
+    assert final_job.status.value == "succeeded"
+    assert final_job.branch is None
+    assert final_job.commit_hash is None
+    assert final_job.changed_files == []
+    git_service.prepare_detached_worktree.assert_called_once()
+    assert git_service.prepare_detached_worktree.call_args.kwargs.get("base_branch") is None
+    git_service.local_branch_exists.assert_not_called()
+    git_service.collect_changes.assert_not_called()
+    git_service.create_branch_in_worktree.assert_not_called()
+    git_service.commit_all.assert_not_called()
+    git_service.push_branch.assert_not_called()
+    branch_strategy.make_branch_name.assert_not_called()
+    assert runner.run.call_args.args[0].mode == JobMode.PLAN
+
+
+def test_job_manager_plan_success_cleans_worktree_despite_keep_flag(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt-plan2")
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier = Mock()
+    assert test_settings.keep_worktree_on_success is True
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="plan only",
+        mode=JobMode.PLAN,
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    manager.run(job.id)
+
+    git_service.cleanup_worktree.assert_called_once_with(test_settings.project_root, Path("/tmp/wt-plan2"))
 
 
 def test_job_manager_no_changes_skips_branch_commit_push(test_settings, project_registry):
