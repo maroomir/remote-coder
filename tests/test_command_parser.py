@@ -1,5 +1,6 @@
 import pytest
 
+from app.jobs.schemas import JobMode
 from app.models import ModelName
 from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
@@ -406,3 +407,102 @@ def test_parse_natural_ambiguous_followup_reads_only_named_project_history(
     )
     with pytest.raises(CommandParseError, match="맥락"):
         parser.parse_natural("작업 시작해줘", "remote-coder", chat_id=99, user_id=1)
+
+
+def test_parse_natural_plan_prefix_sets_mode(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    req = parser.parse_natural("plan: refactor auth", "remote-coder", chat_id=1, user_id=2)
+    assert req.mode == JobMode.PLAN
+    assert req.instruction == "refactor auth"
+    assert req.branch is None
+    assert not req.commit
+
+
+def test_parse_natural_plan_prefix_case_insensitive(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    req = parser.parse_natural("PLAN: step one", "remote-coder", chat_id=1, user_id=2)
+    assert req.mode == JobMode.PLAN
+    assert req.instruction == "step one"
+
+
+def test_parse_natural_ask_prefix_with_spaces_after_colon(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    req = parser.parse_natural("ask:    explain modules", "remote-coder", chat_id=1, user_id=2)
+    assert req.mode == JobMode.ASK
+    assert req.instruction == "explain modules"
+
+
+def test_parse_natural_plan_or_ask_empty_raises(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    with pytest.raises(CommandParseError, match="비어"):
+        parser.parse_natural("plan:", "remote-coder", chat_id=1, user_id=2)
+    with pytest.raises(CommandParseError, match="비어"):
+        parser.parse_natural("ask:   ", "remote-coder", chat_id=1, user_id=2)
+
+
+def test_parse_natural_plan_with_model_option(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    req = parser.parse_natural("plan: model: codex outline steps", "remote-coder", chat_id=1, user_id=2)
+    assert req.mode == JobMode.PLAN
+    assert req.model == ModelName.CODEX
+    assert req.instruction == "outline steps"
+
+
+def test_parse_natural_plan_ignores_branch_and_no_commit(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    req = parser.parse_natural(
+        "plan: branch: feature/foo no commit write tests",
+        "remote-coder",
+        chat_id=1,
+        user_id=2,
+    )
+    assert req.mode == JobMode.PLAN
+    assert req.branch is None
+    assert not req.commit
+    assert req.instruction == "write tests"
+
+
+def test_parse_natural_plan_ignores_invalid_branch_token(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    req = parser.parse_natural(
+        "plan: branch: bad..name still parses",
+        "remote-coder",
+        chat_id=1,
+        user_id=2,
+    )
+    assert req.mode == JobMode.PLAN
+    assert req.branch is None
+    assert req.instruction == "still parses"
+
+
+def test_parse_natural_plan_skips_reply_bound_branch(project_registry: ProjectRegistry):
+    db = project_registry.config_path.parent / "parser_plan_reply_branch.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.bind_message_branch(
+        project="remote-coder",
+        chat_id=7,
+        message_id=50,
+        branch="feature/reply-branch",
+        job_id="job-plan-skip",
+    )
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=store,
+    )
+    req = parser.parse_natural(
+        "plan: describe layout",
+        "remote-coder",
+        chat_id=7,
+        user_id=1,
+        message_id=51,
+        reply_to_message_id=50,
+    )
+    assert req.mode == JobMode.PLAN
+    assert req.branch is None
+
+
+def test_parse_natural_default_mode_is_agent(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    req = parser.parse_natural("fix login bug", "remote-coder", chat_id=1, user_id=2)
+    assert req.mode == JobMode.AGENT

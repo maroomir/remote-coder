@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 from app.git.service import GitWorktreeService
-from app.jobs.schemas import JobRequest
+from app.jobs.schemas import JobMode, JobRequest
 from app.models import ModelName
 from app.projects.registry import ProjectRegistry
 from app.telegram.conversation import (
@@ -81,7 +81,19 @@ class CommandParser:
         reply_to_message_id: int | None = None,
         reply_to_text: str | None = None,
     ) -> JobRequest:
-        model, branch, commit, remaining = self._extract_options(text.strip())
+        stripped = text.strip()
+        mode = JobMode.AGENT
+        prefix_match = re.match(r"^(plan|ask)\s*:\s*", stripped, flags=re.IGNORECASE)
+        if prefix_match:
+            key = prefix_match.group(1).lower()
+            mode = JobMode.PLAN if key == "plan" else JobMode.ASK
+            stripped = stripped[prefix_match.end() :].strip()
+
+        model, branch, commit, remaining = self._extract_options(stripped)
+        if mode in (JobMode.PLAN, JobMode.ASK):
+            branch = None
+            commit = False
+
         if not remaining:
             raise CommandParseError("작업 지시문이 비어 있습니다.")
 
@@ -100,7 +112,8 @@ class CommandParser:
             selected_model = entry.default_model
 
         if (
-            branch is None
+            mode == JobMode.AGENT
+            and branch is None
             and reply_to_message_id is not None
             and self._conversation_store is not None
         ):
@@ -166,12 +179,15 @@ class CommandParser:
         else:
             instruction = instruction_body
 
+        effective_commit = False if mode in (JobMode.PLAN, JobMode.ASK) else (True if commit is None else commit)
+
         return JobRequest(
             project=project_name,
             model=selected_model,
             instruction=instruction,
+            mode=mode,
             branch=branch,
-            commit=True if commit is None else commit,
+            commit=effective_commit,
             chat_id=chat_id,
             requested_by=user_id,
             message_id=message_id,

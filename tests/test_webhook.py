@@ -207,6 +207,124 @@ def test_webhook_accepts_natural_message(project_registry):
     assert confirm_response.json()["status"] == "accepted"
 
 
+def test_webhook_plan_mode_rejects_without_submit_or_confirmation(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    job_manager = CaptureJobManager()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=job_manager,
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+    response = client.post(
+        wh,
+        json={
+            "update_id": 10,
+            "message": {
+                "message_id": 10,
+                "text": "plan: outline the refactor",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+            },
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert notifier.sent[0][1] == "plan/ask 모드는 다음 단계에서 지원됩니다."
+    assert command_context.confirmation_store.get("remote-coder", 123) is None
+    assert job_manager.last_request is None
+    git_service.get_current_branch.assert_not_called()
+
+
+def test_webhook_ask_mode_rejects_without_submit_or_confirmation(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    job_manager = CaptureJobManager()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=job_manager,
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+    response = client.post(
+        wh,
+        json={
+            "update_id": 11,
+            "message": {
+                "message_id": 11,
+                "text": "ASK: what owns routing?",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+            },
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert notifier.sent[0][1] == "plan/ask 모드는 다음 단계에서 지원됩니다."
+    assert command_context.confirmation_store.get("remote-coder", 123) is None
+    assert job_manager.last_request is None
+    git_service.get_current_branch.assert_not_called()
+
+
 def test_webhook_accepts_natural_message_with_confirmation_buttons(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()

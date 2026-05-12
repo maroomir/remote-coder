@@ -17,10 +17,17 @@ class JobStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class JobMode(StrEnum):
+    AGENT = "agent"
+    PLAN = "plan"
+    ASK = "ask"
+
+
 class JobRequest(BaseModel):
     project: str
     model: ModelName
     instruction: str
+    mode: JobMode = JobMode.AGENT
     branch: str | None = None
     commit: bool = True
     chat_id: int

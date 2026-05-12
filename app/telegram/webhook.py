@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.ai.usage import format_token_usage
 from app.jobs.manager import JobManager
-from app.jobs.schemas import Job, JobRequest
+from app.jobs.schemas import Job, JobMode, JobRequest
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.events import EventLogger
 from app.telegram.commands import CommandRegistry, CommandResponse, InlineButton, TelegramMessage
@@ -404,6 +404,14 @@ def create_webhook_router(
             background_tasks.add_task(notifier.send_text, chat_id, str(exc))
             return {"status": "ignored"}
         request = parsed_request
+
+        if request.mode != JobMode.AGENT:
+            background_tasks.add_task(
+                notifier.send_text,
+                chat_id,
+                "plan/ask 모드는 다음 단계에서 지원됩니다.",
+            )
+            return {"status": "ok"}
 
         _cmdlog.info(
             "natural request parsed model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",

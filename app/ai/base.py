@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from app.jobs.schemas import JobMode
+
 
 @dataclass
 class RunnerInput:
@@ -14,6 +16,7 @@ class RunnerInput:
     timeout_seconds: int
     env: dict[str, str] | None = None
     cancel_event: threading.Event | None = field(default=None, compare=False)
+    mode: JobMode = JobMode.AGENT
 
 
 @dataclass
