@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""등록된 활성 프로젝트마다 Telegram setWebhook 을 호출합니다.
+"""등록된 활성 프로젝트마다 Telegram setWebhook 과 setMyCommands 를 호출합니다.
 
 공개 HTTPS Base URL 하나를 넘기면 `build_public_webhook_url(base, bot_token)` 규칙으로
 프로젝트별 전체 webhook URL을 만들고, 비활성·삭제된 프로젝트는 스크립트 대상에서 빠집니다.
@@ -66,13 +66,46 @@ def register_webhook(
     return False
 
 
+def register_bot_commands(api_url: str, commands: list[dict[str, str]]) -> bool:
+    max_attempts = 3
+    connect_timeout = 10.0
+    request_timeout = 30.0
+
+    for attempt in range(1, max_attempts + 1):
+        print(f"  텔레그램 명령어 메뉴 등록 중... ({attempt}/{max_attempts})")
+        try:
+            response = httpx.post(
+                api_url,
+                json={"commands": commands},
+                timeout=httpx.Timeout(request_timeout, connect=connect_timeout),
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            if result.get("ok"):
+                print("  ✅ 명령어 메뉴 등록 성공!")
+                return True
+
+            print("  ❌ 명령어 메뉴 등록 실패!")
+            print(f"  에러: {result}")
+            return False
+        except httpx.HTTPError as e:
+            print(f"  ❌ HTTP 요청 실패: {e}")
+            if attempt < max_attempts:
+                wait_seconds = attempt * 2
+                print(f"  ⏳ {wait_seconds}초 후 재시도합니다...")
+                time.sleep(wait_seconds)
+
+    return False
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         print("사용법: python scripts/set_webhook.py <PUBLIC_HTTPS_URL>")
         print("예시: python scripts/set_webhook.py https://abcd-1234.ngrok-free.app")
         print("")
         print("프로젝트 레지스트리(.remote-coder/projects.json 등)에 등록된")
-        print("활성화(enabled) 프로젝트마다 봇 토큰으로 setWebhook 을 호출합니다.")
+        print("활성화(enabled) 프로젝트마다 봇 토큰으로 setWebhook/setMyCommands 를 호출합니다.")
         sys.exit(1)
 
     public_url = sys.argv[1].rstrip("/")
@@ -88,6 +121,7 @@ def main() -> None:
         build_public_webhook_url,
         projects_config_path_for_settings,
     )
+    from app.telegram.commands import default_telegram_bot_commands
 
     settings = get_settings()
     config_path = projects_config_path_for_settings(
@@ -107,6 +141,7 @@ def main() -> None:
     print(f"설정 파일: {config_path}")
     print(f"대상: 활성화 프로젝트 {len(enabled)}개")
     print("")
+    bot_commands = default_telegram_bot_commands()
 
     any_failed = False
     for record in enabled:
@@ -117,7 +152,8 @@ def main() -> None:
             continue
 
         webhook_url = build_public_webhook_url(public_url, token)
-        api_url = f"https://api.telegram.org/bot{token}/setWebhook"
+        webhook_api_url = f"https://api.telegram.org/bot{token}/setWebhook"
+        commands_api_url = f"https://api.telegram.org/bot{token}/setMyCommands"
         secret = (
             record.webhook_secret.get_secret_value().strip()
             if record.webhook_secret
@@ -132,10 +168,12 @@ def main() -> None:
 
         try:
             if not register_webhook(
-                api_url=api_url,
+                api_url=webhook_api_url,
                 webhook_url=webhook_url,
                 webhook_secret=secret,
             ):
+                any_failed = True
+            if not register_bot_commands(commands_api_url, bot_commands):
                 any_failed = True
         except Exception as e:
             print(f"[{record.name}] ❌ 알 수 없는 에러: {e}")

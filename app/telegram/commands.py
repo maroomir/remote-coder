@@ -130,6 +130,7 @@ def effective_model_for_chat(ctx: CommandContext, chat_id: int, project_name: st
 class TelegramCommand(ABC):
     name: str
     menu_text: str | None = None
+    description: str | None = None
 
     @abstractmethod
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
@@ -157,6 +158,7 @@ class ConfirmableCommand(TelegramCommand):
 
 class StartCommand(TelegramCommand):
     name = "/start"
+    description = "메뉴와 프로젝트 상태를 확인합니다"
 
     _TOPIC_TEXT: dict[str, str] = {
         "model": "모델을 선택하세요.",
@@ -271,6 +273,7 @@ class StartCommand(TelegramCommand):
 
 class HelpCommand(TelegramCommand):
     name = "/help"
+    description = "사용 가능한 명령어를 확인합니다"
     _registry: dict[str, TelegramCommand] | None = None
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
@@ -308,6 +311,7 @@ class HelpCommand(TelegramCommand):
 class ModelCommand(TelegramCommand):
     name = "/model"
     menu_text = "모델을 선택하세요."
+    description = "채팅의 기본 AI 모델을 확인하거나 변경합니다"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -350,6 +354,7 @@ _MAX_CHANGED_FILES = 10
 
 class StatusCommand(TelegramCommand):
     name = "/status"
+    description = "최근 Job 목록과 작업 상태를 조회합니다"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -491,6 +496,7 @@ class StatusCommand(TelegramCommand):
 
 class InitCommand(TelegramCommand):
     name = "/init"
+    description = "모델 설정과 확인 대기 상태를 초기화합니다"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -534,6 +540,7 @@ class InitCommand(TelegramCommand):
 
 class ReportsCommand(TelegramCommand):
     name = "/reports"
+    description = "현재 채팅의 대화 기억 요약을 조회합니다"
 
     _DEFAULT_RECENT_LIMIT = 5
     _MAX_RECENT_LIMIT = 10
@@ -605,6 +612,7 @@ class ReportsCommand(TelegramCommand):
 
 class BranchCommand(TelegramCommand):
     name = "/branch"
+    description = "현재 브랜치를 확인하거나 로컬 브랜치로 전환합니다"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -670,6 +678,7 @@ class BranchCommand(TelegramCommand):
 
 class RebaseCommand(TelegramCommand):
     name = "/rebase"
+    description = "브랜치를 main 기준으로 rebase하고 push합니다"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -780,6 +789,7 @@ def _branch_to_pr_title(branch: str) -> str:
 class PullCommand(TelegramCommand):
     name = "/pull"
     menu_text = "원격 저장소의 모든 브랜치 pull"
+    description = "원격 브랜치 정보를 가져오고 현재 브랜치를 pull합니다"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
@@ -804,6 +814,7 @@ class PrCommand(TelegramCommand):
 
     name = "/pr"
     menu_text = "PR을 올릴 브랜치를 선택하세요."
+    description = "선택한 브랜치로 GitHub Pull Request를 만듭니다"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -905,6 +916,7 @@ class PrCommand(TelegramCommand):
 
 class MonitorCommand(TelegramCommand):
     name = "/monitor"
+    description = "모델, 메모리, 브랜치, worktree 상태를 점검합니다"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -1046,6 +1058,7 @@ class MonitorCommand(TelegramCommand):
 
 class ClearCommand(ConfirmableCommand):
     name = "/clear"
+    description = "브랜치, worktree, 대화 기억을 확인 후 정리합니다"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -1179,6 +1192,7 @@ class ClearCommand(ConfirmableCommand):
 
 class StopCommand(TelegramCommand):
     name = "/stop"
+    description = "진행 중인 Job을 선택해 중단합니다"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split(maxsplit=1)
@@ -1276,3 +1290,32 @@ class CommandRegistry:
         command = self._commands.get(head)
         buttons = command.get_inline_buttons(message, ctx) if command is not None else None
         return CommandResponse(text=text, inline_buttons=buttons)
+
+    def bot_commands(self) -> list[dict[str, str]]:
+        return [
+            {"command": command.name.removeprefix("/"), "description": command.description}
+            for command in self._commands.values()
+            if command.description
+        ]
+
+
+def build_default_commands() -> list[TelegramCommand]:
+    return [
+        StartCommand(),
+        HelpCommand(),
+        ModelCommand(),
+        StatusCommand(),
+        InitCommand(),
+        ReportsCommand(),
+        BranchCommand(),
+        PullCommand(),
+        RebaseCommand(),
+        PrCommand(),
+        MonitorCommand(),
+        ClearCommand(),
+        StopCommand(),
+    ]
+
+
+def default_telegram_bot_commands() -> list[dict[str, str]]:
+    return CommandRegistry(build_default_commands()).bot_commands()

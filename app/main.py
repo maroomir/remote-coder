@@ -23,22 +23,10 @@ from app.projects.registry import (
 )
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import (
-    BranchCommand,
-    ClearCommand,
     CommandContext,
     CommandRegistry,
-    HelpCommand,
-    InitCommand,
-    ModelCommand,
-    MonitorCommand,
-    PrCommand,
-    PullCommand,
-    ReportsCommand,
-    RebaseCommand,
-    StartCommand,
-    StatusCommand,
-    StopCommand,
     TelegramMessage,
+    build_default_commands,
 )
 from app.telegram.bot_instances import BotInstance, BotInstanceManager
 from app.telegram.confirmations import InMemoryConfirmationStore
@@ -79,23 +67,7 @@ parser = CommandParser(
     conversation_store=conversation_store,
     conversation_recent_limit=settings.conversation_recent_limit,
 )
-command_registry = CommandRegistry(
-    commands=[
-        StartCommand(),
-        HelpCommand(),
-        ModelCommand(),
-        StatusCommand(),
-        InitCommand(),
-        ReportsCommand(),
-        BranchCommand(),
-        PullCommand(),
-        RebaseCommand(),
-        PrCommand(),
-        MonitorCommand(),
-        ClearCommand(),
-        StopCommand(),
-    ]
-)
+command_registry = CommandRegistry(commands=build_default_commands())
 git_service = GitWorktreeService(base_dir=settings.worktree_base_dir)
 command_context = CommandContext(
     job_store=job_store,
@@ -153,7 +125,10 @@ job_manager = JobManager(
 )
 command_context.job_manager = job_manager
 webhook_registrar = (
-    TelegramWebhookRegistrar(settings.telegram_webhook_public_base_url)
+    TelegramWebhookRegistrar(
+        settings.telegram_webhook_public_base_url,
+        bot_commands=command_registry.bot_commands(),
+    )
     if settings.telegram_webhook_public_base_url
     else None
 )

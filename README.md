@@ -109,7 +109,7 @@ cp .env.example .env
 서버를 띄운 뒤 **같은 머신**에서 브라우저로 접속합니다.
 
 - 관리 허브: `http://127.0.0.1:8000/` (요약·다른 페이지로 이동)
-- 프로젝트 등록: `http://127.0.0.1:8000/projects` (목록, 추가·수정·삭제, 폴백 기본값, **봇 토큰·allowlist·webhook secret**, 봇별 webhook 경로 표시. `./run.sh` 실행 중에는 등록·수정한 활성 프로젝트의 Telegram webhook도 즉시 갱신)
+- 프로젝트 등록: `http://127.0.0.1:8000/projects` (목록, 추가·수정·삭제, 폴백 기본값, **봇 토큰·allowlist·webhook secret**, 봇별 webhook 경로 표시. `./run.sh` 실행 중에는 등록·수정한 활성 프로젝트의 Telegram webhook과 `/` 명령어 메뉴도 즉시 갱신)
 - 고급 설정: `http://127.0.0.1:8000/advanced`
 - 서버 로그: `http://127.0.0.1:8000/logs` (`app` 로거 기준 인메모리 링 버퍼, 자동 새로고침·카테고리·`chat_id`/`job_id` 필터)
 - 데이터 조회: `http://127.0.0.1:8000/database` (대화 기억 SQLite 테이블 조회·CSV보내기)
@@ -145,7 +145,7 @@ cp .env.example .env
 
 ## 3) 한 번에 실행하기 (권장)
 
-미리 작성된 실행 스크립트를 사용하면 Conda 환경 활성화, ngrok 실행, Webhook 등록, 서버 실행을 모두 한 번에 처리합니다. `./run.sh`는 ngrok 공개 URL을 `TELEGRAM_WEBHOOK_PUBLIC_BASE_URL`로 서버에 전달하므로, 서버를 재시작하지 않아도 관리 UI에서 등록·수정한 활성 프로젝트의 Telegram webhook이 즉시 갱신됩니다. 멀티봇은 공개 HTTPS Base URL만 넘겨 활성 프로젝트마다 등록하는 `python scripts/set_webhook.py <URL>` 을 사용할 수도 있습니다.
+미리 작성된 실행 스크립트를 사용하면 Conda 환경 활성화, ngrok 실행, Webhook 등록, 서버 실행을 모두 한 번에 처리합니다. `./run.sh`는 ngrok 공개 URL을 `TELEGRAM_WEBHOOK_PUBLIC_BASE_URL`로 서버에 전달하므로, 서버를 재시작하지 않아도 관리 UI에서 등록·수정한 활성 프로젝트의 Telegram webhook과 `/` 명령어 메뉴가 즉시 갱신됩니다. 멀티봇은 공개 HTTPS Base URL만 넘겨 활성 프로젝트마다 webhook과 명령어 메뉴를 등록하는 `python scripts/set_webhook.py <URL>` 을 사용할 수도 있습니다.
 
 ```bash
 ./run.sh
@@ -173,6 +173,8 @@ ngrok version
 - 서버를 종료하려면 `Ctrl+C`를 누르면 ngrok도 함께 종료됩니다.
 
 ## 4) 지원 명령어 (MVP)
+
+`./run.sh` 또는 `python scripts/set_webhook.py <URL>` 로 Telegram 등록을 갱신하면 BotFather에서 설정하는 것과 같은 `/` 명령어 메뉴가 각 프로젝트 봇에 등록됩니다.
 
 - `/start` : 인라인 메뉴 허브 (모델·모니터·정리·관리 항목별 버튼 바로가기)
 - `/help` : 명령어 도움말 (model·monitor·clear 항목별 인라인 버튼 제공)

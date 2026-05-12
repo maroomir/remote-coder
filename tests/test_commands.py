@@ -22,6 +22,7 @@ from app.telegram.commands import (
     StopCommand,
     TelegramMessage,
     InlineButton,
+    build_default_commands,
 )
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
@@ -83,6 +84,31 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert "옵션\n- model:\n- branch:\n- no commit" in text
     assert "명령어 목록:" in text
     assert "/clear branch:" not in text
+
+
+def test_default_bot_commands_expose_telegram_menu_entries():
+    registry = CommandRegistry(build_default_commands())
+
+    commands = registry.bot_commands()
+
+    names = [item["command"] for item in commands]
+    assert names == [
+        "start",
+        "help",
+        "model",
+        "status",
+        "init",
+        "reports",
+        "branch",
+        "pull",
+        "rebase",
+        "pr",
+        "monitor",
+        "clear",
+        "stop",
+    ]
+    assert all("/" not in item["command"] for item in commands)
+    assert all(item["description"] for item in commands)
 
 
 def test_help_command_returns_text_with_no_buttons(project_registry: ProjectRegistry):
