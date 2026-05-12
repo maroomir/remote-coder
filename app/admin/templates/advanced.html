@@ -39,7 +39,7 @@
       padding: 1.25rem 1rem 2.5rem;
     }
 
-    .wrap { max-width: 56rem; margin: 0 auto; }
+    .wrap { max-width: 72rem; margin: 0 auto; }
 
     .app-header {
       margin-bottom: 1.5rem;
@@ -286,7 +286,7 @@
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
-      margin-top: 1.1rem;
+      margin-top: 1.25rem;
     }
 
     button {
@@ -370,22 +370,52 @@
 
     <div class="summary-grid" id="summary-grid" aria-label="요약"></div>
 
-    <section class="card" aria-labelledby="advanced-heading">
-      <h2 id="advanced-heading">옵션</h2>
-      <p class="lead danger">
-        아래 옵션은 저장소와 대화 기억 SQLite에 넓게 영향을 줄 수 있습니다. 필요할 때만 켜고, 의미를 이해한 뒤 사용하세요.
-      </p>
+    <form id="adv-form">
 
-      <form id="adv-form">
+      <!-- ── Telegram 알림 ─────────────────────────────────────────── -->
+      <section class="card" aria-labelledby="section-telegram">
+        <h2 id="section-telegram">Telegram 알림</h2>
+        <p class="lead">메시지 표시 방식과 서버 이벤트 알림을 설정합니다.</p>
+
         <label class="field" for="adv-status-job-limit">/status 최근 Job 표시 개수</label>
         <p class="hint">/status 명령에서 인라인 버튼으로 선택할 수 있는 최근 Job의 최대 개수입니다. 기본값: 10</p>
         <input type="number" id="adv-status-job-limit" name="status_recent_job_limit" min="1" max="50" step="1" placeholder="예: 10" autocomplete="off" />
 
-        <label class="field" for="adv-job-timeout">AI 작업 타임아웃 (초, 비우면 환경 기본값)</label>
-        <p class="hint" id="job-timeout-hint">Claude/Codex/Gemini runner가 이 시간 안에 끝나지 않으면 Job을 실패 처리합니다.</p>
-        <input type="number" id="adv-job-timeout" name="job_timeout_seconds" min="1" step="1" placeholder="예: 3600" autocomplete="off" />
+        <label class="checkbox" style="margin-top:1.1rem">
+          <input type="checkbox" id="adv-natural-confirm-buttons" name="natural_job_confirmation_buttons_enabled" />
+          자연어 작업 확인을 <code>y</code>/<code>Y</code> 입력 대신 인라인 버튼으로 응답
+        </label>
+        <p class="hint" style="margin:0.35rem 0 0 1.75rem">
+          기본값: 꺼짐. 켜면 작업 확인 메시지에 <strong>네</strong>/<strong>아니오</strong> 버튼을 표시합니다.
+        </p>
 
         <label class="checkbox" style="margin-top:1.1rem">
+          <input type="checkbox" id="adv-lifecycle-notify" name="server_lifecycle_notify_enabled" />
+          서버 시작·종료 시 Telegram 알림 전송
+        </label>
+        <p class="hint" style="margin:0.35rem 0 0 1.75rem">
+          기본값: 켜짐. 끄면 서버를 재시작해도 "서버가 시작되었습니다" / "서버 연결이 종료되었습니다" 메시지를 보내지 않습니다.
+        </p>
+      </section>
+
+      <!-- ── Job 실행 ──────────────────────────────────────────────── -->
+      <section class="card" aria-labelledby="section-job">
+        <h2 id="section-job">Job 실행</h2>
+        <p class="lead">AI 작업 실행 제한 값을 설정합니다.</p>
+
+        <label class="field" for="adv-job-timeout">AI 작업 타임아웃 (초, 비우면 환경 기본값)</label>
+        <p class="hint">Claude/Codex/Gemini runner가 이 시간 안에 끝나지 않으면 Job을 실패 처리합니다.</p>
+        <input type="number" id="adv-job-timeout" name="job_timeout_seconds" min="1" step="1" placeholder="예: 3600" autocomplete="off" />
+      </section>
+
+      <!-- ── Git 통합 ───────────────────────────────────────────────── -->
+      <section class="card" aria-labelledby="section-git">
+        <h2 id="section-git">Git 통합</h2>
+        <p class="lead danger">
+          아래 옵션은 저장소에 넓게 영향을 줄 수 있습니다. 의미를 이해한 뒤 사용하세요.
+        </p>
+
+        <label class="checkbox">
           <input type="checkbox" id="adv-merge-main" name="auto_merge_to_main_enabled" />
           요청 결과를 즉시 <code>main</code>/<code>master</code>에 반영한 뒤 원격에 push
         </label>
@@ -400,16 +430,16 @@
         <p class="hint" style="margin:0.35rem 0 0 1.75rem">
           기본값: 켜짐. 끄면 <code>/rebase</code>가 main/master 병합과 push까지만 수행하고 대상 브랜치는 남깁니다.
         </p>
+      </section>
 
-        <label class="checkbox" style="margin-top:1.1rem">
-          <input type="checkbox" id="adv-natural-confirm-buttons" name="natural_job_confirmation_buttons_enabled" />
-          자연어 작업 확인을 <code>y</code>/<code>Y</code> 입력 대신 인라인 버튼으로 응답
-        </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem">
-          기본값: 꺼짐. 켜면 작업 확인 메시지에 <strong>네</strong>/<strong>아니오</strong> 버튼을 표시합니다.
+      <!-- ── 대화 기억 저장 ─────────────────────────────────────────── -->
+      <section class="card" aria-labelledby="section-memory">
+        <h2 id="section-memory">대화 기억 저장 (SQLite)</h2>
+        <p class="lead danger">
+          아래 옵션은 대화 기억 SQLite에 넓게 영향을 줄 수 있습니다. 필요할 때만 켜고, 의미를 이해한 뒤 사용하세요.
         </p>
 
-        <label class="checkbox" style="margin-top:1.1rem">
+        <label class="checkbox">
           <input type="checkbox" id="adv-memory-enabled" name="conversation_memory_limit_enabled" />
           SQLite 대화 기억 저장량 제한
         </label>
@@ -422,13 +452,14 @@
 
         <label class="field" for="adv-max-bytes">최대 DB 용량 (bytes, 비우면 미사용)</label>
         <input type="number" id="adv-max-bytes" name="conversation_memory_max_bytes" min="1" step="1" placeholder="예: 10485760" autocomplete="off" />
+      </section>
 
-        <div class="form-actions">
-          <button type="submit" class="btn-primary" id="btn-adv-save">저장</button>
-          <button type="button" class="btn-ghost" id="btn-adv-reload">다시 불러오기</button>
-        </div>
-      </form>
-    </section>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary" id="btn-adv-save">저장</button>
+        <button type="button" class="btn-ghost" id="btn-adv-reload">다시 불러오기</button>
+      </div>
+
+    </form>
   </div>
 
   <script src="/admin-static/summary.js"></script>
@@ -436,12 +467,6 @@
     const $ = (s) => document.querySelector(s);
     const globalMsg = $("#global-msg");
     let busy = false;
-
-    function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, (c) => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-      }[c]));
-    }
 
     async function loadSummary() {
       const result = await adminSummary.loadSummaryGrid((msg) => setGlobalMsg("err", msg));
@@ -506,6 +531,7 @@
         d.status_recent_job_limit != null ? String(d.status_recent_job_limit) : "10";
       $("#adv-job-timeout").value =
         d.job_timeout_seconds != null ? String(d.job_timeout_seconds) : "";
+      $("#adv-lifecycle-notify").checked = d.server_lifecycle_notify_enabled !== false;
       $("#adv-merge-main").checked = !!d.auto_merge_to_main_enabled;
       $("#adv-delete-rebased-branch").checked = d.delete_rebased_branch_enabled !== false;
       $("#adv-natural-confirm-buttons").checked = !!d.natural_job_confirmation_buttons_enabled;
@@ -541,6 +567,7 @@
       const body = {
         status_recent_job_limit: Number.isFinite(jobLimitRaw) && jobLimitRaw >= 1 ? jobLimitRaw : 10,
         job_timeout_seconds: parseOptionalPositiveInt($("#adv-job-timeout").value),
+        server_lifecycle_notify_enabled: $("#adv-lifecycle-notify").checked,
         auto_merge_to_main_enabled: $("#adv-merge-main").checked,
         delete_rebased_branch_enabled: $("#adv-delete-rebased-branch").checked,
         natural_job_confirmation_buttons_enabled: $("#adv-natural-confirm-buttons").checked,

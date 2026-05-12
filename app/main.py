@@ -143,36 +143,42 @@ async def lifespan(_app: FastAPI):
         len(project_registry.list_projects()),
         settings.default_model.value,
     )
-    for instance in instances:
-        ctx = replace(instance.command_context, project_name=instance.project_name)
-        bot_notifier = instance.notifier
-        for chat_id in instance.auth_service.allowed_chat_ids:
-            try:
-                response = command_registry.dispatch_rich(
-                    TelegramMessage(chat_id=chat_id, user_id=None, text="/start"),
-                    ctx,
-                )
-                if response:
-                    text = f"✅ Remote AI Coder 서버가 시작되었습니다.\n{response.text}"
-                    if response.inline_buttons:
-                        bot_notifier.send_with_buttons(chat_id, text, response.inline_buttons)
-                    else:
-                        bot_notifier.send_text(chat_id, text)
-                    _systemlog.info("startup notification sent", chat_id=chat_id)
-            except Exception:
-                _systemlog.exception("startup notification failed", chat_id=chat_id)
+    if advanced_settings_store.get().server_lifecycle_notify_enabled:
+        for instance in instances:
+            ctx = replace(instance.command_context, project_name=instance.project_name)
+            bot_notifier = instance.notifier
+            for chat_id in instance.auth_service.allowed_chat_ids:
+                try:
+                    response = command_registry.dispatch_rich(
+                        TelegramMessage(chat_id=chat_id, user_id=None, text="/start"),
+                        ctx,
+                    )
+                    if response:
+                        text = f"✅ Remote AI Coder 서버가 시작되었습니다.\n{response.text}"
+                        if response.inline_buttons:
+                            bot_notifier.send_with_buttons(chat_id, text, response.inline_buttons)
+                        else:
+                            bot_notifier.send_text(chat_id, text)
+                        _systemlog.info("startup notification sent", chat_id=chat_id)
+                except Exception:
+                    _systemlog.exception("startup notification failed", chat_id=chat_id)
+    else:
+        _systemlog.info("lifespan startup notify disabled by settings")
     yield
     shutdown_instances = bot_instance_manager.list_all()
     shutdown_chat_total = sum(len(inst.auth_service.allowed_chat_ids) for inst in shutdown_instances)
     _systemlog.info("lifespan shutdown notifying allowed chats count=%d", shutdown_chat_total)
-    for instance in shutdown_instances:
-        bot_notifier = instance.notifier
-        for chat_id in instance.auth_service.allowed_chat_ids:
-            try:
-                bot_notifier.send_text(chat_id, "🔴 Remote AI Coder 서버 연결이 종료되었습니다.")
-                _systemlog.info("shutdown notification sent", chat_id=chat_id)
-            except Exception:
-                _systemlog.exception("shutdown notification failed", chat_id=chat_id)
+    if advanced_settings_store.get().server_lifecycle_notify_enabled:
+        for instance in shutdown_instances:
+            bot_notifier = instance.notifier
+            for chat_id in instance.auth_service.allowed_chat_ids:
+                try:
+                    bot_notifier.send_text(chat_id, "🔴 Remote AI Coder 서버 연결이 종료되었습니다.")
+                    _systemlog.info("shutdown notification sent", chat_id=chat_id)
+                except Exception:
+                    _systemlog.exception("shutdown notification failed", chat_id=chat_id)
+    else:
+        _systemlog.info("lifespan shutdown notify disabled by settings")
 
 
 app = FastAPI(title="Remote AI Coder", lifespan=lifespan)

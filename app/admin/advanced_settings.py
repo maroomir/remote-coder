@@ -11,6 +11,7 @@ from pydantic import BaseModel, model_validator
 class AdvancedSettings(BaseModel):
     model_config = {"extra": "forbid"}
 
+    server_lifecycle_notify_enabled: bool = True
     auto_merge_to_main_enabled: bool = False
     delete_rebased_branch_enabled: bool = True
     natural_job_confirmation_buttons_enabled: bool = False
