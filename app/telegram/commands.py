@@ -99,6 +99,21 @@ HELP_TEXT = "\n".join(
     ]
 )
 
+HELP_AGENT_TOPIC = "\n".join(
+    [
+        "AGENTS 모드 (agent)",
+        "",
+        "일반 자연어 작업 요청입니다. 현재 프로젝트에서 코드를 수정할 수 있으며, 변경 사항이 있으면 브랜치·커밋·push까지 진행할 수 있습니다.",
+        "",
+        "입력 예",
+        "- 로그인 검증 버그 수정해줘",
+        "- model: codex branch: remote-auth 테스트 보강해줘",
+        "- no commit 문서 문구만 확인해줘",
+        "",
+        "작업은 프로젝트·브랜치·모델을 확인한 뒤 `y`/`Y` 또는 인라인 버튼으로 접수됩니다.",
+    ]
+)
+
 HELP_PLAN_TOPIC = "\n".join(
     [
         "계획 모드 (plan)",
@@ -198,6 +213,7 @@ class StartCommand(TelegramCommand):
         "monitor": "확인할 모니터링 항목을 선택하세요.",
         "clear": "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다.",
         "manage": "실행할 명령을 선택하세요.",
+        "modes": "확인할 모드 안내를 선택하세요.",
     }
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
@@ -300,8 +316,17 @@ class StartCommand(TelegramCommand):
                     InlineButton("뒤로", "/start"),
                 ],
             ]
+        if topic == "modes":
+            return [
+                [
+                    InlineButton("AGENTS 모드", "/help agent"),
+                    InlineButton("PLAN 모드", "/help plan"),
+                    InlineButton("ASK 모드", "/help ask"),
+                ],
+                [InlineButton("뒤로", "/start")],
+            ]
         return [
-            [InlineButton("계획 모드 안내", "/help plan"), InlineButton("질문 모드 안내", "/help ask")],
+            [InlineButton("도움말", "/help"), InlineButton("모드별 안내", "/start modes")],
             [InlineButton("모니터링", "/start monitor"), InlineButton("정리", "/start clear")],
             [InlineButton("관리", "/start manage"), InlineButton("리포트", "/reports")],
         ]
@@ -317,8 +342,10 @@ class HelpCommand(TelegramCommand):
         tokens = message.text.strip().split()
         if len(tokens) >= 2:
             raw = tokens[1]
-            topic_aliases = {"계획": "plan", "질문": "ask"}
+            topic_aliases = {"에이전트": "agent", "계획": "plan", "질문": "ask"}
             topic = topic_aliases.get(raw, raw.lower())
+            if topic in ("agent", "agents"):
+                return HELP_AGENT_TOPIC
             if topic == "plan":
                 return HELP_PLAN_TOPIC
             if topic == "ask":
@@ -339,7 +366,7 @@ class HelpCommand(TelegramCommand):
         tokens = message.text.strip().split() if message else []
         if len(tokens) >= 2:
             topic = tokens[1].lower()
-            if topic in ("plan", "ask"):
+            if topic in ("agent", "agents", "plan", "ask"):
                 return [[InlineButton("← 뒤로", "/help")]]
             subcmd = self._registry.get("/" + tokens[1])
             if subcmd is not None:

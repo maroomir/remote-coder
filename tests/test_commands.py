@@ -132,7 +132,7 @@ def test_start_menu_places_model_under_manage(project_registry: ProjectRegistry)
 
     assert start_response is not None
     assert start_response.inline_buttons == [
-        [InlineButton("계획 모드 안내", "/help plan"), InlineButton("질문 모드 안내", "/help ask")],
+        [InlineButton("도움말", "/help"), InlineButton("모드별 안내", "/start modes")],
         [InlineButton("모니터링", "/start monitor"), InlineButton("정리", "/start clear")],
         [InlineButton("관리", "/start manage"), InlineButton("리포트", "/reports")],
     ]
@@ -142,6 +142,22 @@ def test_start_menu_places_model_under_manage(project_registry: ProjectRegistry)
         [InlineButton("리베이스", "/rebase"), InlineButton("PR 올리기", "/pr")],
         [InlineButton("중단", "/stop"), InlineButton("상태", "/status")],
         [InlineButton("모델", "/start model"), InlineButton("초기화", "/init")],
+        [InlineButton("뒤로", "/start")],
+    ]
+
+
+def test_start_modes_shows_mode_help_buttons(project_registry: ProjectRegistry):
+    registry = CommandRegistry([StartCommand()])
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/start modes"), _ctx(project_registry))
+
+    assert response is not None
+    assert response.text == "확인할 모드 안내를 선택하세요."
+    assert response.inline_buttons == [
+        [
+            InlineButton("AGENTS 모드", "/help agent"),
+            InlineButton("PLAN 모드", "/help plan"),
+            InlineButton("ASK 모드", "/help ask"),
+        ],
         [InlineButton("뒤로", "/start")],
     ]
 
@@ -168,9 +184,13 @@ def test_dispatch_plan_and_ask_returns_none_for_natural_flow(project_registry: P
     assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/ask explain routing"), ctx) is None
 
 
-def test_help_plan_and_ask_topics(project_registry: ProjectRegistry):
+def test_help_agent_plan_and_ask_topics(project_registry: ProjectRegistry):
     registry = CommandRegistry(build_default_commands())
     ctx = _ctx(project_registry)
+    agent_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help agent"), ctx)
+    assert agent_text is not None
+    assert "AGENTS 모드" in agent_text
+    assert "브랜치·커밋·push" in agent_text
     plan_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help plan"), ctx)
     assert plan_text is not None
     assert "계획 모드" in plan_text
@@ -180,6 +200,7 @@ def test_help_plan_and_ask_topics(project_registry: ProjectRegistry):
     assert ask_text is not None
     assert "질문 모드" in ask_text
     assert "/ask" in ask_text
+    assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help 에이전트"), ctx) == agent_text
     assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help 계획"), ctx) == plan_text
     assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help 질문"), ctx) == ask_text
 
