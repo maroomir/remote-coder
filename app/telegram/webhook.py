@@ -560,6 +560,14 @@ def create_webhook_router(
             job_id=job.id,
         )
 
+        if conversation_store is not None and request.message_id is not None:
+            conversation_store.bind_user_message_job(
+                project=request.project,
+                chat_id=request.chat_id,
+                message_id=request.message_id,
+                job_id=job.id,
+            )
+
         if (
             conversation_store is not None
             and request.message_id is not None

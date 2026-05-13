@@ -321,9 +321,21 @@ class SQLiteConversationStore:
                     """,
                     (project, chat_id, message_id),
                 ).fetchone()
-                if link is None or link[0] is None:
+                job_id = str(link[0]) if link is not None and link[0] is not None else None
+                if job_id is None:
+                    user_row = conn.execute(
+                        """
+                        SELECT job_id
+                        FROM conversation_entries
+                        WHERE project = ? AND chat_id = ? AND role = 'user' AND message_id = ?
+                        ORDER BY id DESC
+                        LIMIT 1
+                        """,
+                        (project, chat_id, message_id),
+                    ).fetchone()
+                    job_id = str(user_row[0]) if user_row is not None and user_row[0] is not None else None
+                if job_id is None:
                     return None
-                job_id = str(link[0])
                 row = conn.execute(
                     """
                     SELECT text
@@ -337,6 +349,80 @@ class SQLiteConversationStore:
             finally:
                 conn.close()
         return str(row[0]) if row is not None else None
+
+    def bind_user_message_job(
+        self,
+        *,
+        project: str,
+        chat_id: int,
+        message_id: int,
+        job_id: str,
+    ) -> None:
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                conn.execute(
+                    """
+                    UPDATE conversation_entries
+                    SET job_id = ?
+                    WHERE id = (
+                        SELECT id
+                        FROM conversation_entries
+                        WHERE project = ? AND chat_id = ? AND role = 'user' AND message_id = ?
+                        ORDER BY id DESC
+                        LIMIT 1
+                    )
+                    """,
+                    (job_id, project, chat_id, message_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def format_job_context(self, project: str, chat_id: int, job_id: str) -> str:
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                user_row = conn.execute(
+                    """
+                    SELECT id, project, chat_id, role, text, job_id, message_id, reply_to_message_id
+                    FROM conversation_entries
+                    WHERE project = ? AND chat_id = ? AND role = 'user' AND job_id = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (project, chat_id, job_id),
+                ).fetchone()
+                result_row = conn.execute(
+                    """
+                    SELECT text
+                    FROM conversation_entries
+                    WHERE project = ? AND chat_id = ? AND role = 'job_result' AND job_id = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (project, chat_id, job_id),
+                ).fetchone()
+            finally:
+                conn.close()
+
+        if user_row is None and result_row is None:
+            return ""
+
+        lines = ["[Reply Job 맥락]", f"job_id={job_id}:"]
+        if user_row is not None:
+            user_entry = _row_to_entry(user_row)
+            if user_entry.message_id is not None:
+                lines.append(f"  original_message_id: {user_entry.message_id}")
+            lines.append(f"  original_user: {_truncate_snippet(user_entry.text)}")
+        else:
+            lines.append("  original_user: (없음)")
+        if result_row is not None:
+            lines.append(f"  job_result: {_truncate_snippet(str(result_row[0]))}")
+        else:
+            lines.append("  job_result: (없음)")
+        lines.append("[/Reply Job 맥락]")
+        return "\n".join(lines)
 
     def collect_reply_chain_message_ids(
         self, project: str, chat_id: int, reply_to_message_id: int

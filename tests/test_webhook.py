@@ -324,6 +324,77 @@ def test_webhook_plan_mode_requires_confirmation_then_accepts_y(project_registry
     assert job_manager.last_request.mode == JobMode.PLAN
 
 
+def test_webhook_binds_confirmed_plan_user_message_to_job_id(project_registry, tmp_path):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    conversation_store = SQLiteConversationStore(tmp_path / "conv.sqlite3")
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    job_manager = CaptureJobManager()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=conversation_store,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+                conversation_store=conversation_store,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=job_manager,
+            job_store=store,
+            conversation_store=conversation_store,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    client.post(
+        wh,
+        json={
+            "update_id": 40,
+            "message": {
+                "message_id": 40,
+                "text": "plan: outline reply context",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+            },
+        },
+    )
+    confirm_response = client.post(
+        wh,
+        json={
+            "update_id": 41,
+            "message": {"message_id": 41, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "accepted"
+    entries = conversation_store.list_recent("remote-coder", 123, 10)
+    user_entries = [entry for entry in entries if entry.role == "user"]
+    assert len(user_entries) == 1
+    assert user_entries[0].message_id == 40
+    assert user_entries[0].job_id == "job_1"
+
+
 def test_webhook_slash_plan_requires_confirmation_then_accepts_y(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()

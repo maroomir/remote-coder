@@ -25,6 +25,10 @@ _PREFIX_PLAN_ASK = re.compile(
     r"^(plan|ask|계획|질문)\s*[:：]\s*",
     re.IGNORECASE,
 )
+_REPLY_JOB_ID_PATTERN = re.compile(
+    r"\bJob ID:\s*`?([A-Za-z0-9_.:-]+)`?",
+    re.IGNORECASE,
+)
 
 
 def _job_mode_from_plan_ask_keyword(key: str) -> JobMode:
@@ -34,6 +38,11 @@ def _job_mode_from_plan_ask_keyword(key: str) -> JobMode:
     if lowered in ("ask", "질문"):
         return JobMode.ASK
     raise AssertionError(key)
+
+
+def _extract_reply_job_id(text: str) -> str | None:
+    match = _REPLY_JOB_ID_PATTERN.search(text)
+    return match.group(1) if match else None
 
 
 class CommandParser:
@@ -166,14 +175,23 @@ class CommandParser:
                 reply_to_message_id,
             ).strip()
         if not reply_prefix and reply_to_message_id is not None and reply_to_text:
-            reply_prefix = "\n".join(
-                [
-                    "[Reply 메시지 맥락]",
-                    f"message_id={reply_to_message_id}:",
-                    f"  text: {reply_to_text.strip()}",
-                    "[/Reply 메시지 맥락]",
-                ]
-            )
+            if self._conversation_store is not None:
+                reply_job_id = _extract_reply_job_id(reply_to_text)
+                if reply_job_id:
+                    reply_prefix = self._conversation_store.format_job_context(
+                        project_name,
+                        chat_id,
+                        reply_job_id,
+                    ).strip()
+            if not reply_prefix:
+                reply_prefix = "\n".join(
+                    [
+                        "[Reply 메시지 맥락]",
+                        f"message_id={reply_to_message_id}:",
+                        f"  text: {reply_to_text.strip()}",
+                        "[/Reply 메시지 맥락]",
+                    ]
+                )
 
         chain_message_ids: set[int] = set()
         if reply_to_message_id is not None and self._conversation_store is not None:

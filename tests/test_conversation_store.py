@@ -147,6 +147,73 @@ def test_bind_message_branch_and_lookup(tmp_path: Path):
     assert store.get_bound_branch("p1", 7, 11) is None
 
 
+def test_bind_user_message_job_allows_job_result_lookup_without_branch(tmp_path: Path):
+    db = tmp_path / "user_job_link.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(
+        project="p1",
+        chat_id=7,
+        role="user",
+        text="plan: outline reply context",
+        message_id=10,
+    )
+    store.bind_user_message_job(
+        project="p1",
+        chat_id=7,
+        message_id=10,
+        job_id="job-plan-1",
+    )
+    store.append(
+        project="p1",
+        chat_id=7,
+        role="job_result",
+        text="status=succeeded stdout_preview=plan result",
+        job_id="job-plan-1",
+    )
+
+    assert (
+        store.get_latest_job_result_text_for_user_message("p1", 7, 10)
+        == "status=succeeded stdout_preview=plan result"
+    )
+
+
+def test_format_job_context_includes_original_user_and_result_without_branch(tmp_path: Path):
+    db = tmp_path / "job_context.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(
+        project="p1",
+        chat_id=7,
+        role="user",
+        text="plan: 최초 계획 요청",
+        job_id="job-plan-1",
+        message_id=10,
+    )
+    store.append(
+        project="p1",
+        chat_id=7,
+        role="job_result",
+        text="status=succeeded stdout_preview=계획 결과",
+        job_id="job-plan-1",
+    )
+    store.append(
+        project="p2",
+        chat_id=7,
+        role="user",
+        text="다른 프로젝트 맥락",
+        job_id="job-plan-1",
+        message_id=10,
+    )
+
+    ctx = store.format_job_context("p1", 7, "job-plan-1")
+
+    assert "[Reply Job 맥락]" in ctx
+    assert "job_id=job-plan-1" in ctx
+    assert "original_message_id: 10" in ctx
+    assert "최초 계획 요청" in ctx
+    assert "계획 결과" in ctx
+    assert "다른 프로젝트 맥락" not in ctx
+
+
 def test_sqlite_memory_limit_prunes_oldest_rows_globally(tmp_path: Path):
     adv = FileAdvancedSettingsStore(advanced_settings_path_for_project_root(tmp_path))
     adv.save(
