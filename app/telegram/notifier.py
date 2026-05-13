@@ -18,7 +18,17 @@ class TelegramNotifier:
         self._api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         self._callback_answer_url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
 
-    def send_text(self, chat_id: int, text: str) -> None:
+    @staticmethod
+    def _extract_message_id(response: httpx.Response) -> int | None:
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        result = data.get("result") if isinstance(data, dict) else None
+        message_id = result.get("message_id") if isinstance(result, dict) else None
+        return int(message_id) if message_id is not None else None
+
+    def send_text(self, chat_id: int, text: str) -> int | None:
         payload = {"chat_id": chat_id, "text": text}
         max_attempts = 3
         _outbound.info("sendMessage start len=%d", len(text), chat_id=chat_id)
@@ -37,7 +47,7 @@ class TelegramNotifier:
                     response.status_code,
                     chat_id=chat_id,
                 )
-                return
+                return self._extract_message_id(response)
             except httpx.HTTPError as exc:
                 _outbound.warning(
                     "sendMessage attempt failed attempt=%d/%d err=%s",
@@ -53,10 +63,11 @@ class TelegramNotifier:
                         type(exc).__name__,
                         chat_id=chat_id,
                     )
-                    return
+                    return None
                 time.sleep(attempt)
+        return None
 
-    def send_with_buttons(self, chat_id: int, text: str, inline_buttons: list) -> None:
+    def send_with_buttons(self, chat_id: int, text: str, inline_buttons: list) -> int | None:
         keyboard = [
             [{"text": btn.label, "callback_data": btn.callback_data} for btn in row]
             for row in inline_buttons
@@ -90,7 +101,7 @@ class TelegramNotifier:
                     response.status_code,
                     chat_id=chat_id,
                 )
-                return
+                return self._extract_message_id(response)
             except httpx.HTTPError as exc:
                 _outbound.warning(
                     "sendMessage buttons attempt failed attempt=%d/%d err=%s",
@@ -106,8 +117,9 @@ class TelegramNotifier:
                         type(exc).__name__,
                         chat_id=chat_id,
                     )
-                    return
+                    return None
                 time.sleep(attempt)
+        return None
 
     def answer_callback_query(self, callback_query_id: str) -> None:
         payload = {"callback_query_id": callback_query_id}
@@ -135,7 +147,7 @@ class TelegramNotifier:
                     return
                 time.sleep(attempt)
 
-    def send_job_accepted(self, job: Job) -> None:
+    def send_job_accepted(self, job: Job) -> int | None:
         _outbound.info(
             "notify job accepted",
             chat_id=job.request.chat_id,
@@ -159,13 +171,13 @@ class TelegramNotifier:
             lines.append("- 모드: plan")
         elif job.request.mode is JobMode.ASK:
             lines.append("- 모드: ask")
-        self.send_with_buttons(
+        return self.send_with_buttons(
             job.request.chat_id,
             "\n".join(lines),
             [[_Btn("작업 중단", f"/stop {job.id}")]],
         )
 
-    def send_job_result(self, job: Job) -> None:
+    def send_job_result(self, job: Job) -> list[int]:
         _outbound.info(
             "notify job result status=%s changed_files=%d",
             job.status.value,
@@ -186,8 +198,7 @@ class TelegramNotifier:
                 f"- Job ID: {job.id}\n"
                 f"- 프로젝트: {job.request.project}"
             )
-            self.send_long_text(job.request.chat_id, text)
-            return
+            return self.send_long_text(job.request.chat_id, text)
         if job.status.value == "succeeded":
             if job.request.mode in (JobMode.PLAN, JobMode.ASK):
                 label = "plan" if job.request.mode is JobMode.PLAN else "ask"
@@ -237,9 +248,9 @@ class TelegramNotifier:
             failure_summary = job.runner_stderr_summary or job.runner_stdout_summary
             if failure_summary:
                 text += f"\n\n실패 출력 요약:\n{failure_summary}"
-        self.send_long_text(job.request.chat_id, text)
+        return self.send_long_text(job.request.chat_id, text)
 
-    def send_long_text(self, chat_id: int, text: str) -> None:
+    def send_long_text(self, chat_id: int, text: str) -> list[int]:
         """Telegram 단일 메시지 한도(4096자)를 넘으면 여러 메시지로 나눠 전송합니다."""
         chunks = self._chunk_text(text, self._TELEGRAM_TEXT_LIMIT)
         _outbound.info(
@@ -248,6 +259,7 @@ class TelegramNotifier:
             len(text),
             chat_id=chat_id,
         )
+        message_ids: list[int] = []
         for idx, chunk in enumerate(chunks, 1):
             _outbound.info(
                 "send_long_text chunk=%d/%d len=%d",
@@ -256,7 +268,10 @@ class TelegramNotifier:
                 len(chunk),
                 chat_id=chat_id,
             )
-            self.send_text(chat_id, chunk)
+            message_id = self.send_text(chat_id, chunk)
+            if message_id is not None:
+                message_ids.append(message_id)
+        return message_ids
 
     @staticmethod
     def _chunk_text(text: str, max_len: int) -> list[str]:

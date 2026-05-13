@@ -69,6 +69,46 @@ def test_job_manager_submit_and_run_success(test_settings, project_registry):
     assert call.kwargs.get("base_branch") is None
 
 
+def test_job_store_keeps_multiple_runs_for_reused_job_id(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    factory = Mock()
+    branch_strategy = Mock()
+    notifier = Mock()
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+    )
+    first = manager.submit(
+        JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="first",
+            chat_id=123,
+            requested_by=123,
+        )
+    )
+    second = manager.submit(
+        JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="second",
+            chat_id=123,
+            requested_by=123,
+            job_id=first.id,
+        )
+    )
+
+    assert second.id == first.id
+    assert store.get(first.id) is second
+    assert [job.request.instruction for job in store.list_recent(10)[:2]] == ["second", "first"]
+
+
 def test_job_manager_extracts_runner_usage(test_settings, project_registry):
     store = InMemoryJobStore()
     git_service = Mock()

@@ -135,6 +135,13 @@ class SQLiteConversationStore:
                 )
                 conn.execute(
                     """
+                    CREATE INDEX IF NOT EXISTS idx_conversation_message_id
+                    ON conversation_entries (project, chat_id, message_id)
+                    WHERE message_id IS NOT NULL
+                    """
+                )
+                conn.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS message_branch_links (
                         project TEXT NOT NULL,
                         chat_id INTEGER NOT NULL,
@@ -290,6 +297,12 @@ class SQLiteConversationStore:
     def get_user_entry_by_message_id(
         self, project: str, chat_id: int, message_id: int
     ) -> ConversationEntry | None:
+        entry = self.get_entry_by_message_id(project, chat_id, message_id)
+        return entry if entry is not None and entry.role == "user" else None
+
+    def get_entry_by_message_id(
+        self, project: str, chat_id: int, message_id: int
+    ) -> ConversationEntry | None:
         with self._lock:
             conn = sqlite3.connect(self._db_path)
             try:
@@ -297,7 +310,7 @@ class SQLiteConversationStore:
                     """
                     SELECT id, project, chat_id, role, text, job_id, message_id, reply_to_message_id
                     FROM conversation_entries
-                    WHERE project = ? AND chat_id = ? AND role = 'user' AND message_id = ?
+                    WHERE project = ? AND chat_id = ? AND message_id = ?
                     ORDER BY id DESC
                     LIMIT 1
                     """,
@@ -306,6 +319,25 @@ class SQLiteConversationStore:
             finally:
                 conn.close()
         return _row_to_entry(row) if row is not None else None
+
+    def get_job_id_for_message_id(self, project: str, chat_id: int, message_id: int) -> str | None:
+        entry = self.get_entry_by_message_id(project, chat_id, message_id)
+        if entry is not None and entry.job_id:
+            return entry.job_id
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                link = conn.execute(
+                    """
+                    SELECT job_id
+                    FROM message_branch_links
+                    WHERE project = ? AND chat_id = ? AND message_id = ?
+                    """,
+                    (project, chat_id, message_id),
+                ).fetchone()
+            finally:
+                conn.close()
+        return str(link[0]) if link is not None and link[0] is not None else None
 
     def get_latest_job_result_text_for_user_message(
         self, project: str, chat_id: int, message_id: int
@@ -388,7 +420,7 @@ class SQLiteConversationStore:
                     SELECT id, project, chat_id, role, text, job_id, message_id, reply_to_message_id
                     FROM conversation_entries
                     WHERE project = ? AND chat_id = ? AND role = 'user' AND job_id = ?
-                    ORDER BY id DESC
+                    ORDER BY id ASC
                     LIMIT 1
                     """,
                     (project, chat_id, job_id),
@@ -403,10 +435,20 @@ class SQLiteConversationStore:
                     """,
                     (project, chat_id, job_id),
                 ).fetchone()
+                history_rows = conn.execute(
+                    """
+                    SELECT id, project, chat_id, role, text, job_id, message_id, reply_to_message_id
+                    FROM conversation_entries
+                    WHERE project = ? AND chat_id = ? AND job_id = ?
+                    ORDER BY id ASC
+                    LIMIT 20
+                    """,
+                    (project, chat_id, job_id),
+                ).fetchall()
             finally:
                 conn.close()
 
-        if user_row is None and result_row is None:
+        if user_row is None and result_row is None and not history_rows:
             return ""
 
         lines = ["[Reply Job 맥락]", f"job_id={job_id}:"]
@@ -421,8 +463,20 @@ class SQLiteConversationStore:
             lines.append(f"  job_result: {_truncate_snippet(str(result_row[0]))}")
         else:
             lines.append("  job_result: (없음)")
+        if history_rows:
+            lines.append("  job_history:")
+            for row in history_rows:
+                entry = _row_to_entry(row)
+                message_part = f" message_id={entry.message_id}" if entry.message_id is not None else ""
+                lines.append(f"    - {entry.role}{message_part}: {_truncate_snippet(entry.text)}")
         lines.append("[/Reply Job 맥락]")
         return "\n".join(lines)
+
+    def format_reply_context(self, project: str, chat_id: int, reply_to_message_id: int) -> str:
+        reply_entry = self.get_entry_by_message_id(project, chat_id, reply_to_message_id)
+        if reply_entry is not None and reply_entry.role != "user" and reply_entry.job_id:
+            return self.format_job_context(project, chat_id, reply_entry.job_id)
+        return self.format_reply_chain_context(project, chat_id, reply_to_message_id)
 
     def collect_reply_chain_message_ids(
         self, project: str, chat_id: int, reply_to_message_id: int

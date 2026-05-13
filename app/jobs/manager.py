@@ -60,8 +60,18 @@ class JobManager:
     def _notifier_for(self, project: str) -> TelegramNotifier:
         return self._notifier_resolver(project)
 
+    @staticmethod
+    def _message_id_or_none(value: object) -> int | None:
+        return value if isinstance(value, int) else None
+
+    @staticmethod
+    def _message_ids_or_empty(value: object) -> list[int]:
+        if not isinstance(value, list):
+            return []
+        return [item for item in value if isinstance(item, int)]
+
     def submit(self, request: JobRequest) -> Job:
-        job = Job(id=self._make_job_id(), request=request)
+        job = Job(id=request.job_id or self._make_job_id(), request=request)
         self._job_store.create(job)
         _joblog.info(
             "submitted model=%s",
@@ -71,7 +81,12 @@ class JobManager:
             project=request.project,
             job_id=job.id,
         )
-        self._notifier_for(request.project).send_job_accepted(job)
+        accepted_message_id = self._message_id_or_none(
+            self._notifier_for(request.project).send_job_accepted(job)
+        )
+        if accepted_message_id is not None:
+            job.accepted_message_id = accepted_message_id
+            self._job_store.update(job)
         return job
 
     def cancel(self, job_id: str) -> bool:
@@ -114,7 +129,11 @@ class JobManager:
             if job.status.value not in ("cancelled",):
                 job.mark_cancelled()
                 self._job_store.update(job)
-            self._notifier_for(job.request.project).send_job_result(job)
+            result_message_ids = self._message_ids_or_empty(
+                self._notifier_for(job.request.project).send_job_result(job)
+            )
+            job.result_message_ids = result_message_ids
+            self._job_store.update(job)
             return job
 
         cancel_event = threading.Event()
@@ -139,7 +158,11 @@ class JobManager:
             job.mark_failed("unknown or disabled project")
             job.error_stage = "project_resolve"
             self._job_store.update(job)
-            self._notifier_for(job.request.project).send_job_result(job)
+            result_message_ids = self._message_ids_or_empty(
+                self._notifier_for(job.request.project).send_job_result(job)
+            )
+            job.result_message_ids = result_message_ids
+            self._job_store.update(job)
             return job
 
         project_path = entry.root_path
@@ -565,7 +588,11 @@ class JobManager:
                         job_id=job.id,
                     )
                     pass
-            self._notifier_for(job.request.project).send_job_result(job)
+            result_message_ids = self._message_ids_or_empty(
+                self._notifier_for(job.request.project).send_job_result(job)
+            )
+            job.result_message_ids = result_message_ids
+            self._job_store.update(job)
         return job
 
     @staticmethod

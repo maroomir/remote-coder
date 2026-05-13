@@ -28,6 +28,7 @@ class JobRequest(BaseModel):
     model: ModelName
     instruction: str
     mode: JobMode = JobMode.AGENT
+    job_id: str | None = None
     branch: str | None = None
     commit: bool = True
     chat_id: int
@@ -49,6 +50,8 @@ class Job(BaseModel):
     runner_token_usage: dict[str, int] = Field(default_factory=dict)
     runner_stdout_summary: str | None = None
     runner_stderr_summary: str | None = None
+    accepted_message_id: int | None = None
+    result_message_ids: list[int] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None

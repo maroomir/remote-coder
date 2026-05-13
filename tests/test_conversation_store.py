@@ -214,6 +214,35 @@ def test_format_job_context_includes_original_user_and_result_without_branch(tmp
     assert "다른 프로젝트 맥락" not in ctx
 
 
+def test_reply_to_recorded_bot_message_resolves_job_context(tmp_path: Path):
+    db = tmp_path / "bot_reply_context.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(
+        project="p1",
+        chat_id=7,
+        role="user",
+        text="plan: 최초 계획 요청",
+        job_id="job-plan-1",
+        message_id=10,
+    )
+    store.append(
+        project="p1",
+        chat_id=7,
+        role="job_result",
+        text="status=succeeded stdout_preview=계획 결과",
+        job_id="job-plan-1",
+        message_id=99,
+    )
+
+    ctx = store.format_reply_context("p1", 7, 99)
+
+    assert store.get_job_id_for_message_id("p1", 7, 99) == "job-plan-1"
+    assert "[Reply Job 맥락]" in ctx
+    assert "최초 계획 요청" in ctx
+    assert "계획 결과" in ctx
+    assert "job_history" in ctx
+
+
 def test_sqlite_memory_limit_prunes_oldest_rows_globally(tmp_path: Path):
     adv = FileAdvancedSettingsStore(advanced_settings_path_for_project_root(tmp_path))
     adv.save(

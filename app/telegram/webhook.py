@@ -588,6 +588,7 @@ def create_webhook_router(
                 role="job_accepted",
                 text=f"Job 접수: {job.id}",
                 job_id=job.id,
+                message_id=getattr(job, "accepted_message_id", None),
             )
             _cmdlog.info(
                 "conversation job_accepted recorded",
@@ -612,6 +613,11 @@ def create_webhook_router(
                     role="job_result",
                     text=summary,
                     job_id=final_job.id,
+                    message_id=(
+                        final_job.result_message_ids[0]
+                        if final_job.result_message_ids
+                        else None
+                    ),
                 )
                 _cmdlog.info(
                     "conversation job_result recorded status=%s",

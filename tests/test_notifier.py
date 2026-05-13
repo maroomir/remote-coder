@@ -277,12 +277,13 @@ def test_notifier_splits_long_job_result_message():
 @respx.mock
 def test_notifier_send_text_logs_outbound_success(caplog):
     route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
-        return_value=Response(200, json={"ok": True})
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 456}})
     )
     with caplog.at_level(logging.INFO, logger="app.telegram.outbound"):
         notifier = TelegramNotifier("token")
-        notifier.send_text(42, "hi")
+        message_id = notifier.send_text(42, "hi")
     assert route.called
+    assert message_id == 456
     assert any(r.name == "app.telegram.outbound" and "sent text" in r.getMessage() for r in caplog.records)
     assert any(getattr(r, "chat_id", None) == 42 for r in caplog.records)
 
@@ -304,12 +305,13 @@ def test_notifier_send_with_buttons_sends_inline_keyboard():
     from app.telegram.commands import InlineButton
 
     route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
-        return_value=Response(200, json={"ok": True})
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 789}})
     )
     notifier = TelegramNotifier("token")
     buttons = [[InlineButton("claude", "/model claude"), InlineButton("codex", "/model codex")]]
-    notifier.send_with_buttons(42, "도움말", buttons)
+    message_id = notifier.send_with_buttons(42, "도움말", buttons)
     assert route.called
+    assert message_id == 789
     payload = json.loads(route.calls[0].request.content)
     assert payload["chat_id"] == 42
     assert payload["text"] == "도움말"
