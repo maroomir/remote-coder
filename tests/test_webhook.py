@@ -21,6 +21,7 @@ from app.telegram.commands import (
     RebaseCommand,
     StartCommand,
     StatusCommand,
+    TelegramCommand,
 )
 from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
@@ -1529,6 +1530,68 @@ def test_webhook_callback_query_executes_model_change(project_registry):
     assert notifier.sent_with_buttons
     assert "codex로 변경" in notifier.sent_with_buttons[0][1]
     assert "cq_001" in notifier.answered_callbacks
+
+
+def test_webhook_callback_query_answers_before_command_execution(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=Mock(),
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+
+    class AckOrderCommand(TelegramCommand):
+        name = "/ack-order"
+        description = "ack order test"
+
+        def execute(self, message, ctx) -> str:
+            _ = (message, ctx)
+            assert notifier.answered_callbacks == ["cq_order"]
+            return "ack order ok"
+
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=CommandRegistry([AckOrderCommand()]),
+            job_manager=DummyJobManager(),
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    client = TestClient(app)
+    payload = {
+        "update_id": 51,
+        "callback_query": {
+            "id": "cq_order",
+            "from": {"id": 999},
+            "message": {"chat": {"id": 123}},
+            "data": "/ack-order",
+        },
+    }
+
+    response = client.post(_webhook_url(project_registry), json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert notifier.sent == [(123, "ack order ok")]
 
 
 def test_recent_update_tracker_detects_duplicate_per_route_key():

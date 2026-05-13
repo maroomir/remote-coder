@@ -1,4 +1,5 @@
 from pathlib import Path
+from threading import Event, Thread
 from unittest.mock import Mock, patch
 
 from app.admin.advanced_settings import AdvancedSettings
@@ -454,6 +455,40 @@ def test_rebase_command_with_explicit_branch(project_registry: ProjectRegistry):
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/rebase my-feature"), ctx)
     assert text == "ok\n브랜치 `my-feature`를 로컬과 `origin`에서 삭제했습니다."
     assert ctx.git_service.rebase_branch_onto_main_and_merge.call_args[0][1] == "my-feature"
+    ctx.git_service.delete_remote_branches.assert_called_once()
+    ctx.git_service.delete_local_branches.assert_called_once()
+
+
+def test_rebase_command_rejects_duplicate_inflight_branch(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    ctx.git_service.list_remote_branches_matching.return_value = ["my-feature"]
+    first_started = Event()
+    release_first = Event()
+
+    def _rebase(*_args):
+        first_started.set()
+        assert release_first.wait(timeout=2)
+        return "ok"
+
+    ctx.git_service.rebase_branch_onto_main_and_merge.side_effect = _rebase
+    registry = CommandRegistry([RebaseCommand()])
+    first_text: list[str | None] = []
+
+    def _run_first() -> None:
+        first_text.append(registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/rebase my-feature"), ctx))
+
+    thread = Thread(target=_run_first)
+    thread.start()
+    assert first_started.wait(timeout=2)
+
+    second_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/rebase my-feature"), ctx)
+
+    release_first.set()
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+    assert "이미 진행 중" in (second_text or "")
+    assert first_text == ["ok\n브랜치 `my-feature`를 로컬과 `origin`에서 삭제했습니다."]
+    ctx.git_service.rebase_branch_onto_main_and_merge.assert_called_once()
     ctx.git_service.delete_remote_branches.assert_called_once()
     ctx.git_service.delete_local_branches.assert_called_once()
 

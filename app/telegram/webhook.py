@@ -248,8 +248,8 @@ def create_webhook_router(
                 )
                 background_tasks.add_task(notifier.answer_callback_query, cq.id)
                 return {"status": "ignored"}
+            notifier.answer_callback_query(cq.id)
             if cq.data in {_NATURAL_JOB_CONFIRM_YES, _NATURAL_JOB_CONFIRM_NO}:
-                background_tasks.add_task(notifier.answer_callback_query, cq.id)
                 pending = command_context.confirmation_store.get(scope_project, cq_chat_id)
                 if pending is None or pending.command_name != _NATURAL_JOB_CONFIRMATION:
                     background_tasks.add_task(notifier.send_text, cq_chat_id, "확인 대기 작업이 없습니다.")
@@ -273,7 +273,6 @@ def create_webhook_router(
                 return {"status": "accepted", "job_id": job.id}
             cq_message = TelegramMessage(chat_id=cq_chat_id, user_id=cq_user_id, text=cq.data)
             cq_response = command_registry.dispatch_rich(cq_message, command_context)
-            background_tasks.add_task(notifier.answer_callback_query, cq.id)
             if cq_response:
                 button_rows = len(cq_response.inline_buttons or [])
                 _cmdlog.info(

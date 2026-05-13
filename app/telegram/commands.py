@@ -4,6 +4,7 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from threading import Lock
 from typing import TYPE_CHECKING
 
 from app.ai.usage import format_token_usage
@@ -753,6 +754,8 @@ class BranchCommand(TelegramCommand):
 class RebaseCommand(TelegramCommand):
     name = "/rebase"
     description = "브랜치를 main 기준으로 rebase하고 push합니다"
+    _inflight_guard = Lock()
+    _inflight_keys: set[tuple[str, str, str]] = set()
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -778,14 +781,17 @@ class RebaseCommand(TelegramCommand):
         if not entry or not entry.enabled:
             return f"프로젝트를 찾을 수 없거나 비활성화되어 있습니다: {project_name}"
 
-        if not self._remote_branch_exists(entry.root_path, branch, ctx):
-            return (
-                f"`{branch}` 원격 브랜치를 `{ctx.git_remote_name}`에서 찾을 수 없습니다. "
-                "이미 rebase/병합 후 삭제되었거나 아직 push되지 않은 브랜치일 수 있습니다."
-            )
+        inflight_key = (str(entry.root_path.resolve()), ctx.git_remote_name, branch)
+        if not self._mark_inflight(inflight_key):
+            return f"`{branch}` rebase/병합이 이미 진행 중입니다. 완료 메시지를 기다려 주세요."
 
         ops_base = entry.worktree_base_dir / "_rebase_ops"
         try:
+            if not self._remote_branch_exists(entry.root_path, branch, ctx):
+                return (
+                    f"`{branch}` 원격 브랜치를 `{ctx.git_remote_name}`에서 찾을 수 없습니다. "
+                    "이미 rebase/병합 후 삭제되었거나 아직 push되지 않은 브랜치일 수 있습니다."
+                )
             summary = ctx.git_service.rebase_branch_onto_main_and_merge(
                 entry.root_path,
                 branch,
@@ -799,6 +805,21 @@ class RebaseCommand(TelegramCommand):
             return summary
         except RuntimeError as exc:
             return f"/rebase 실패: {exc}"
+        finally:
+            self._clear_inflight(inflight_key)
+
+    @classmethod
+    def _mark_inflight(cls, key: tuple[str, str, str]) -> bool:
+        with cls._inflight_guard:
+            if key in cls._inflight_keys:
+                return False
+            cls._inflight_keys.add(key)
+            return True
+
+    @classmethod
+    def _clear_inflight(cls, key: tuple[str, str, str]) -> None:
+        with cls._inflight_guard:
+            cls._inflight_keys.discard(key)
 
     def _delete_rebased_branch_enabled(self, ctx: CommandContext) -> bool:
         if ctx.advanced_settings_store is None:
