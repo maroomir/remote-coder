@@ -134,7 +134,7 @@ def test_start_menu_places_model_under_manage(project_registry: ProjectRegistry)
     assert start_response is not None
     assert start_response.inline_buttons == [
         [InlineButton("도움말", "/help"), InlineButton("모드별 안내", "/start modes")],
-        [InlineButton("모니터링", "/start monitor"), InlineButton("정리", "/start clear")],
+        [InlineButton("모니터링", "/monitor"), InlineButton("정리", "/clear")],
         [InlineButton("관리", "/start manage"), InlineButton("리포트", "/reports")],
     ]
     assert manage_response is not None
@@ -142,7 +142,7 @@ def test_start_menu_places_model_under_manage(project_registry: ProjectRegistry)
         [InlineButton("브랜치 확인", "/branch"), InlineButton("Pull", "/pull")],
         [InlineButton("리베이스", "/rebase"), InlineButton("PR 올리기", "/pr")],
         [InlineButton("중단", "/stop"), InlineButton("상태", "/status")],
-        [InlineButton("모델", "/start model"), InlineButton("초기화", "/init")],
+        [InlineButton("모델", "/model"), InlineButton("초기화", "/init")],
         [InlineButton("뒤로", "/start")],
     ]
 
@@ -163,18 +163,16 @@ def test_start_modes_shows_mode_help_buttons(project_registry: ProjectRegistry):
     ]
 
 
-def test_start_model_goes_back_to_manage(project_registry: ProjectRegistry):
+def test_start_model_topic_falls_back_to_main_menu(project_registry: ProjectRegistry):
     registry = CommandRegistry([StartCommand()])
     response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/start model"), _ctx(project_registry))
 
     assert response is not None
+    assert response.text.startswith("✅ Remote AI Coder가 준비되었습니다.")
     assert response.inline_buttons == [
-        [
-            InlineButton("claude", "/model claude"),
-            InlineButton("codex", "/model codex"),
-            InlineButton("gemini", "/model gemini"),
-        ],
-        [InlineButton("뒤로", "/start manage")],
+        [InlineButton("도움말", "/help"), InlineButton("모드별 안내", "/start modes")],
+        [InlineButton("모니터링", "/monitor"), InlineButton("정리", "/clear")],
+        [InlineButton("관리", "/start manage"), InlineButton("리포트", "/reports")],
     ]
 
 
