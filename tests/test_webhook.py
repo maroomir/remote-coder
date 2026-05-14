@@ -17,6 +17,7 @@ from app.telegram.commands import (
     CommandContext,
     CommandRegistry,
     HelpCommand,
+    InitCommand,
     ModelCommand,
     RebaseCommand,
     StartCommand,
@@ -197,6 +198,7 @@ def _commands_with_clear() -> CommandRegistry:
             HelpCommand(),
             ModelCommand(),
             StatusCommand(),
+            InitCommand(),
             BranchCommand(),
             RebaseCommand(),
             ClearCommand(),
@@ -484,6 +486,221 @@ def test_webhook_slash_plan_requires_confirmation_then_accepts_y(project_registr
     assert confirm_response.json()["status"] == "accepted"
     assert job_manager.last_request.mode == JobMode.PLAN
     assert job_manager.last_request.model == ModelName.CODEX
+
+
+def test_webhook_empty_slash_plan_waits_for_next_instruction(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    job_manager = CaptureJobManager()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=job_manager,
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    response = client.post(
+        wh,
+        json={
+            "update_id": 120,
+            "message": {"message_id": 120, "text": "/plan", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert "plan 모드로 실행할 작업 지시문" in notifier.sent[0][1]
+    pending_input = command_context.confirmation_store.get("remote-coder", 123)
+    assert pending_input is not None
+    assert pending_input.action == JobMode.PLAN.value
+    assert pending_input.job_request is None
+    git_service.get_current_branch.assert_not_called()
+
+    followup = client.post(
+        wh,
+        json={
+            "update_id": 121,
+            "message": {
+                "message_id": 121,
+                "text": "model: codex outline only",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+            },
+        },
+    )
+
+    assert followup.status_code == 200
+    assert followup.json()["status"] == "ok"
+    pending = command_context.confirmation_store.get("remote-coder", 123)
+    assert pending is not None
+    assert pending.job_request is not None
+    assert pending.job_request.mode == JobMode.PLAN
+    assert pending.job_request.model == ModelName.CODEX
+    assert pending.job_request.instruction == "outline only"
+    assert pending.original_text == "model: codex outline only"
+    assert "- 모드: plan" in notifier.sent[-1][1]
+    git_service.get_current_branch.assert_called_once()
+
+
+def test_webhook_empty_slash_ask_waits_for_next_instruction(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    job_manager = CaptureJobManager()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=job_manager,
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    response = client.post(
+        wh,
+        json={
+            "update_id": 130,
+            "message": {"message_id": 130, "text": "/ask", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    followup = client.post(
+        wh,
+        json={
+            "update_id": 131,
+            "message": {
+                "message_id": 131,
+                "text": "what owns routing?",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert "ask 모드로 실행할 질문" in notifier.sent[0][1]
+    assert followup.status_code == 200
+    pending = command_context.confirmation_store.get("remote-coder", 123)
+    assert pending is not None
+    assert pending.job_request is not None
+    assert pending.job_request.mode == JobMode.ASK
+    assert "routing" in pending.job_request.instruction
+    assert "- 모드: ask" in notifier.sent[-1][1]
+
+
+def test_webhook_init_cancels_empty_slash_plan_wait(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    job_manager = CaptureJobManager()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=job_manager,
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+    client.post(
+        wh,
+        json={
+            "update_id": 140,
+            "message": {"message_id": 140, "text": "/plan", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert command_context.confirmation_store.get("remote-coder", 123) is not None
+
+    response = client.post(
+        wh,
+        json={
+            "update_id": 141,
+            "message": {"message_id": 141, "text": "/init", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert command_context.confirmation_store.get("remote-coder", 123) is None
+    assert "초기화했습니다" in notifier.sent[-1][1]
 
 
 def test_webhook_ask_mode_requires_confirmation_then_accepts_y(project_registry):

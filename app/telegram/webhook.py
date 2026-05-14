@@ -60,6 +60,7 @@ def format_job_result_memory_summary(final_job: Job) -> str:
 _NATURAL_JOB_CONFIRMATION = "__natural_job__"
 _NATURAL_JOB_CONFIRM_YES = "__natural_job__:yes"
 _NATURAL_JOB_CONFIRM_NO = "__natural_job__:no"
+_NATURAL_JOB_MODE_INPUT = "__natural_job_mode_input__"
 
 
 class _RecentUpdateTracker:
@@ -129,6 +130,22 @@ def _format_natural_job_cancelled(request: JobRequest | None) -> str:
     if request is None:
         return "작업 요청을 취소했습니다."
     return f"작업 요청을 취소했습니다. (프로젝트: {request.project}, 모델: {request.model.value})"
+
+
+def _format_mode_input_prompt(mode: JobMode) -> str:
+    if mode is JobMode.PLAN:
+        return (
+            "plan 모드로 실행할 작업 지시문을 보내주세요.\n\n"
+            "예: 로그인 수정 계획 세워줘\n"
+            "예: model: codex API 경계 리스크만 나열해줘"
+        )
+    if mode is JobMode.ASK:
+        return (
+            "ask 모드로 실행할 질문을 보내주세요.\n\n"
+            "예: JobManager 흐름 설명해줘\n"
+            "예: model: codex pytest 실행 방법 알려줘"
+        )
+    raise AssertionError(mode)
 
 
 class TelegramChat(BaseModel):
@@ -347,6 +364,7 @@ def create_webhook_router(
         pending = command_context.confirmation_store.get(scope_project, chat_id)
         message_tokens = message.text.strip().split(maxsplit=1)
         message_head = message_tokens[0] if message_tokens else ""
+        message_head_lower = message_head.lower()
 
         def _queue_natural_confirmation(req: JobRequest, original_text_stripped: str) -> bool:
             ent = command_context.project_registry.get(bot_instance.project_name)
@@ -403,7 +421,7 @@ def create_webhook_router(
         if (
             pending is not None
             and pending.command_name == _NATURAL_JOB_CONFIRMATION
-            and message_head != "/init"
+            and message_head_lower != "/init"
         ):
             if message.text.strip() in {"y", "Y"}:
                 confirmed = command_context.confirmation_store.pop(scope_project, chat_id)
@@ -458,6 +476,61 @@ def create_webhook_router(
             if _queue_natural_confirmation(parsed_request, message.text.strip()):
                 return {"status": "ok"}
             return {"status": "ignored"}
+
+        if (
+            pending is not None
+            and pending.command_name == _NATURAL_JOB_MODE_INPUT
+            and message_head_lower != "/init"
+        ):
+            command_context.confirmation_store.pop(scope_project, chat_id)
+            mode_prefix = "/plan" if pending.action == JobMode.PLAN.value else "/ask"
+            try:
+                parsed_request = parser.parse_natural(
+                    f"{mode_prefix} {message.text}",
+                    bot_instance.project_name,
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    message_id=update.message.message_id,
+                    reply_to_message_id=reply_mid,
+                    reply_to_text=reply_txt,
+                )
+            except CommandParseError as exc:
+                _cmdlog.warning(
+                    "parse error for pending mode input message_id=%s mode=%s err=%s",
+                    update.message.message_id,
+                    pending.action,
+                    str(exc)[:120],
+                    chat_id=chat_id,
+                    user_id=user_id,
+                )
+                background_tasks.add_task(notifier.send_text, chat_id, str(exc))
+                return {"status": "ignored"}
+            _cmdlog.info(
+                "pending mode input parsed mode=%s model=%s instruction_len=%d reply_to=%s",
+                parsed_request.mode.value,
+                parsed_request.model.value,
+                len(parsed_request.instruction),
+                parsed_request.reply_to_message_id or "-",
+                chat_id=chat_id,
+                user_id=user_id,
+                project=parsed_request.project,
+            )
+            if _queue_natural_confirmation(parsed_request, message.text.strip()):
+                return {"status": "ok"}
+            return {"status": "ignored"}
+
+        if message_head_lower in {"/plan", "/ask"} and len(message_tokens) == 1:
+            mode = JobMode.PLAN if message_head_lower == "/plan" else JobMode.ASK
+            command_context.confirmation_store.set(
+                scope_project,
+                chat_id,
+                PendingConfirmation(
+                    command_name=_NATURAL_JOB_MODE_INPUT,
+                    action=mode.value,
+                ),
+            )
+            background_tasks.add_task(notifier.send_text, chat_id, _format_mode_input_prompt(mode))
+            return {"status": "ok"}
 
         command_response: CommandResponse | None = command_registry.dispatch_rich(message, command_context)
         if command_response:
