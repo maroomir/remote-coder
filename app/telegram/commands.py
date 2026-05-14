@@ -1017,10 +1017,7 @@ class MonitorCommand(TelegramCommand):
         tokens = message.text.strip().split()
         if len(tokens) < 2:
             _cmd_evt.info("monitor usage requested", chat_id=message.chat_id, user_id=message.user_id)
-            return format_usage(
-                "/monitor <model|memory|branch|worktrees|code|project>",
-                "예: /monitor model",
-            )
+            return "확인할 모니터링 항목을 선택하세요."
 
         sub = tokens[1].lower()
         valid = {"model", "memory", "branch", "worktrees", "code", "project"}
@@ -1150,6 +1147,28 @@ class MonitorCommand(TelegramCommand):
         )
         return format_code_monitor(stats, project_name, entry.root_path)
 
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        _ = ctx
+        tokens = message.text.strip().split() if message is not None else []
+        if len(tokens) != 1:
+            return None
+        return [
+            [
+                InlineButton("model", "/monitor model"),
+                InlineButton("memory", "/monitor memory"),
+                InlineButton("branch", "/monitor branch"),
+            ],
+            [
+                InlineButton("worktrees", "/monitor worktrees"),
+                InlineButton("code", "/monitor code"),
+                InlineButton("project", "/monitor project"),
+            ],
+        ]
+
 
 class ClearCommand(ConfirmableCommand):
     name = "/clear"
@@ -1157,6 +1176,8 @@ class ClearCommand(ConfirmableCommand):
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
+        if len(tokens) == 1:
+            return "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다."
         if len(tokens) != 2 or tokens[1] not in {"branch", "memory", "worktrees"}:
             return "사용법: /clear branch 또는 /clear worktrees 또는 /clear memory"
 
@@ -1188,7 +1209,18 @@ class ClearCommand(ConfirmableCommand):
         message: TelegramMessage | None = None,
         ctx: CommandContext | None = None,
     ) -> list[list[InlineButton]] | None:
-        if message is None or ctx is None or not _confirmation_buttons_enabled(ctx):
+        if message is None or ctx is None:
+            return None
+        tokens = message.text.strip().split()
+        if len(tokens) == 1:
+            return [
+                [
+                    InlineButton("branch", "/clear branch"),
+                    InlineButton("worktrees", "/clear worktrees"),
+                    InlineButton("memory", "/clear memory"),
+                ],
+            ]
+        if not _confirmation_buttons_enabled(ctx):
             return None
         pending = ctx.confirmation_store.get(
             effective_project_name_for_chat(ctx, message.chat_id),

@@ -161,7 +161,7 @@ Start with the smallest useful version of this structure. Add deeper layers only
 - Separate routers, services, settings, models, and adapters.
 - Natural-language job requests must show current project, target branch, and model, then wait for `y` or `Y` confirmation before creating a job. The effective project is the bot instance's bound project (no `/project` command).
 - `/init` resets the chat's default model override and pending confirmation state. It must not alter SQLite conversation memory or Git repositories.
-- Commands with selectable options (`/model`, `/status`, `/branch`, `/rebase`, `/stop`) should show inline buttons when called without arguments and route callbacks through the existing slash-command path.
+- Commands with selectable options (`/model`, `/status`, `/branch`, `/rebase`, `/stop`, `/pr`, `/clear`, `/monitor`) should show inline buttons when called without arguments and route callbacks through the existing slash-command path.
 
 ## Git and AI Runner Rules
 

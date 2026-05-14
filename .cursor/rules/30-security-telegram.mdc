@@ -29,7 +29,7 @@ alwaysApply: true
 - Completion messages must include project name, branch name, commit hash, changed files, model information when available, token usage when available, and an error summary on failure.
 - Failure messages should summarize the root cause and point to the log location instead of sending long logs.
 - Keep command help available through `/help`.
-- Commands with selectable options (`/model`, `/status`, `/branch`, `/rebase`, `/stop`) should show inline buttons when called without arguments.
+- Commands with selectable options (`/model`, `/status`, `/branch`, `/rebase`, `/stop`, `/pr`, `/clear`, `/monitor`) should show inline buttons when called without arguments.
 - Inline button callback data must reuse the existing slash-command execution path after callback authentication.
 - `/init` resets the chat's default model override and pending confirmation state. It must not alter SQLite conversation memory or Git repositories.
 - There is no `/project` command: the Telegram bot is bound to one registered project; webhook URL uses the first **16 hex characters** of the SHA-256 digest of the bot token as the path segment (not the raw token, not the full digest).

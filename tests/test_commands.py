@@ -575,6 +575,23 @@ def test_clear_branch_command_uses_confirmation_buttons_when_enabled(project_reg
     ctx.git_service.delete_local_branches.assert_not_called()
 
 
+def test_clear_command_lists_cleanup_options_as_buttons(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    registry = CommandRegistry([ClearCommand()])
+
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/clear"), ctx)
+
+    assert response is not None
+    assert response.text == "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다."
+    assert response.inline_buttons == [
+        [
+            InlineButton("branch", "/clear branch"),
+            InlineButton("worktrees", "/clear worktrees"),
+            InlineButton("memory", "/clear memory"),
+        ],
+    ]
+
+
 def test_clear_worktrees_command_requests_confirmation(project_registry: ProjectRegistry):
     ctx = _ctx(project_registry)
     registry = CommandRegistry([ClearCommand()])
@@ -742,10 +759,25 @@ def test_reports_command_handles_empty_memory(project_registry: ProjectRegistry,
 
 def test_monitor_command_shows_usage(project_registry: ProjectRegistry):
     registry = CommandRegistry([MonitorCommand()])
-    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/monitor"), _ctx(project_registry))
-    assert text is not None
-    assert "사용법" in text
-    assert "/monitor" in text
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="/monitor"),
+        _ctx(project_registry),
+    )
+
+    assert response is not None
+    assert response.text == "확인할 모니터링 항목을 선택하세요."
+    assert response.inline_buttons == [
+        [
+            InlineButton("model", "/monitor model"),
+            InlineButton("memory", "/monitor memory"),
+            InlineButton("branch", "/monitor branch"),
+        ],
+        [
+            InlineButton("worktrees", "/monitor worktrees"),
+            InlineButton("code", "/monitor code"),
+            InlineButton("project", "/monitor project"),
+        ],
+    ]
 
 
 def test_monitor_command_rejects_invalid_subcommand(project_registry: ProjectRegistry):
