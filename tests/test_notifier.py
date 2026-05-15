@@ -7,7 +7,7 @@ from pathlib import Path
 
 from app.admin.advanced_settings import AdvancedSettings
 from app.jobs.schemas import Job, JobMode, JobRequest, JobStatus
-from app.models import ModelName
+from app.models import ModelName, UiLanguage
 from app.telegram.notifier import TelegramNotifier
 
 
@@ -16,7 +16,8 @@ def test_notifier_send_job_accepted_includes_mode_for_plan_ask():
     route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
         return_value=Response(200, json={"ok": True})
     )
-    notifier = TelegramNotifier("token")
+    store = type("Store", (), {"get": lambda self: AdvancedSettings(ui_language=UiLanguage.KOREAN)})()
+    notifier = TelegramNotifier("token", store)
     for mode, expected in ((JobMode.PLAN, "모드: plan"), (JobMode.ASK, "모드: ask")):
         route.calls.clear()
         job = Job(
@@ -88,13 +89,13 @@ def test_notifier_send_job_result_plan_succeeded_compact_format():
     )
     notifier.send_job_result(job)
     payload = route.calls[0].request.content.decode()
-    assert "[plan] 응답 완료" in payload
+    assert "[plan] Completed" in payload
     assert "step one then two" in payload
-    assert "브랜치" not in payload
-    assert "커밋" not in payload
-    assert "변경 파일" not in payload
-    assert "사용 모델: claude-3" in payload
-    assert "토큰 사용량: 15" in payload
+    assert "Branch:" not in payload
+    assert "Commit:" not in payload
+    assert "Changed files:" not in payload
+    assert "Model used: claude-3" in payload
+    assert "Token usage: 15" in payload
 
 
 @respx.mock
@@ -118,9 +119,9 @@ def test_notifier_send_job_result_ask_succeeded_compact_format():
     )
     notifier.send_job_result(job)
     payload = route.calls[0].request.content.decode()
-    assert "[ask] 응답 완료" in payload
+    assert "[ask] Completed" in payload
     assert "answer text" in payload
-    assert "브랜치" not in payload
+    assert "Branch:" not in payload
 
 
 @respx.mock
@@ -145,7 +146,7 @@ def test_notifier_send_job_result_plan_failure_prefix_only():
     )
     notifier.send_job_result(job)
     payload = route.calls[0].request.content.decode()
-    assert "[plan] ❌ 작업 실패" in payload
+    assert "[plan] ❌ Job failed" in payload
     assert "boom" in payload
 
 
@@ -169,7 +170,7 @@ def test_notifier_send_job_result_plan_cancelled_has_mode_prefix():
     )
     notifier.send_job_result(job)
     payload = route.calls[0].request.content.decode()
-    assert "[plan] ⛔ 작업 중단됨" in payload
+    assert "[plan] ⛔ Job cancelled" in payload
 
 
 @respx.mock
@@ -192,10 +193,10 @@ def test_notifier_send_job_result_success():
     notifier.send_job_result(job)
     assert route.called
     payload = route.calls[0].request.content.decode()
-    assert "AI 응답" in payload
+    assert "AI response" in payload
     assert "done summary" in payload
-    assert "사용 모델" in payload
-    assert "토큰 사용량" in payload
+    assert "Model used" in payload
+    assert "Token usage" in payload
 
 
 @respx.mock
@@ -218,8 +219,8 @@ def test_notifier_send_job_result_success_includes_runner_usage():
     )
     notifier.send_job_result(job)
     payload = route.calls[0].request.content.decode()
-    assert "사용 모델: ChatGPT 5.5" in payload
-    assert "토큰 사용량: 1,500" in payload
+    assert "Model used: ChatGPT 5.5" in payload
+    assert "Token usage: 1,500" in payload
 
 
 @respx.mock
@@ -240,7 +241,7 @@ def test_notifier_success_without_branch_shows_no_branch_message():
     )
     notifier.send_job_result(job)
     payload = route.calls[0].request.content.decode()
-    assert "미생성" in payload or "없음" in payload
+    assert "not created" in payload or "none" in payload
 
 
 @respx.mock
@@ -263,9 +264,9 @@ def test_notifier_send_job_result_failure_includes_log_path():
     notifier.send_job_result(job)
     assert route.called
     payload = route.calls[0].request.content.decode()
-    assert "실패 단계" in payload
-    assert "로그 경로" in payload
-    assert "실패 출력 요약" in payload
+    assert "Failure stage" in payload
+    assert "Log path" in payload
+    assert "Failure output summary" in payload
     assert "permission denied" in payload
 
 
@@ -294,10 +295,10 @@ def test_notifier_splits_long_job_result_message():
         payload = json.loads(call.request.content.decode())
         assert len(payload["text"]) <= 4096
         combined += payload["text"]
-    marker = "\n\nAI 응답:\n"
+    marker = "\n\nAI response:\n"
     assert combined.find(marker) != -1
     assert combined.endswith(long_ai)
-    assert "작업 완료" in combined
+    assert "Job completed" in combined
     assert "truncated" not in combined
 
 
@@ -341,7 +342,7 @@ def test_notifier_send_with_buttons_sends_inline_keyboard():
     assert message_id == 789
     payload = json.loads(route.calls[0].request.content)
     assert payload["chat_id"] == 42
-    assert payload["text"] == "도움말"
+    assert payload["text"] == "Help"
     assert "reply_markup" in payload
     kb = payload["reply_markup"]["inline_keyboard"]
     assert kb[0][0]["text"] == "claude"
@@ -359,3 +360,30 @@ def test_notifier_answer_callback_query():
     assert route.called
     payload = json.loads(route.calls[0].request.content)
     assert payload["callback_query_id"] == "cq_abc"
+
+
+@respx.mock
+def test_notifier_keeps_korean_when_ui_language_is_korean():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    store = type("Store", (), {"get": lambda self: AdvancedSettings(ui_language=UiLanguage.KOREAN)})()
+    notifier = TelegramNotifier("token", store)
+    job = Job(
+        id="jk",
+        request=JobRequest(
+            project="p",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="main",
+        commit_hash="abc",
+        changed_files=[],
+    )
+    notifier.send_job_result(job)
+    payload = route.calls[0].request.content.decode()
+    assert "작업 완료" in payload
+    assert "프로젝트" in payload

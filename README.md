@@ -135,7 +135,9 @@ cp .env.example .env
 
 ### 고급 설정 (위험 옵션)
 
-관리 UI의 **고급 설정** 페이지(`http://127.0.0.1:8000/advanced`)에서 전역 설정 파일 `PROJECT_ROOT/.remote-coder/advanced_settings.json`을 읽고 저장할 수 있습니다. 옵션마다 기본값이 다르며(예: 서버 생명주기 Telegram 알림은 기본 켜짐, 서버 시작 시 저장소 `git pull`은 기본 꺼짐), 켜지 않은 옵션은 해당 기능이 비활성인 것과 같습니다. 예전 버전에서만 쓰이던 키는 로드 시 무시됩니다(예: 제거된 `auto_pull_on_project_switch`).
+관리 UI의 **고급 설정** 페이지(`http://127.0.0.1:8000/advanced`)에서 전역 설정 파일 `PROJECT_ROOT/.remote-coder/advanced_settings.json`을 읽고 저장할 수 있습니다. **Interface language** (`ui_language`): 기본값은 **English**이며, Telegram 봇이 보내는 안내·버튼 라벨 등이 이 언어를 따릅니다. **한국어**로 바꾼 뒤 저장하면 기존처럼 한국어 응답을 받을 수 있습니다.
+
+옵션마다 기본값이 다르며(예: 서버 생명주기 Telegram 알림은 기본 켜짐, 서버 시작 시 저장소 `git pull`은 기본 꺼짐), 켜지 않은 옵션은 해당 기능이 비활성인 것과 같습니다. 예전 버전에서만 쓰이던 키는 로드 시 무시됩니다(예: 제거된 `auto_pull_on_project_switch`).
 
 > [!WARNING]
 > “요청 결과를 즉시 main/master에 반영 후 push” 옵션은 AI가 만든 변경을 통합 브랜치에 자동 반영합니다. 개인 실험용 저장소가 아니라면 기본값(off)을 유지하고, 사용 전 원격 브랜치 보호와 백업 정책을 확인하세요.

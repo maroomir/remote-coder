@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import re
+
 from app.models import UiLanguage
 
 
 def language_from_settings_store(settings_store) -> UiLanguage:
     if settings_store is None:
-        return UiLanguage.KOREAN
+        return UiLanguage.ENGLISH
     return settings_store.get().ui_language
 
 
-_TEXT_REPLACEMENTS = (
+_TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
     ("도움말", "Help"),
     ("작업 지시는 일반 메시지로 보내세요.", "Send work requests as regular messages."),
     ("옵션", "Options"),
@@ -32,7 +34,7 @@ _TEXT_REPLACEMENTS = (
     ("계획 모드 메시지", "plan mode message"),
     ("질문 모드 메시지", "ask mode message"),
     ("메시지", "message"),
-    ("예:", "example:"),
+    ("예:", "Example:"),
     ("로그인 흐름 검토", "review login flow"),
     ("역할 설명", "explain the role"),
     ("기본 모델 변경", "Change the default model"),
@@ -66,23 +68,31 @@ _TEXT_REPLACEMENTS = (
     ("지시", "Instruction"),
     ("작업 접수 완료", "Job accepted"),
     ("작업 완료", "Job completed"),
-    ("시작", "Started"),
-    ("완료", "Finished"),
-    ("소요", "Duration"),
-    ("경과", "Elapsed"),
-    ("생성", "Created"),
+    ("작업 실패", "Job failed"),
+    ("작업 중단됨", "Job cancelled"),
+    ("응답 완료", "Completed"),
+    ("- 시작:", "- Started:"),
+    ("→ 완료:", "→ Finished:"),
+    ("(소요:", "(duration:"),
+    ("(경과:", "(elapsed:"),
+    ("- 생성:", "- Created:"),
     ("브랜치", "Branch"),
     ("커밋", "Commit"),
     ("변경 파일", "Changed files"),
     ("없음 (no-op)", "none (no-op)"),
     ("오류 단계", "Error stage"),
+    ("실패 단계", "Failure stage"),
+    ("로그 경로", "Log path"),
+    ("실패 출력 요약", "Failure output summary"),
     ("오류", "Error"),
     ("현재 출력", "Current output"),
     ("AI 출력 요약", "AI output summary"),
+    ("AI 응답", "AI response"),
     ("Remote AI Coder가 준비되었습니다.", "Remote AI Coder is ready."),
     ("Remote AI Coder 서버가 시작되었습니다.", "Remote AI Coder server started."),
     ("Remote AI Coder 서버 연결이 종료되었습니다.", "Remote AI Coder server connection closed."),
     ("모델", "Model"),
+    ("모드", "Mode"),
     ("Remote AI Coder에 오신 것을 환영합니다.", "Welcome to Remote AI Coder."),
     ("등록 정보 없음", "not registered"),
     ("확인 실패", "check failed"),
@@ -121,24 +131,34 @@ _TEXT_REPLACEMENTS = (
     ("리베이스할 브랜치가 없습니다.", "No branch is available to rebase."),
     ("리베이스할 브랜치를 선택하세요.", "Choose a branch to rebase."),
     ("등록된 프로젝트가 없습니다. /projects 로 등록하세요.", "No project is registered. Add one in /projects."),
+    ("브라우저에서 http://127.0.0.1:8000/projects 로 프로젝트를 등록하세요.", "Register a project at http://127.0.0.1:8000/projects."),
     ("원격 브랜치를", "remote branch on"),
     ("에서 찾을 수 없습니다.", "was not found."),
     ("이미 rebase/병합 후 삭제되었거나 아직 push되지 않은 브랜치일 수 있습니다.", "It may have already been rebased/merged and deleted, or not pushed yet."),
     ("브랜치를 로컬과", "Deleted the branch locally and from"),
     ("에서 삭제했습니다.", "."),
-    ("실패", "failed"),
     ("PR을 올릴 브랜치가 없습니다.", "No branch is available for PR creation."),
     ("PR을 올릴 브랜치를 선택하세요.", "Choose a branch for the PR."),
     ("PR이 생성되었습니다:", "PR created:"),
     ("작업 브랜치", "Work branch"),
     ("작업 요청", "Work request"),
-    ("요청", "Request"),
+    ("작업 브랜치 확인 실패:", "Could not resolve work branch:"),
     ("AI 결과", "AI result"),
     ("확인할 모니터링 항목을 선택하세요.", "Choose a monitoring view."),
     ("이 봇의 프로젝트 컨텍스트를 찾을 수 없습니다.", "No project context is bound to this bot."),
+    ("알 수 없는 프로젝트:", "Unknown project:"),
     ("알 수 없는 프로젝트", "Unknown project"),
+    ("비활성화된 프로젝트:", "Disabled project:"),
     ("비활성화된 프로젝트", "Disabled project"),
     ("작업 지시문이 비어 있습니다.", "The work instruction is empty."),
+    (
+        "작업 지시문이 비어 있습니다.\n\n"
+        "예: plan: 로그인 수정 계획 세워줘\n"
+        "예: /ask JobManager 흐름 설명해줘",
+        "The work instruction is empty.\n\n"
+        "Example: plan: outline the login refactor\n"
+        "Example: /ask explain JobManager routing",
+    ),
     ("이전 작업 맥락이 없습니다. 구체적인 작업 지시를 보내주세요.", "There is no previous job context. Send a specific work instruction."),
     ("브랜치 이름이 비었거나 너무 깁니다.", "Branch name is empty or too long."),
     ("허용되지 않는 브랜치 이름입니다.", "Branch name is not allowed."),
@@ -147,15 +167,21 @@ _TEXT_REPLACEMENTS = (
     ("대화 기억 저장소가 설정되지 않았습니다.", "Conversation memory storage is not configured."),
     ("정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다.", "Choose what to clean up. Confirmation with y/Y is required."),
     ("기억 저장소가 설정되지 않았습니다.", "Memory storage is not configured."),
-    ("현재 할 작업", "Action to run"),
+    ("현재 할 작업을 확인하세요.", "Confirm the work to run."),
     ("실행 여부를 선택하세요.", "Choose whether to run it."),
+    (
+        "실행하려면 `y` 또는 `Y`를 입력하세요. "
+        "새 자연어 요청으로 이 확인을 바꿀 수 있습니다. "
+        "파싱되지 않는 입력은 대기 작업이 취소됩니다.",
+        "Send `y` or `Y` to run. Another natural-language request replaces this confirmation. "
+        "Unparseable input cancels the pending request.",
+    ),
     ("실행하려면 `y` 또는 `Y`를 입력하세요. 그 외 응답은 취소됩니다.", "Send `y` or `Y` to run it. Any other response cancels it."),
-    ("를 취소했습니다.", " cancelled."),
+    ("작업 요청을 취소했습니다.", "Cancelled the work request."),
     ("알 수 없는 clear 작업입니다.", "Unknown clear action."),
     ("봇에 연결된 프로젝트가 없거나 레지스트리에서 찾을 수 없습니다.", "No project is bound to this bot or found in the registry."),
     ("프로젝트가 비활성화되어 있습니다", "Project is disabled"),
     ("개 삭제", " deleted"),
-    ("기억 저장소가 설정되지 않았습니다.", "Memory storage is not configured."),
     ("봇에 연결된 프로젝트가 없습니다.", "No project is bound to this bot."),
     ("이 채팅방의 대화 기억을 삭제했습니다.", "Deleted conversation memory for this chat."),
     ("진행 중 Job이 없습니다.", "No running job is available."),
@@ -167,8 +193,140 @@ _TEXT_REPLACEMENTS = (
     ("작업을 중단할 수 없습니다", "Cannot stop job"),
     ("현재 상태", "current status"),
     ("확인 대기 작업을 처리할 수 없습니다.", "Could not process the pending confirmation."),
+    ("확인 대기 작업이 없습니다.", "There is no pending confirmation."),
     ("알 수 없는 명령어입니다. /help 를 확인하세요.", "Unknown command. See /help."),
+    ("변경 없음", "No changes"),
+    ("(스테이징된 변경 없음 — push 생략)", "(nothing staged — push skipped)"),
+    ("(no commit 옵션 — 커밋·push 생략)", "(no commit — commit/push skipped)"),
+    ("(없음 — 변경 없어 브랜치 미생성)", "(none — no branch; no changes)"),
+    ("미생성", "not created"),
+    ("통합 브랜치(main 또는 master)를 찾을 수 없습니다. 저장소에 main 또는 master가 있어야 합니다.", "No integration branch (main or master). The repository needs main or master."),
+    ("(detached HEAD — 브랜치 이름 없음)", "(detached HEAD — no branch name)"),
+    ("(로컬 브랜치 없음)", "(no local branches)"),
+    ("로컬 브랜치가 없습니다:", "No local branch:"),
+    ("plan 모드로 실행할 작업 지시문을 보내주세요.", "Send the instruction to run in plan mode."),
+    ("ask 모드로 실행할 질문을 보내주세요.", "Send the question to run in ask mode."),
+    ("읽기 전용 · 커밋·push 없음", "read-only — no commit/push"),
+    ("코드 수정·커밋·push 가능", "allows edit, commit, and push"),
+    ("요청 브랜치", "Requested branch"),
+    ("브랜치·커밋·push", "branch/commit/push"),
+    ("메모리(SQLite)", "Memory (SQLite)"),
+    ("프로젝트:", "Project:"),
+    ("DB 경로:", "DB path:"),
+    ("이 채팅 저장 행 수:", "Rows for this chat:"),
+    ("역할별 행 수:", "Rows by role:"),
+    ("브랜치 모니터", "Branch monitor"),
+    ("원격 이름:", "Remote name:"),
+    ("현재 checkout:", "Current checkout:"),
+    ("로컬 브랜치 수:", "Local branch count:"),
+    ("원격 추적 브랜치 수:", "Tracked remote branches:"),
+    ("[로컬]", "[Local]"),
+    ("메시지 길이 제한으로 생략)", "truncated for message length)"),
+    ("/monitor branch 실패:", "/monitor branch failed:"),
+    ("/monitor worktrees 실패:", "/monitor worktrees failed:"),
+    ("워크트리 모니터", "Worktree monitor"),
+    ("관리 기준 디렉터리(worktree_base):", "Managed base (worktree_base):"),
+    ("총 worktree 수:", "Total worktrees:"),
+    ("managed 후보 수(remote-*·base·_rebase_ops):", "managed candidates (remote-*, base, _rebase_ops):"),
+    ("[항목]", "[Entries]"),
+    ("개 생략)", " omitted)"),
+    ("코드 규모(추정)", "Code size (estimated)"),
+    ("스캔한 코드 파일 수:", "Code files scanned:"),
+    ("합계 줄 수(대략):", "Approx. total lines:"),
+    ("건너뜀(바이너리/읽기 오류):", "Skipped (binary/read error):"),
+    ("참고: 확장자 기준 텍스트 파일만 포함합니다. 대용량 저장소에서는 상한에 도달하면 일부만 집계됩니다.", "Note: only text-like extensions included; large repos may hit scan caps."),
+    ("최근 Job 사용량", "Recent job usage"),
+    ("이 채팅/프로젝트/모델로 완료되거나 실행된 Job 기록이 아직 없습니다.", "No completed/running jobs for this chat/project/model."),
+    ("실제 세부 모델명과 토큰은 CLI 출력·로컬 로그에 남은 경우에만 표시됩니다.", "Model details/tokens appear only when present in CLI output or logs."),
+    ("최근 Job:", "Latest job:"),
+    ("확인한 Job 수:", "Jobs inspected:"),
+    ("관측된 세부 모델:", "Observed model:"),
+    ("CLI 기본값/설정에서 자동 선택됨 (로그에서 확인 불가)", "CLI default/auto-selected (not visible in logs)"),
+    ("관측된 토큰 합계:", "Observed tokens (total):"),
+    ("토큰 사용량 패턴을 로그에서 찾지 못했습니다.", "Could not find token usage patterns in logs."),
+    ("실제 로컬 사용량/잔여량", "Local usage/quota snapshot"),
+    ("로컬 CLI 사용량 로그를 찾지 못했습니다.", "Could not find local CLI usage logs."),
+    ("출처:", "Source:"),
+    ("관측 시각:", "Observed at:"),
+    ("플랜/계정 유형:", "Plan/account type:"),
+    ("관측된 토큰:", "Observed tokens:"),
+    ("오늘 로컬 로그 기준 요청 수:", "Requests today (from local logs):"),
+    ("잔여량:", "Remaining:"),
+    ("명령을 찾을 수 없습니다.", "command not found."),
+    ("설치 및 PATH를 확인하세요.", "Install it and verify PATH."),
+    ("시간 초과.", " timed out."),
+    ("auth status (--text):", "auth status (--text):"),
+    ("auth status 실패", "auth status failed"),
+    ("JSON이 아닌 출력입니다", "Output was not JSON"),
+    ("처음 400자", "first 400 chars"),
+    ("auth status (JSON 요약, 민감값 제외)", "auth status (JSON summary, sensitive values omitted)"),
+    ("예상과 다른 JSON 형식입니다.", "Unexpected JSON shape."),
+    ("CLI 버전:", "CLI version:"),
+    ("버전 확인 실패", "version check failed"),
+    ("설치: npm install -g @google/gemini-cli", "Install: npm install -g @google/gemini-cli"),
+    ("...(생략)", "...(truncated)"),
+    ("[이전 대화/작업 맥락]", "[Previous conversation/job context]"),
+    ("[/이전 대화]", "[/previous context block]"),
+    ("[현재 요청]", "[Current request]"),
+    ("[/현재 요청]", "[/current request]"),
+    ("[Reply Job 맥락]", "[Reply job context]"),
+    ("[/Reply Job 맥락]", "[/reply job context]"),
+    ("[Reply 체인 맥락]", "[Reply chain context]"),
+    ("[/Reply 체인 맥락]", "[/reply chain context]"),
+    ("[Reply 메시지 맥락]", "[Reply message context]"),
+    ("[/Reply 메시지 맥락]", "[/reply message context]"),
+    ("관리 UI는 로컬호스트에서만 사용할 수 있습니다.", "Admin UI is only available on localhost."),
 )
+
+_TEXT_REPLACEMENTS = tuple(sorted(set(_TEXT_REPLACEMENTS_RAW), key=lambda p: len(p[0]), reverse=True))
+
+
+_REGEX_TRANSLATIONS = (
+    re.compile(r"원격\(([^)]+)\)에서 모든 정보를 가져왔습니다\."),
+    re.compile(r" 현재 브랜치\(([^)]+)\)를 업데이트했습니다\."),
+    re.compile(r" 추가로 (\d+)개의 로컬 브랜치를 fast-forward 업데이트했습니다\."),
+    re.compile(
+        r"rebase 완료: 브랜치 `([^`]+)`를 `([^`]+)/([^`]+)` 기준으로 rebase 후 `([^`]+)`에 "
+        r"fast-forward 병합하고 `([^`]+)`에 push했습니다\.",
+    ),
+    re.compile(r"git fetch (\S+) 실패:"),
+    re.compile(r"git pull (\S+) (\S+) 실패 \(충돌 가능성\):"),
+    re.compile(r"gh pr create 실패:"),
+    re.compile(r"\(([^\n()]+) 원격 브랜치 없음\)"),
+    re.compile(r"\[([^\]\n]+) 원격\]"),
+    re.compile(r"(\d+)분 (\d+)초"),
+    re.compile(r"(\d+)초"),
+    re.compile(r"변경 파일 \((\d+)개\)"),
+    re.compile(r"- \.\.\. 외 (\d+)개"),
+    re.compile(r"\n\.\.\.\(외 (\d+)개 생략\)"),
+)
+
+
+def _regex_patch_english(text: str) -> str:
+    replacements = (
+        lambda m: f"Fetched updates from remote {m.group(1)}.",
+        lambda m: f" Updated current branch ({m.group(1)}).",
+        lambda m: f" Fast-forward updated {m.group(1)} additional local branch(es).",
+        lambda m: (
+            f"Rebase complete: rebased `{m.group(1)}` onto `{m.group(2)}/{m.group(3)}`, "
+            f"fast-forward merged into `{m.group(4)}`, pushed to `{m.group(5)}`."
+        ),
+        lambda m: f"git fetch {m.group(1)} failed:",
+        lambda m: f"git pull {m.group(1)} {m.group(2)} failed (possible conflict):",
+        lambda m: "gh pr create failed:",
+        lambda m: f"(no remote branches on {m.group(1)})",
+        lambda m: f"[{m.group(1)} remote]",
+        lambda m: f"{m.group(1)}m {m.group(2)}s",
+        lambda m: f"{m.group(1)}s",
+        lambda m: f"Changed files ({m.group(1)} files)",
+        lambda m: f"- ... and {m.group(1)} more",
+        lambda m: f"\n...(omitted {m.group(1)} entries)",
+    )
+    result = text
+    for rx, repl in zip(_REGEX_TRANSLATIONS, replacements, strict=True):
+        result = rx.sub(repl, result)
+    return result
+
 
 _BUTTON_LABELS = {
     "도움말": "Help",
@@ -189,15 +347,23 @@ _BUTTON_LABELS = {
     "네": "Yes",
     "아니오": "No",
     "작업 중단": "Stop job",
+    "AGENTS 모드": "AGENTS mode",
+    "PLAN 모드": "PLAN mode",
+    "ASK 모드": "ASK mode",
 }
 
 
 def translate_text(text: str, language: UiLanguage) -> str:
     if language is UiLanguage.KOREAN:
         return text
-    translated = text
+    translated = _regex_patch_english(text)
     for source, target in _TEXT_REPLACEMENTS:
         translated = translated.replace(source, target)
+    translated = translated.replace("DB 존재: 예", "DB exists: yes")
+    translated = translated.replace("DB 존재: 아니오", "DB exists: no")
+    translated = translated.replace("잔여 ", "remaining ")
+    translated = translated.replace("(사용 ", "(used ")
+    translated = translated.replace(", 리셋 ", ", reset ")
     return translated
 
 

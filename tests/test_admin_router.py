@@ -387,6 +387,7 @@ def test_admin_api_advanced_settings_get_default(test_settings, project_registry
     r = client.get("/api/advanced-settings")
     assert r.status_code == 200
     data = r.json()
+    assert data["ui_language"] == "en"
     assert data["server_lifecycle_notify_enabled"] is True
     assert data["pull_projects_on_server_startup_enabled"] is False
     assert data["auto_merge_to_main_enabled"] is False
@@ -403,6 +404,7 @@ def test_admin_api_advanced_settings_put_and_persist(test_settings, project_regi
     ))
     client = TestClient(app)
     body = {
+        "ui_language": "en",
         "server_lifecycle_notify_enabled": False,
         "pull_projects_on_server_startup_enabled": True,
         "auto_merge_to_main_enabled": True,

@@ -99,8 +99,11 @@ def test_help_command_uses_english_when_advanced_language_default(project_regist
     )
 
     assert response is not None
-    assert response.text.startswith("Help")
-    assert "Send work requests as regular messages." in response.text
+    from app.telegram.i18n import translate_text
+    from app.models import UiLanguage
+
+    assert response.text.startswith("도움말")
+    assert translate_text(response.text, UiLanguage.ENGLISH).startswith("Help")
     assert response.inline_buttons is not None
     assert response.inline_buttons[0][0].label == "model"
 

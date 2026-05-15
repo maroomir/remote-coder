@@ -34,8 +34,7 @@ class TelegramNotifier:
         message_id = result.get("message_id") if isinstance(result, dict) else None
         return int(message_id) if message_id is not None else None
 
-    def send_text(self, chat_id: int, text: str) -> int | None:
-        text = translate_text(text, self._language)
+    def _post_message(self, chat_id: int, text: str) -> int | None:
         payload = {"chat_id": chat_id, "text": text}
         max_attempts = 3
         _outbound.info("sendMessage start len=%d", len(text), chat_id=chat_id)
@@ -74,8 +73,12 @@ class TelegramNotifier:
                 time.sleep(attempt)
         return None
 
+    def send_text(self, chat_id: int, text: str) -> int | None:
+        return self._post_message(chat_id, translate_text(text, self._language))
+
     def send_with_buttons(self, chat_id: int, text: str, inline_buttons: list) -> int | None:
         language = self._language
+        out_text = translate_text(text, language)
         keyboard = [
             [
                 {"text": translate_button_label(btn.label, language), "callback_data": btn.callback_data}
@@ -85,14 +88,14 @@ class TelegramNotifier:
         ]
         payload = {
             "chat_id": chat_id,
-            "text": translate_text(text, language),
+            "text": out_text,
             "reply_markup": {"inline_keyboard": keyboard},
         }
         max_attempts = 3
         button_count = sum(len(row) for row in inline_buttons)
         _outbound.info(
             "sendMessage buttons start len=%d rows=%d buttons=%d",
-            len(text),
+            len(out_text),
             len(inline_buttons),
             button_count,
             chat_id=chat_id,
@@ -107,7 +110,7 @@ class TelegramNotifier:
                 response.raise_for_status()
                 _outbound.info(
                     "sent message with buttons len=%d attempt=%d status=%d",
-                    len(text),
+                    len(out_text),
                     attempt,
                     response.status_code,
                     chat_id=chat_id,
@@ -263,12 +266,12 @@ class TelegramNotifier:
 
     def send_long_text(self, chat_id: int, text: str) -> list[int]:
         """Telegram 단일 메시지 한도(4096자)를 넘으면 여러 메시지로 나눠 전송합니다."""
-        text = translate_text(text, self._language)
-        chunks = self._chunk_text(text, self._TELEGRAM_TEXT_LIMIT)
+        outgoing = translate_text(text, self._language)
+        chunks = self._chunk_text(outgoing, self._TELEGRAM_TEXT_LIMIT)
         _outbound.info(
             "send_long_text chunks=%d total_len=%d",
             len(chunks),
-            len(text),
+            len(outgoing),
             chat_id=chat_id,
         )
         message_ids: list[int] = []
@@ -280,7 +283,7 @@ class TelegramNotifier:
                 len(chunk),
                 chat_id=chat_id,
             )
-            message_id = self.send_text(chat_id, chunk)
+            message_id = self._post_message(chat_id, chunk)
             if message_id is not None:
                 message_ids.append(message_id)
         return message_ids

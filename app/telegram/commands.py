@@ -19,7 +19,7 @@ from app.monitoring.model import format_model_monitor
 from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
-from app.telegram.i18n import language_from_settings_store, translate_button_label, translate_text
+from app.telegram.i18n import translate_text
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 
 if TYPE_CHECKING:
@@ -1372,44 +1372,18 @@ class CommandRegistry:
             return None
         command = self._commands.get(head)
         if not command:
-            return translate_text(
-                "알 수 없는 명령어입니다. /help 를 확인하세요.",
-                language_from_settings_store(ctx.advanced_settings_store),
-            )
+            return "알 수 없는 명령어입니다. /help 를 확인하세요."
         return command.execute(message, ctx)
 
     def dispatch_rich(self, message: TelegramMessage, ctx: CommandContext) -> CommandResponse | None:
         text = self.dispatch(message, ctx)
         if text is None:
             return None
-        language = language_from_settings_store(ctx.advanced_settings_store)
         tokens = message.text.strip().split()
         head = tokens[0] if tokens else ""
         command = self._commands.get(head)
         buttons = command.get_inline_buttons(message, ctx) if command is not None else None
-        translated_buttons = self._translate_buttons(buttons, language)
-        return CommandResponse(
-            text=translate_text(text, language),
-            inline_buttons=translated_buttons,
-        )
-
-    @staticmethod
-    def _translate_buttons(
-        buttons: list[list[InlineButton]] | None,
-        language,
-    ) -> list[list[InlineButton]] | None:
-        if buttons is None:
-            return None
-        return [
-            [
-                InlineButton(
-                    translate_button_label(button.label, language),
-                    button.callback_data,
-                )
-                for button in row
-            ]
-            for row in buttons
-        ]
+        return CommandResponse(text=text, inline_buttons=buttons)
 
     def bot_commands(self, language: UiLanguage = UiLanguage.ENGLISH) -> list[dict[str, str]]:
         base = [
