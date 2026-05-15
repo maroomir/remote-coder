@@ -1,10 +1,13 @@
+from unittest.mock import Mock
+
 import pytest
 
+from app.admin.advanced_settings import AdvancedSettings
 from app.jobs.schemas import JobMode
-from app.models import ModelName
+from app.models import ModelName, UiLanguage
 from app.projects.registry import ProjectRecord, ProjectRegistry
-from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.conversation import SQLiteConversationStore
+from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.parser import CommandParseError, CommandParser
 
 
@@ -14,6 +17,24 @@ def test_parse_natural_returns_job_request(project_registry: ProjectRegistry):
     assert req.project == "remote-coder"
     assert req.model == ModelName.CLAUDE
     assert req.instruction == "fix login bug"
+
+
+def test_parse_natural_uses_korean_instruction_frames_when_advanced_settings_ko(
+    project_registry: ProjectRegistry,
+):
+    store_mock = Mock()
+    store_mock.get.return_value = AdvancedSettings(ui_language=UiLanguage.KOREAN)
+    db = project_registry.config_path.parent / "parser_ko_frames.sqlite3"
+    conv = SQLiteConversationStore(db)
+    conv.append(project="remote-coder", chat_id=9, role="user", text="한글 맥락", job_id=None)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=conv,
+        advanced_settings_store=store_mock,
+    )
+    req = parser.parse_natural("작업 시작해줘", "remote-coder", chat_id=9, user_id=1)
+    assert "[이전 대화/작업 맥락]" in req.instruction
 
 
 def test_parse_natural_raises_on_empty(project_registry: ProjectRegistry):
@@ -138,7 +159,7 @@ def test_parse_natural_without_explicit_model_preference_uses_project_default(
 
 def test_parse_natural_rejects_invalid_branch_token(project_registry: ProjectRegistry):
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
-    with pytest.raises(CommandParseError, match="브랜치"):
+    with pytest.raises(CommandParseError, match="Branch name"):
         parser.parse_natural("branch: bad..name fix bug", "remote-coder", chat_id=1, user_id=2)
 
 
@@ -160,7 +181,7 @@ def test_parse_natural_ambiguous_followup_merges_conversation(project_registry: 
     )
     req = parser.parse_natural("작업 시작해줘", "remote-coder", chat_id=99, user_id=1)
     assert "README" in req.instruction
-    assert "[이전 대화/작업 맥락]" in req.instruction
+    assert "[Previous conversation/job context]" in req.instruction
     assert "작업 시작해줘" in req.instruction
 
 
@@ -172,7 +193,7 @@ def test_parse_natural_ambiguous_without_history_raises(project_registry: Projec
         default_model=ModelName.CLAUDE,
         conversation_store=store,
     )
-    with pytest.raises(CommandParseError, match="맥락"):
+    with pytest.raises(CommandParseError, match="previous job context"):
         parser.parse_natural("작업 시작해줘", "remote-coder", chat_id=42, user_id=1)
 
 
@@ -266,7 +287,7 @@ def test_parse_natural_reply_chain_includes_ancestors_and_job_results(project_re
         message_id=3,
         reply_to_message_id=2,
     )
-    assert "[Reply 체인 맥락]" in req.instruction
+    assert "[Reply chain context]" in req.instruction
     assert "message_id=1" in req.instruction
     assert "message_id=2" in req.instruction
     assert "task A" in req.instruction
@@ -295,7 +316,7 @@ def test_parse_natural_reply_includes_unstored_reply_text(project_registry: Proj
         reply_to_text="작업 완료\nJob ID: job_1\nAI 응답:\nREADME를 수정했습니다.",
     )
 
-    assert "[Reply 메시지 맥락]" in req.instruction
+    assert "[Reply message context]" in req.instruction
     assert "message_id=30" in req.instruction
     assert "README를 수정했습니다." in req.instruction
     assert "이 응답 기준으로 이어서 수정해줘" in req.instruction
@@ -335,11 +356,11 @@ def test_parse_natural_reply_to_bot_job_result_expands_job_context(project_regis
         reply_to_text="[plan] 응답 완료\n\n- Job ID: job_20260513022227_2b174e\nAI 응답:\n원본 일부",
     )
 
-    assert "[Reply Job 맥락]" in req.instruction
+    assert "[Reply job context]" in req.instruction
     assert "최초 plan 요청" in req.instruction
     assert "계획 결과 요약" in req.instruction
     assert "특성만 제거합니다" in req.instruction
-    assert "[Reply 메시지 맥락]" not in req.instruction
+    assert "[Reply message context]" not in req.instruction
 
 
 def test_parse_natural_reply_to_recorded_bot_message_reuses_job_id(project_registry: ProjectRegistry):
@@ -401,7 +422,7 @@ def test_parse_natural_ambiguous_reply_uses_unstored_reply_text(project_registry
         reply_to_text="AI 응답:\nREADME를 수정했습니다.",
     )
 
-    assert "[Reply 메시지 맥락]" in req.instruction
+    assert "[Reply message context]" in req.instruction
     assert "README를 수정했습니다." in req.instruction
     assert "진행해줘" in req.instruction
 
@@ -453,18 +474,18 @@ def test_parse_natural_ambiguous_on_reply_excludes_chain_from_recent_block(proje
         message_id=102,
         reply_to_message_id=101,
     )
-    assert "[Reply 체인 맥락]" in req.instruction
+    assert "[Reply chain context]" in req.instruction
     assert "first instruction" in req.instruction
     assert "second instruction" in req.instruction
-    assert "[이전 대화/작업 맥락]" in req.instruction
-    body_after_reply = req.instruction.split("[/Reply 체인 맥락]", 1)[-1]
+    assert "[Previous conversation/job context]" in req.instruction
+    body_after_reply = req.instruction.split("[/Reply chain context]", 1)[-1]
     assert "user: first instruction" not in body_after_reply
     assert "user: second instruction" not in body_after_reply
 
 
 def test_parse_natural_rejects_unknown_project_name(project_registry: ProjectRegistry):
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
-    with pytest.raises(CommandParseError, match="알 수 없는 프로젝트"):
+    with pytest.raises(CommandParseError, match="Unknown project"):
         parser.parse_natural("do something", "no-such-project", chat_id=1, user_id=2)
 
 
@@ -486,7 +507,7 @@ def test_parse_natural_ambiguous_followup_reads_only_named_project_history(
         conversation_store=store,
         conversation_recent_limit=10,
     )
-    with pytest.raises(CommandParseError, match="맥락"):
+    with pytest.raises(CommandParseError, match="previous job context"):
         parser.parse_natural("작업 시작해줘", "remote-coder", chat_id=99, user_id=1)
 
 
@@ -515,9 +536,9 @@ def test_parse_natural_ask_prefix_with_spaces_after_colon(project_registry: Proj
 
 def test_parse_natural_plan_or_ask_empty_raises(project_registry: ProjectRegistry):
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
-    with pytest.raises(CommandParseError, match="비어"):
+    with pytest.raises(CommandParseError, match="empty"):
         parser.parse_natural("plan:", "remote-coder", chat_id=1, user_id=2)
-    with pytest.raises(CommandParseError, match="비어"):
+    with pytest.raises(CommandParseError, match="empty"):
         parser.parse_natural("ask:   ", "remote-coder", chat_id=1, user_id=2)
 
 
@@ -618,5 +639,5 @@ def test_parse_natural_korean_prefix_aliases(project_registry: ProjectRegistry):
 
 def test_parse_natural_plan_empty_body_shows_examples(project_registry: ProjectRegistry):
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
-    with pytest.raises(CommandParseError, match="예:"):
+    with pytest.raises(CommandParseError, match="Example"):
         parser.parse_natural("plan:", "remote-coder", chat_id=1, user_id=2)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from app.models import UiLanguage
 
@@ -9,6 +10,108 @@ def language_from_settings_store(settings_store) -> UiLanguage:
     if settings_store is None:
         return UiLanguage.ENGLISH
     return settings_store.get().ui_language
+
+
+@dataclass(frozen=True, slots=True)
+class InstructionFrameLabels:
+    prev_context_open: str
+    prev_context_close: str
+    current_request_open: str
+    current_request_close: str
+    reply_job_open: str
+    reply_job_close: str
+    reply_chain_open: str
+    reply_chain_close: str
+    reply_message_open: str
+    reply_message_close: str
+    none_absent: str
+
+
+def instruction_frame_labels(language: UiLanguage) -> InstructionFrameLabels:
+    if language is UiLanguage.KOREAN:
+        return InstructionFrameLabels(
+            prev_context_open="[이전 대화/작업 맥락]",
+            prev_context_close="[/이전 대화]",
+            current_request_open="[현재 요청]",
+            current_request_close="[/현재 요청]",
+            reply_job_open="[Reply Job 맥락]",
+            reply_job_close="[/Reply Job 맥락]",
+            reply_chain_open="[Reply 체인 맥락]",
+            reply_chain_close="[/Reply 체인 맥락]",
+            reply_message_open="[Reply 메시지 맥락]",
+            reply_message_close="[/Reply 메시지 맥락]",
+            none_absent="(없음)",
+        )
+    return InstructionFrameLabels(
+        prev_context_open="[Previous conversation/job context]",
+        prev_context_close="[/previous context block]",
+        current_request_open="[Current request]",
+        current_request_close="[/current request]",
+        reply_job_open="[Reply job context]",
+        reply_job_close="[/Reply job context]",
+        reply_chain_open="[Reply chain context]",
+        reply_chain_close="[/Reply chain context]",
+        reply_message_open="[Reply message context]",
+        reply_message_close="[/Reply message context]",
+        none_absent="(none)",
+    )
+
+
+_GIT_BRANCH_VALIDATION_KO_TO_EN = {
+    "브랜치 이름이 비었거나 너무 깁니다.": "Branch name is empty or too long.",
+    "허용되지 않는 브랜치 이름입니다.": "Branch name is not allowed.",
+    "브랜치 이름은 영문, 숫자, /, ., _, - 만 사용할 수 있습니다.": (
+        "Branch names may only use letters, numbers, /, ., _, and -."
+    ),
+}
+
+
+def localize_git_branch_validation_message(message: str, language: UiLanguage) -> str:
+    if language is UiLanguage.KOREAN:
+        return message
+    return _GIT_BRANCH_VALIDATION_KO_TO_EN.get(message, message)
+
+
+def command_parse_error_empty_instruction_plan_ask(language: UiLanguage) -> str:
+    if language is UiLanguage.KOREAN:
+        return (
+            "작업 지시문이 비어 있습니다.\n\n"
+            "예: plan: 로그인 수정 계획 세워줘\n"
+            "예: /ask JobManager 흐름 설명해줘"
+        )
+    return (
+        "The work instruction is empty.\n\n"
+        "Example: plan: outline the login refactor\n"
+        "Example: /ask explain JobManager routing"
+    )
+
+
+def command_parse_error_empty_instruction(language: UiLanguage) -> str:
+    return (
+        "작업 지시문이 비어 있습니다."
+        if language is UiLanguage.KOREAN
+        else "The work instruction is empty."
+    )
+
+
+def command_parse_error_unknown_project(project_name: str, language: UiLanguage) -> str:
+    if language is UiLanguage.KOREAN:
+        return f"알 수 없는 프로젝트: {project_name}"
+    return f"Unknown project: {project_name}"
+
+
+def command_parse_error_disabled_project(project_name: str, language: UiLanguage) -> str:
+    if language is UiLanguage.KOREAN:
+        return f"비활성화된 프로젝트: {project_name}"
+    return f"Disabled project: {project_name}"
+
+
+def command_parse_error_no_previous_job_context(language: UiLanguage) -> str:
+    return (
+        "이전 작업 맥락이 없습니다. 구체적인 작업 지시를 보내주세요."
+        if language is UiLanguage.KOREAN
+        else "There is no previous job context. Send a specific work instruction."
+    )
 
 
 _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
@@ -33,8 +136,6 @@ _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
     ("진행 중인 Job을 선택해 중단합니다", "Choose and stop a running job"),
     ("계획 모드 메시지", "plan mode message"),
     ("질문 모드 메시지", "ask mode message"),
-    ("메시지", "message"),
-    ("예:", "Example:"),
     ("로그인 흐름 검토", "review login flow"),
     ("역할 설명", "explain the role"),
     ("기본 모델 변경", "Change the default model"),
@@ -65,7 +166,6 @@ _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
     ("사용 모델", "Model used"),
     ("토큰 사용량", "Token usage"),
     ("확인 불가", "unavailable"),
-    ("지시", "Instruction"),
     ("작업 접수 완료", "Job accepted"),
     ("작업 완료", "Job completed"),
     ("작업 실패", "Job failed"),
@@ -76,7 +176,6 @@ _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
     ("(소요:", "(duration:"),
     ("(경과:", "(elapsed:"),
     ("- 생성:", "- Created:"),
-    ("브랜치", "Branch"),
     ("커밋", "Commit"),
     ("변경 파일", "Changed files"),
     ("없음 (no-op)", "none (no-op)"),
@@ -92,7 +191,6 @@ _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
     ("Remote AI Coder 서버가 시작되었습니다.", "Remote AI Coder server started."),
     ("Remote AI Coder 서버 연결이 종료되었습니다.", "Remote AI Coder server connection closed."),
     ("모델", "Model"),
-    ("모드", "Mode"),
     ("Remote AI Coder에 오신 것을 환영합니다.", "Welcome to Remote AI Coder."),
     ("등록 정보 없음", "not registered"),
     ("확인 실패", "check failed"),
@@ -150,19 +248,6 @@ _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
     ("알 수 없는 프로젝트", "Unknown project"),
     ("비활성화된 프로젝트:", "Disabled project:"),
     ("비활성화된 프로젝트", "Disabled project"),
-    ("작업 지시문이 비어 있습니다.", "The work instruction is empty."),
-    (
-        "작업 지시문이 비어 있습니다.\n\n"
-        "예: plan: 로그인 수정 계획 세워줘\n"
-        "예: /ask JobManager 흐름 설명해줘",
-        "The work instruction is empty.\n\n"
-        "Example: plan: outline the login refactor\n"
-        "Example: /ask explain JobManager routing",
-    ),
-    ("이전 작업 맥락이 없습니다. 구체적인 작업 지시를 보내주세요.", "There is no previous job context. Send a specific work instruction."),
-    ("브랜치 이름이 비었거나 너무 깁니다.", "Branch name is empty or too long."),
-    ("허용되지 않는 브랜치 이름입니다.", "Branch name is not allowed."),
-    ("브랜치 이름은 영문, 숫자, /, ., _, - 만 사용할 수 있습니다.", "Branch names may only use letters, numbers, /, ., _, and -."),
     ("이 봇 프로젝트", "This bot project"),
     ("대화 기억 저장소가 설정되지 않았습니다.", "Conversation memory storage is not configured."),
     ("정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다.", "Choose what to clean up. Confirmation with y/Y is required."),
@@ -265,16 +350,6 @@ _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
     ("버전 확인 실패", "version check failed"),
     ("설치: npm install -g @google/gemini-cli", "Install: npm install -g @google/gemini-cli"),
     ("...(생략)", "...(truncated)"),
-    ("[이전 대화/작업 맥락]", "[Previous conversation/job context]"),
-    ("[/이전 대화]", "[/previous context block]"),
-    ("[현재 요청]", "[Current request]"),
-    ("[/현재 요청]", "[/current request]"),
-    ("[Reply Job 맥락]", "[Reply job context]"),
-    ("[/Reply Job 맥락]", "[/reply job context]"),
-    ("[Reply 체인 맥락]", "[Reply chain context]"),
-    ("[/Reply 체인 맥락]", "[/reply chain context]"),
-    ("[Reply 메시지 맥락]", "[Reply message context]"),
-    ("[/Reply 메시지 맥락]", "[/reply message context]"),
     ("관리 UI는 로컬호스트에서만 사용할 수 있습니다.", "Admin UI is only available on localhost."),
 )
 

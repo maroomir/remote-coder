@@ -11,6 +11,16 @@ from app.telegram.conversation import (
     SQLiteConversationStore,
     is_ambiguous_followup,
 )
+from app.telegram.i18n import (
+    command_parse_error_disabled_project,
+    command_parse_error_empty_instruction,
+    command_parse_error_empty_instruction_plan_ask,
+    command_parse_error_no_previous_job_context,
+    command_parse_error_unknown_project,
+    instruction_frame_labels,
+    language_from_settings_store,
+    localize_git_branch_validation_message,
+)
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 
 
@@ -53,12 +63,14 @@ class CommandParser:
         model_preferences: InMemoryModelPreferenceStore | None = None,
         conversation_store: SQLiteConversationStore | None = None,
         conversation_recent_limit: int = 10,
+        advanced_settings_store=None,
     ) -> None:
         self._project_registry = project_registry
         self._default_model = default_model
         self._model_preferences = model_preferences
         self._conversation_store = conversation_store
         self._conversation_recent_limit = conversation_recent_limit
+        self._advanced_settings_store = advanced_settings_store
 
     @staticmethod
     def _extract_options(
@@ -119,6 +131,7 @@ class CommandParser:
         reply_to_message_id: int | None = None,
         reply_to_text: str | None = None,
     ) -> JobRequest:
+        lang = language_from_settings_store(self._advanced_settings_store)
         mode, stripped = self._strip_leading_job_mode(text)
 
         model, branch, commit, remaining = self._extract_options(stripped)
@@ -128,18 +141,14 @@ class CommandParser:
 
         if not remaining:
             if mode in (JobMode.PLAN, JobMode.ASK):
-                raise CommandParseError(
-                    "작업 지시문이 비어 있습니다.\n\n"
-                    "예: plan: 로그인 수정 계획 세워줘\n"
-                    "예: /ask JobManager 흐름 설명해줘",
-                )
-            raise CommandParseError("작업 지시문이 비어 있습니다.")
+                raise CommandParseError(command_parse_error_empty_instruction_plan_ask(lang))
+            raise CommandParseError(command_parse_error_empty_instruction(lang))
 
         entry = self._project_registry.get(project_name)
         if not entry:
-            raise CommandParseError(f"알 수 없는 프로젝트: {project_name}")
+            raise CommandParseError(command_parse_error_unknown_project(project_name, lang))
         if not entry.enabled:
-            raise CommandParseError(f"비활성화된 프로젝트: {project_name}")
+            raise CommandParseError(command_parse_error_disabled_project(project_name, lang))
 
         selected_model: ModelName
         if model is not None:
@@ -164,7 +173,7 @@ class CommandParser:
         if branch is not None:
             branch_err = GitWorktreeService.validate_branch_token(branch)
             if branch_err:
-                raise CommandParseError(branch_err)
+                raise CommandParseError(localize_git_branch_validation_message(branch_err, lang))
 
         instruction_body = remaining.strip()
         reply_job_id: str | None = None
@@ -180,8 +189,10 @@ class CommandParser:
                 project_name,
                 chat_id,
                 reply_to_message_id,
+                lang,
             ).strip()
         if not reply_prefix and reply_to_message_id is not None and reply_to_text:
+            frame = instruction_frame_labels(lang)
             if self._conversation_store is not None:
                 extracted_reply_job_id = _extract_reply_job_id(reply_to_text)
                 if extracted_reply_job_id:
@@ -190,14 +201,15 @@ class CommandParser:
                         project_name,
                         chat_id,
                         extracted_reply_job_id,
+                        lang,
                     ).strip()
             if not reply_prefix:
                 reply_prefix = "\n".join(
                     [
-                        "[Reply 메시지 맥락]",
+                        frame.reply_message_open,
                         f"message_id={reply_to_message_id}:",
                         f"  text: {reply_to_text.strip()}",
-                        "[/Reply 메시지 맥락]",
+                        frame.reply_message_close,
                     ]
                 )
 
@@ -222,12 +234,10 @@ class CommandParser:
             ]
             if not filtered:
                 if not reply_prefix:
-                    raise CommandParseError(
-                        "이전 작업 맥락이 없습니다. 구체적인 작업 지시를 보내주세요.",
-                    )
+                    raise CommandParseError(command_parse_error_no_previous_job_context(lang))
                 instruction = f"{reply_prefix}\n\n{instruction_body}".strip()
             else:
-                inner = ConversationContextBuilder.build(filtered, instruction_body)
+                inner = ConversationContextBuilder.build(filtered, instruction_body, lang)
                 instruction = f"{reply_prefix}\n\n{inner}".strip() if reply_prefix else inner
         elif reply_prefix:
             instruction = f"{reply_prefix}\n\n{instruction_body}".strip()

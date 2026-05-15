@@ -916,7 +916,7 @@ def test_webhook_natural_pending_parse_failure_sends_cancel_and_error(project_re
     assert command_context.confirmation_store.get("remote-coder", 123) is None
     bodies = [m[1] for m in notifier.sent]
     assert any(t.startswith("작업 요청을 취소") for t in bodies)
-    assert any("작업 지시문이 비어" in t for t in bodies)
+    assert any("The work instruction is empty" in t for t in bodies)
 
 
 def test_webhook_accepts_natural_message_with_confirmation_buttons(project_registry):
@@ -1442,7 +1442,7 @@ def test_webhook_ambiguous_without_history_sends_guidance(project_registry, tmp_
     assert response.status_code == 200
     assert response.json()["status"] == "ignored"
     assert notifier.sent
-    assert "맥락" in notifier.sent[0][1]
+    assert "previous job context" in notifier.sent[0][1]
 
 
 def test_webhook_conversation_isolated_by_chat(project_registry, tmp_path):
@@ -1497,7 +1497,7 @@ def test_webhook_conversation_isolated_by_chat(project_registry, tmp_path):
         },
     )
     assert response.json()["status"] == "ignored"
-    assert "맥락" in notifier.sent[-1][1]
+    assert "previous job context" in notifier.sent[-1][1]
     assert capture.last_request is None
 
 

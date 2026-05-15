@@ -7,6 +7,7 @@ from app.admin.advanced_settings import (
     FileAdvancedSettingsStore,
     advanced_settings_path_for_project_root,
 )
+from app.models import UiLanguage
 from app.telegram.conversation import (
     ConversationContextBuilder,
     ConversationEntry,
@@ -49,7 +50,7 @@ def test_context_builder_includes_sections():
     entries = [
         ConversationEntry(id=1, project="p", chat_id=1, role="user", text="prior", job_id=None),
     ]
-    text = ConversationContextBuilder.build(entries, "작업 시작해줘")
+    text = ConversationContextBuilder.build(entries, "작업 시작해줘", UiLanguage.KOREAN)
     assert "[이전 대화/작업 맥락]" in text
     assert "[현재 요청]" in text
     assert "prior" in text
@@ -62,7 +63,7 @@ def test_context_builder_truncates_long_entry(size: int):
     entries = [
         ConversationEntry(id=1, project="p", chat_id=1, role="user", text=long_text, job_id=None),
     ]
-    out = ConversationContextBuilder.build(entries, "go")
+    out = ConversationContextBuilder.build(entries, "go", UiLanguage.KOREAN)
     assert "...(truncated)" in out
 
 
@@ -204,7 +205,7 @@ def test_format_job_context_includes_original_user_and_result_without_branch(tmp
         message_id=10,
     )
 
-    ctx = store.format_job_context("p1", 7, "job-plan-1")
+    ctx = store.format_job_context("p1", 7, "job-plan-1", UiLanguage.KOREAN)
 
     assert "[Reply Job 맥락]" in ctx
     assert "job_id=job-plan-1" in ctx
@@ -212,6 +213,30 @@ def test_format_job_context_includes_original_user_and_result_without_branch(tmp
     assert "최초 계획 요청" in ctx
     assert "계획 결과" in ctx
     assert "다른 프로젝트 맥락" not in ctx
+
+
+def test_format_job_context_uses_english_labels_by_default(tmp_path: Path):
+    db = tmp_path / "job_context_en.sqlite3"
+    store = SQLiteConversationStore(db)
+    store.append(
+        project="p1",
+        chat_id=7,
+        role="user",
+        text="only English frame test",
+        job_id="job-en-1",
+        message_id=10,
+    )
+    store.append(
+        project="p1",
+        chat_id=7,
+        role="job_result",
+        text="ok",
+        job_id="job-en-1",
+    )
+    ctx = store.format_job_context("p1", 7, "job-en-1")
+    assert "[Reply job context]" in ctx
+    assert "[/Reply job context]" in ctx
+    assert "only English frame test" in ctx
 
 
 def test_reply_to_recorded_bot_message_resolves_job_context(tmp_path: Path):
@@ -234,7 +259,7 @@ def test_reply_to_recorded_bot_message_resolves_job_context(tmp_path: Path):
         message_id=99,
     )
 
-    ctx = store.format_reply_context("p1", 7, 99)
+    ctx = store.format_reply_context("p1", 7, 99, UiLanguage.KOREAN)
 
     assert store.get_job_id_for_message_id("p1", 7, 99) == "job-plan-1"
     assert "[Reply Job 맥락]" in ctx
@@ -327,7 +352,7 @@ def test_format_reply_chain_context_and_collect_ids(tmp_path: Path):
         job_id="jb",
     )
 
-    ctx = store.format_reply_chain_context("p1", 1, reply_to_message_id=20)
+    ctx = store.format_reply_chain_context("p1", 1, reply_to_message_id=20, language=UiLanguage.KOREAN)
     assert "[Reply 체인 맥락]" in ctx
     assert "message_id=10" in ctx
     assert "message_id=20" in ctx

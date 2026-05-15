@@ -7,6 +7,8 @@ from pathlib import Path
 from threading import Lock
 
 from app.admin.advanced_settings import FileAdvancedSettingsStore
+from app.models import UiLanguage
+from app.telegram.i18n import instruction_frame_labels
 
 
 _AMBIGUOUS_FOLLOWUP = re.compile(
@@ -411,7 +413,9 @@ class SQLiteConversationStore:
             finally:
                 conn.close()
 
-    def format_job_context(self, project: str, chat_id: int, job_id: str) -> str:
+    def format_job_context(
+        self, project: str, chat_id: int, job_id: str, language: UiLanguage = UiLanguage.ENGLISH
+    ) -> str:
         with self._lock:
             conn = sqlite3.connect(self._db_path)
             try:
@@ -451,32 +455,35 @@ class SQLiteConversationStore:
         if user_row is None and result_row is None and not history_rows:
             return ""
 
-        lines = ["[Reply Job 맥락]", f"job_id={job_id}:"]
+        labels = instruction_frame_labels(language)
+        lines = [labels.reply_job_open, f"job_id={job_id}:"]
         if user_row is not None:
             user_entry = _row_to_entry(user_row)
             if user_entry.message_id is not None:
                 lines.append(f"  original_message_id: {user_entry.message_id}")
             lines.append(f"  original_user: {_truncate_snippet(user_entry.text)}")
         else:
-            lines.append("  original_user: (없음)")
+            lines.append(f"  original_user: {labels.none_absent}")
         if result_row is not None:
             lines.append(f"  job_result: {_truncate_snippet(str(result_row[0]))}")
         else:
-            lines.append("  job_result: (없음)")
+            lines.append(f"  job_result: {labels.none_absent}")
         if history_rows:
             lines.append("  job_history:")
             for row in history_rows:
                 entry = _row_to_entry(row)
                 message_part = f" message_id={entry.message_id}" if entry.message_id is not None else ""
                 lines.append(f"    - {entry.role}{message_part}: {_truncate_snippet(entry.text)}")
-        lines.append("[/Reply Job 맥락]")
+        lines.append(labels.reply_job_close)
         return "\n".join(lines)
 
-    def format_reply_context(self, project: str, chat_id: int, reply_to_message_id: int) -> str:
+    def format_reply_context(
+        self, project: str, chat_id: int, reply_to_message_id: int, language: UiLanguage = UiLanguage.ENGLISH
+    ) -> str:
         reply_entry = self.get_entry_by_message_id(project, chat_id, reply_to_message_id)
         if reply_entry is not None and reply_entry.role != "user" and reply_entry.job_id:
-            return self.format_job_context(project, chat_id, reply_entry.job_id)
-        return self.format_reply_chain_context(project, chat_id, reply_to_message_id)
+            return self.format_job_context(project, chat_id, reply_entry.job_id, language)
+        return self.format_reply_chain_context(project, chat_id, reply_to_message_id, language)
 
     def collect_reply_chain_message_ids(
         self, project: str, chat_id: int, reply_to_message_id: int
@@ -516,12 +523,15 @@ class SQLiteConversationStore:
             depth += 1
         return chain
 
-    def format_reply_chain_context(self, project: str, chat_id: int, reply_to_message_id: int) -> str:
+    def format_reply_chain_context(
+        self, project: str, chat_id: int, reply_to_message_id: int, language: UiLanguage = UiLanguage.ENGLISH
+    ) -> str:
         newest_first = self.get_reply_chain_user_entries_newest_first(project, chat_id, reply_to_message_id)
         if not newest_first:
             return ""
+        labels = instruction_frame_labels(language)
         ordered = list(reversed(newest_first))
-        lines: list[str] = ["[Reply 체인 맥락]"]
+        lines: list[str] = [labels.reply_chain_open]
         for e in ordered:
             mid = e.message_id
             lines.append(f"message_id={mid}:")
@@ -530,8 +540,8 @@ class SQLiteConversationStore:
             if job_text:
                 lines.append(f"  job_result: {_truncate_snippet(job_text)}")
             else:
-                lines.append("  job_result: (없음)")
-        lines.append("[/Reply 체인 맥락]")
+                lines.append(f"  job_result: {labels.none_absent}")
+        lines.append(labels.reply_chain_close)
         return "\n".join(lines)
 
     def bind_message_branch(
@@ -762,9 +772,10 @@ def _row_to_entry(r: tuple[object, ...]) -> ConversationEntry:
 
 class ConversationContextBuilder:
     @staticmethod
-    def build(entries: list[ConversationEntry], current_user_line: str) -> str:
+    def build(entries: list[ConversationEntry], current_user_line: str, language: UiLanguage = UiLanguage.ENGLISH) -> str:
+        labels = instruction_frame_labels(language)
         lines: list[str] = [
-            "[이전 대화/작업 맥락]",
+            labels.prev_context_open,
         ]
         for e in entries:
             label = e.role
@@ -774,11 +785,11 @@ class ConversationContextBuilder:
             lines.append(f"{label}: {snippet}")
         lines.extend(
             [
-                "[/이전 대화]",
+                labels.prev_context_close,
                 "",
-                "[현재 요청]",
+                labels.current_request_open,
                 current_user_line.strip(),
-                "[/현재 요청]",
+                labels.current_request_close,
             ]
         )
         return "\n".join(lines)

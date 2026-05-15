@@ -68,6 +68,7 @@ parser = CommandParser(
     model_preferences=model_preferences,
     conversation_store=conversation_store,
     conversation_recent_limit=settings.conversation_recent_limit,
+    advanced_settings_store=advanced_settings_store,
 )
 command_registry = CommandRegistry(commands=build_default_commands())
 git_service = GitWorktreeService(base_dir=settings.worktree_base_dir)
