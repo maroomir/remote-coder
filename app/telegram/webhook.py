@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import replace
+from functools import partial
 from threading import Lock
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
@@ -302,13 +303,23 @@ def create_webhook_router(
                 )
                 if cq_response.inline_buttons:
                     background_tasks.add_task(
-                        notifier.send_with_buttons,
-                        cq_chat_id,
-                        cq_response.text,
-                        cq_response.inline_buttons,
+                        partial(
+                            notifier.send_with_buttons,
+                            cq_chat_id,
+                            cq_response.text,
+                            cq_response.inline_buttons,
+                            skip_body_i18n=cq_response.skip_notifier_body_i18n,
+                        )
                     )
                 else:
-                    background_tasks.add_task(notifier.send_text, cq_chat_id, cq_response.text)
+                    background_tasks.add_task(
+                        partial(
+                            notifier.send_text,
+                            cq_chat_id,
+                            cq_response.text,
+                            skip_body_i18n=cq_response.skip_notifier_body_i18n,
+                        )
+                    )
             else:
                 _cmdlog.info(
                     "callback_query no command response cmd=%s",
@@ -546,13 +557,23 @@ def create_webhook_router(
             )
             if command_response.inline_buttons:
                 background_tasks.add_task(
-                    notifier.send_with_buttons,
-                    chat_id,
-                    command_response.text,
-                    command_response.inline_buttons,
+                    partial(
+                        notifier.send_with_buttons,
+                        chat_id,
+                        command_response.text,
+                        command_response.inline_buttons,
+                        skip_body_i18n=command_response.skip_notifier_body_i18n,
+                    )
                 )
             else:
-                background_tasks.add_task(notifier.send_text, chat_id, command_response.text)
+                background_tasks.add_task(
+                    partial(
+                        notifier.send_text,
+                        chat_id,
+                        command_response.text,
+                        skip_body_i18n=command_response.skip_notifier_body_i18n,
+                    )
+                )
             return {"status": "ok"}
 
         try:

@@ -147,10 +147,10 @@ class DummyNotifier:
         self.sent_with_buttons: list[tuple[int, str, object]] = []
         self.answered_callbacks: list[str] = []
 
-    def send_text(self, chat_id: int, text: str) -> None:
+    def send_text(self, chat_id: int, text: str, **kwargs) -> None:
         self.sent.append((chat_id, text))
 
-    def send_with_buttons(self, chat_id: int, text: str, inline_buttons) -> None:
+    def send_with_buttons(self, chat_id: int, text: str, inline_buttons, **kwargs) -> None:
         self.sent_with_buttons.append((chat_id, text, inline_buttons))
 
     def answer_callback_query(self, callback_query_id: str) -> None:

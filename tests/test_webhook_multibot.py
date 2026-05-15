@@ -21,10 +21,10 @@ class DummyNotifier:
     def __init__(self) -> None:
         self.sent: list[tuple[int, str]] = []
 
-    def send_text(self, chat_id: int, text: str) -> None:
+    def send_text(self, chat_id: int, text: str, **kwargs) -> None:
         self.sent.append((chat_id, text))
 
-    def send_with_buttons(self, chat_id: int, text: str, inline_buttons) -> None:
+    def send_with_buttons(self, chat_id: int, text: str, inline_buttons, **kwargs) -> None:
         self.sent.append((chat_id, text))
 
     def answer_callback_query(self, callback_query_id: str) -> None:

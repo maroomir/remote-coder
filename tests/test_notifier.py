@@ -303,6 +303,19 @@ def test_notifier_splits_long_job_result_message():
 
 
 @respx.mock
+def test_notifier_send_text_skip_body_preserves_source_under_english_ui():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 9}})
+    )
+    store = type("Store", (), {"get": lambda self: AdvancedSettings(ui_language=UiLanguage.ENGLISH)})()
+    notifier = TelegramNotifier("token", store)
+    raw = "일반 자연어 작업 요청입니다."
+    notifier.send_text(3, raw, skip_body_i18n=True)
+    payload = json.loads(route.calls[0].request.content)
+    assert payload["text"] == raw
+
+
+@respx.mock
 def test_notifier_send_text_logs_outbound_success(caplog):
     route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
         return_value=Response(200, json={"ok": True, "result": {"message_id": 456}})

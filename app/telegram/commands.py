@@ -19,7 +19,14 @@ from app.monitoring.model import format_model_monitor
 from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
-from app.telegram.i18n import translate_text
+from app.telegram.i18n import (
+    HELP_AGENT_TOPIC_EN,
+    HELP_ASK_TOPIC_EN,
+    HELP_MAIN_EN,
+    HELP_PLAN_TOPIC_EN,
+    language_from_settings_store,
+    translate_text,
+)
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 
 if TYPE_CHECKING:
@@ -69,6 +76,19 @@ class InlineButton:
 class CommandResponse:
     text: str
     inline_buttons: list[list["InlineButton"]] | None = None
+    skip_notifier_body_i18n: bool = False
+
+
+def _help_response_skips_notifier_body_i18n(message_text: str) -> bool:
+    tokens = message_text.strip().split()
+    if not tokens or tokens[0] != "/help":
+        return False
+    if len(tokens) == 1:
+        return True
+    raw = tokens[1]
+    topic_aliases = {"에이전트": "agent", "계획": "plan", "질문": "ask"}
+    topic = topic_aliases.get(raw, raw.lower())
+    return topic in ("agent", "agents", "plan", "ask")
 
 
 HELP_TEXT = "\n".join(
@@ -303,23 +323,23 @@ class HelpCommand(TelegramCommand):
     _registry: dict[str, TelegramCommand] | None = None
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
-        _ = ctx
+        lang = language_from_settings_store(ctx.advanced_settings_store)
         tokens = message.text.strip().split()
         if len(tokens) >= 2:
             raw = tokens[1]
             topic_aliases = {"에이전트": "agent", "계획": "plan", "질문": "ask"}
             topic = topic_aliases.get(raw, raw.lower())
             if topic in ("agent", "agents"):
-                return HELP_AGENT_TOPIC
+                return HELP_AGENT_TOPIC if lang == UiLanguage.KOREAN else HELP_AGENT_TOPIC_EN
             if topic == "plan":
-                return HELP_PLAN_TOPIC
+                return HELP_PLAN_TOPIC if lang == UiLanguage.KOREAN else HELP_PLAN_TOPIC_EN
             if topic == "ask":
-                return HELP_ASK_TOPIC
+                return HELP_ASK_TOPIC if lang == UiLanguage.KOREAN else HELP_ASK_TOPIC_EN
         if len(tokens) >= 2 and self._registry is not None:
             subcmd = self._registry.get("/" + tokens[1])
             if subcmd is not None and subcmd.menu_text:
                 return subcmd.menu_text
-        return HELP_TEXT
+        return HELP_TEXT if lang == UiLanguage.KOREAN else HELP_MAIN_EN
 
     def get_inline_buttons(
         self,
@@ -1383,7 +1403,8 @@ class CommandRegistry:
         head = tokens[0] if tokens else ""
         command = self._commands.get(head)
         buttons = command.get_inline_buttons(message, ctx) if command is not None else None
-        return CommandResponse(text=text, inline_buttons=buttons)
+        skip_body = _help_response_skips_notifier_body_i18n(message.text)
+        return CommandResponse(text=text, inline_buttons=buttons, skip_notifier_body_i18n=skip_body)
 
     def bot_commands(self, language: UiLanguage = UiLanguage.ENGLISH) -> list[dict[str, str]]:
         base = [

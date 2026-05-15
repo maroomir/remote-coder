@@ -73,12 +73,20 @@ class TelegramNotifier:
                 time.sleep(attempt)
         return None
 
-    def send_text(self, chat_id: int, text: str) -> int | None:
-        return self._post_message(chat_id, translate_text(text, self._language))
+    def send_text(self, chat_id: int, text: str, *, skip_body_i18n: bool = False) -> int | None:
+        out = text if skip_body_i18n else translate_text(text, self._language)
+        return self._post_message(chat_id, out)
 
-    def send_with_buttons(self, chat_id: int, text: str, inline_buttons: list) -> int | None:
+    def send_with_buttons(
+        self,
+        chat_id: int,
+        text: str,
+        inline_buttons: list,
+        *,
+        skip_body_i18n: bool = False,
+    ) -> int | None:
         language = self._language
-        out_text = translate_text(text, language)
+        out_text = text if skip_body_i18n else translate_text(text, language)
         keyboard = [
             [
                 {"text": translate_button_label(btn.label, language), "callback_data": btn.callback_data}

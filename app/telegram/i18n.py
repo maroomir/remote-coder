@@ -114,6 +114,85 @@ def command_parse_error_no_previous_job_context(language: UiLanguage) -> str:
     )
 
 
+HELP_MAIN_EN = "\n".join(
+    [
+        "Help",
+        "",
+        "Send work requests as regular messages.",
+        "",
+        "Options",
+        "- model:",
+        "- branch:",
+        "- no commit",
+        "- plan: <natural language> or /plan <natural language> - plan mode (plan only; no code changes)",
+        "- ask: <natural language> or /ask <natural language> - ask mode (analysis and answers; no code edits)",
+        "- Korean aliases 계획: and 질문: instead of plan:/ask: (colons `:` or full-width `：` allowed)",
+        "",
+        "Commands:",
+        "- /model <claude|codex|gemini>: Change the default model",
+        "- /status <job_id>: Check job status",
+        "- /branch [name]: Show or switch branches",
+        "- /pull: Pull all remote branch updates",
+        "- /rebase [branch]: Rebase a branch",
+        "- /pr [branch]: Open a GitHub PR for a branch",
+        "- /monitor <model|memory|branch|worktrees|code|project>: Monitoring",
+        "- /clear <branch|worktrees|memory>: Cleanup (confirmation required)",
+        "- /reports [count]: Conversation memory report",
+        "- /init: Reset this chat's settings",
+        "- /stop <job_id>: Stop a running job",
+        "- /start: Inline menu",
+    ]
+)
+
+HELP_AGENT_TOPIC_EN = "\n".join(
+    [
+        "AGENTS mode (agent)",
+        "",
+        "Natural-language coding tasks. The agent can modify code in the current project; when there are "
+        "changes it can create or update a branch, commit, and push.",
+        "",
+        "Examples",
+        "- fix the login validation bug",
+        "- model: codex branch: remote-auth strengthen tests",
+        "- no commit just verify the doc wording",
+        "",
+        "A job is accepted after project/branch/model checks via `y`/`Y` or inline buttons.",
+    ]
+)
+
+HELP_PLAN_TOPIC_EN = "\n".join(
+    [
+        "Plan mode (plan)",
+        "",
+        "Receive change plans only; no code edits. Like agent mode, a job is accepted after confirmation "
+        "(`y`/`Y` or inline buttons).",
+        "",
+        "Examples",
+        "- plan: summarize the login validation flow",
+        "- /plan model: codex list only API boundary risks",
+        "- 계획：refactor steps (full-width colon)",
+        "",
+        "See /help for more options.",
+    ]
+)
+
+HELP_ASK_TOPIC_EN = "\n".join(
+    [
+        "Ask mode (ask)",
+        "",
+        "Answer questions using the repository; no code edits, commits, or pushes. Jobs are accepted like "
+        "agent mode after confirmation (`y`/`Y` or inline buttons).",
+        "",
+        "Examples",
+        "- ask: how do I run pytest in this project?",
+        "- /ask explain JobManager.run stages",
+        "- 질문：what this error line means",
+        "",
+        "See /help for more options.",
+    ]
+)
+
+
 _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
     ("도움말", "Help"),
     ("작업 지시는 일반 메시지로 보내세요.", "Send work requests as regular messages."),
@@ -226,6 +305,10 @@ _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
     ("브랜치가 없습니다", "Branch not found"),
     ("로컬에만 전환 가능합니다", "only local branches can be selected"),
     ("로 전환했습니다 (git switch).", " selected (git switch)."),
+    (
+        "리베이스할 브랜치가 없습니다. /rebase <branch> 로 직접 지정할 수 있습니다.",
+        "No branch is available to rebase. Specify one with /rebase <branch>.",
+    ),
     ("리베이스할 브랜치가 없습니다.", "No branch is available to rebase."),
     ("리베이스할 브랜치를 선택하세요.", "Choose a branch to rebase."),
     ("등록된 프로젝트가 없습니다. /projects 로 등록하세요.", "No project is registered. Add one in /projects."),
@@ -337,6 +420,11 @@ _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
     ("관측된 토큰:", "Observed tokens:"),
     ("오늘 로컬 로그 기준 요청 수:", "Requests today (from local logs):"),
     ("잔여량:", "Remaining:"),
+    ("5시간 한도", "5-hour limit"),
+    ("주간 한도", "Weekly limit"),
+    ("시간 한도", "-hour limit"),
+    ("일 한도", "-day limit"),
+    ("분 한도", "-minute limit"),
     ("명령을 찾을 수 없습니다.", "command not found."),
     ("설치 및 PATH를 확인하세요.", "Install it and verify PATH."),
     ("시간 초과.", " timed out."),

@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 from app.admin.advanced_settings import AdvancedSettings
 from app.jobs.schemas import Job, JobRequest, JobStatus
 from app.jobs.store import InMemoryJobStore
-from app.models import ModelName
+from app.models import ModelName, UiLanguage
 from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.commands import (
     BranchCommand,
@@ -28,6 +28,12 @@ from app.telegram.commands import (
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
+
+
+def _advanced_settings_ko() -> Mock:
+    m = Mock()
+    m.get.return_value = AdvancedSettings(ui_language=UiLanguage.KOREAN)
+    return m
 
 
 def _ctx(
@@ -78,7 +84,10 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
             ClearCommand(),
         ]
     )
-    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help"), _ctx(project_registry))
+    text = registry.dispatch(
+        TelegramMessage(chat_id=1, user_id=1, text="/help"),
+        _ctx(project_registry, advanced_settings_store=_advanced_settings_ko()),
+    )
     assert text is not None
     assert text.startswith("도움말")
     assert "작업 지시는 일반 메시지로 보내세요." in text
@@ -99,13 +108,22 @@ def test_help_command_uses_english_when_advanced_language_default(project_regist
     )
 
     assert response is not None
-    from app.telegram.i18n import translate_text
-    from app.models import UiLanguage
+    from app.telegram.i18n import HELP_MAIN_EN
 
-    assert response.text.startswith("도움말")
-    assert translate_text(response.text, UiLanguage.ENGLISH).startswith("Help")
+    assert response.text == HELP_MAIN_EN
     assert response.inline_buttons is not None
     assert response.inline_buttons[0][0].label == "model"
+
+
+def test_dispatch_rich_help_body_skips_notifier_i18n_flag(project_registry: ProjectRegistry):
+    registry = CommandRegistry(build_default_commands())
+    ctx = _ctx(project_registry)
+    main = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/help"), ctx)
+    assert main is not None and main.skip_notifier_body_i18n
+    agent = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/help agent"), ctx)
+    assert agent is not None and agent.skip_notifier_body_i18n
+    sub = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/help model"), ctx)
+    assert sub is not None and not sub.skip_notifier_body_i18n
 
 
 def test_default_bot_commands_expose_telegram_menu_entries():
@@ -138,8 +156,10 @@ def test_default_bot_commands_expose_telegram_menu_entries():
 
 def test_help_command_returns_text_with_no_buttons(project_registry: ProjectRegistry):
     registry = CommandRegistry([HelpCommand()])
-    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/help"), _ctx(project_registry))
-
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="/help"),
+        _ctx(project_registry, advanced_settings_store=_advanced_settings_ko()),
+    )
     assert response is not None
     assert response.text.startswith("도움말")
     assert response.inline_buttons is None
@@ -206,7 +226,7 @@ def test_dispatch_plan_and_ask_returns_none_for_natural_flow(project_registry: P
 
 def test_help_agent_plan_and_ask_topics(project_registry: ProjectRegistry):
     registry = CommandRegistry(build_default_commands())
-    ctx = _ctx(project_registry)
+    ctx = _ctx(project_registry, advanced_settings_store=_advanced_settings_ko())
     agent_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help agent"), ctx)
     assert agent_text is not None
     assert "AGENTS 모드" in agent_text
@@ -908,7 +928,7 @@ def test_dispatch_rich_help_has_no_buttons(project_registry: ProjectRegistry):
         _ctx(project_registry),
     )
     assert response is not None
-    assert response.text.startswith("도움말")
+    assert response.text.startswith("Help")
     assert response.inline_buttons is None
 
 
