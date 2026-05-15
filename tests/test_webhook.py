@@ -927,6 +927,7 @@ def test_webhook_accepts_natural_message_with_confirmation_buttons(project_regis
     git_service.get_current_branch.return_value = "main"
     advanced_settings_store = Mock()
     advanced_settings_store.get.return_value = AdvancedSettings(
+        ui_language="ko",
         natural_job_confirmation_buttons_enabled=True,
     )
     command_context = CommandContext(
@@ -1003,6 +1004,7 @@ def test_webhook_cancels_natural_message_with_confirmation_button(project_regist
     git_service.get_current_branch.return_value = "main"
     advanced_settings_store = Mock()
     advanced_settings_store.get.return_value = AdvancedSettings(
+        ui_language="ko",
         natural_job_confirmation_buttons_enabled=True,
     )
     command_context = CommandContext(
@@ -1186,6 +1188,7 @@ def test_webhook_executes_pending_clear_confirmation_with_buttons(project_regist
     git_service.list_local_branches_matching.return_value = ["remote-y"]
     advanced_settings_store = Mock()
     advanced_settings_store.get.return_value = AdvancedSettings(
+        ui_language="ko",
         natural_job_confirmation_buttons_enabled=True,
     )
     command_context = CommandContext(

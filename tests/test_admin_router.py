@@ -56,7 +56,7 @@ def test_admin_advanced_page_returns_html(test_settings, project_registry, advan
     client = TestClient(app)
     response = client.get("/advanced")
     assert response.status_code == 200
-    assert "고급 설정" in response.text
+    assert "Advanced Settings" in response.text
     assert 'id="adv-form"' in response.text
     assert 'id="adv-job-timeout"' in response.text
     assert 'href="/"' in response.text

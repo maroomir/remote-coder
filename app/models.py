@@ -1,6 +1,11 @@
 from enum import StrEnum
 
 
+class UiLanguage(StrEnum):
+    ENGLISH = "en"
+    KOREAN = "ko"
+
+
 class ModelName(StrEnum):
     CLAUDE = "claude"
     CODEX = "codex"

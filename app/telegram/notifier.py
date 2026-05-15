@@ -7,6 +7,7 @@ import httpx
 from app.ai.usage import format_token_usage
 from app.jobs.schemas import Job, JobMode
 from app.monitoring.events import EventLogger
+from app.telegram.i18n import language_from_settings_store, translate_button_label, translate_text
 
 _outbound = EventLogger("app.telegram.outbound", "telegram.outbound")
 
@@ -14,9 +15,14 @@ _outbound = EventLogger("app.telegram.outbound", "telegram.outbound")
 class TelegramNotifier:
     _TELEGRAM_TEXT_LIMIT = 4096
 
-    def __init__(self, bot_token: str) -> None:
+    def __init__(self, bot_token: str, advanced_settings_store=None) -> None:
         self._api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         self._callback_answer_url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
+        self._advanced_settings_store = advanced_settings_store
+
+    @property
+    def _language(self):
+        return language_from_settings_store(self._advanced_settings_store)
 
     @staticmethod
     def _extract_message_id(response: httpx.Response) -> int | None:
@@ -29,6 +35,7 @@ class TelegramNotifier:
         return int(message_id) if message_id is not None else None
 
     def send_text(self, chat_id: int, text: str) -> int | None:
+        text = translate_text(text, self._language)
         payload = {"chat_id": chat_id, "text": text}
         max_attempts = 3
         _outbound.info("sendMessage start len=%d", len(text), chat_id=chat_id)
@@ -68,13 +75,17 @@ class TelegramNotifier:
         return None
 
     def send_with_buttons(self, chat_id: int, text: str, inline_buttons: list) -> int | None:
+        language = self._language
         keyboard = [
-            [{"text": btn.label, "callback_data": btn.callback_data} for btn in row]
+            [
+                {"text": translate_button_label(btn.label, language), "callback_data": btn.callback_data}
+                for btn in row
+            ]
             for row in inline_buttons
         ]
         payload = {
             "chat_id": chat_id,
-            "text": text,
+            "text": translate_text(text, language),
             "reply_markup": {"inline_keyboard": keyboard},
         }
         max_attempts = 3
@@ -252,6 +263,7 @@ class TelegramNotifier:
 
     def send_long_text(self, chat_id: int, text: str) -> list[int]:
         """Telegram 단일 메시지 한도(4096자)를 넘으면 여러 메시지로 나눠 전송합니다."""
+        text = translate_text(text, self._language)
         chunks = self._chunk_text(text, self._TELEGRAM_TEXT_LIMIT)
         _outbound.info(
             "send_long_text chunks=%d total_len=%d",

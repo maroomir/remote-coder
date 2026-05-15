@@ -43,6 +43,15 @@ class TelegramWebhookRegistrar:
         self._timeout_seconds = timeout_seconds
         self._bot_commands = bot_commands or []
 
+    def set_bot_commands(self, bot_commands: list[dict[str, str]]) -> None:
+        self._bot_commands = bot_commands
+
+    def sync_project_commands(self, record: ProjectRecord) -> bool:
+        if not record.enabled or not self._bot_commands:
+            return False
+        token = record.bot_token.get_secret_value().strip()
+        return self._sync_bot_commands(record.name, token, record.allowed_chat_ids)
+
     def sync_project(self, record: ProjectRecord) -> bool:
         if not record.enabled:
             return False

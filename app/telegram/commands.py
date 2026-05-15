@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from app.ai.usage import format_token_usage
 from app.jobs.schemas import Job, JobStatus
 from app.jobs.store import InMemoryJobStore
-from app.models import ModelName
+from app.models import ModelName, UiLanguage
 from app.monitoring.code import count_project_code, format_code_monitor
 from app.monitoring.events import EventLogger
 from app.monitoring.git import format_branch_monitor, format_worktree_monitor
@@ -19,6 +19,7 @@ from app.monitoring.model import format_model_monitor
 from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
+from app.telegram.i18n import language_from_settings_store, translate_button_label, translate_text
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 
 if TYPE_CHECKING:
@@ -1371,33 +1372,62 @@ class CommandRegistry:
             return None
         command = self._commands.get(head)
         if not command:
-            return "알 수 없는 명령어입니다. /help 를 확인하세요."
+            return translate_text(
+                "알 수 없는 명령어입니다. /help 를 확인하세요.",
+                language_from_settings_store(ctx.advanced_settings_store),
+            )
         return command.execute(message, ctx)
 
     def dispatch_rich(self, message: TelegramMessage, ctx: CommandContext) -> CommandResponse | None:
         text = self.dispatch(message, ctx)
         if text is None:
             return None
+        language = language_from_settings_store(ctx.advanced_settings_store)
         tokens = message.text.strip().split()
         head = tokens[0] if tokens else ""
         command = self._commands.get(head)
         buttons = command.get_inline_buttons(message, ctx) if command is not None else None
-        return CommandResponse(text=text, inline_buttons=buttons)
+        translated_buttons = self._translate_buttons(buttons, language)
+        return CommandResponse(
+            text=translate_text(text, language),
+            inline_buttons=translated_buttons,
+        )
 
-    def bot_commands(self) -> list[dict[str, str]]:
+    @staticmethod
+    def _translate_buttons(
+        buttons: list[list[InlineButton]] | None,
+        language,
+    ) -> list[list[InlineButton]] | None:
+        if buttons is None:
+            return None
+        return [
+            [
+                InlineButton(
+                    translate_button_label(button.label, language),
+                    button.callback_data,
+                )
+                for button in row
+            ]
+            for row in buttons
+        ]
+
+    def bot_commands(self, language: UiLanguage = UiLanguage.ENGLISH) -> list[dict[str, str]]:
         base = [
-            {"command": command.name.removeprefix("/"), "description": command.description}
+            {
+                "command": command.name.removeprefix("/"),
+                "description": translate_text(command.description, language),
+            }
             for command in self._commands.values()
             if command.description
         ]
         return base + [
             {
                 "command": "plan",
-                "description": "계획 모드 메시지 (예: /plan 로그인 흐름 검토)",
+                "description": translate_text("계획 모드 메시지 (예: /plan 로그인 흐름 검토)", language),
             },
             {
                 "command": "ask",
-                "description": "질문 모드 메시지 (예: /ask JobManager 역할 설명)",
+                "description": translate_text("질문 모드 메시지 (예: /ask JobManager 역할 설명)", language),
             },
         ]
 

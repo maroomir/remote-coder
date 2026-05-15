@@ -88,6 +88,23 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert "/clear branch:" not in text
 
 
+def test_help_command_uses_english_when_advanced_language_default(project_registry: ProjectRegistry):
+    advanced_settings_store = Mock()
+    advanced_settings_store.get.return_value = AdvancedSettings()
+    registry = CommandRegistry(build_default_commands())
+
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="/help"),
+        _ctx(project_registry, advanced_settings_store=advanced_settings_store),
+    )
+
+    assert response is not None
+    assert response.text.startswith("Help")
+    assert "Send work requests as regular messages." in response.text
+    assert response.inline_buttons is not None
+    assert response.inline_buttons[0][0].label == "model"
+
+
 def test_default_bot_commands_expose_telegram_menu_entries():
     registry = CommandRegistry(build_default_commands())
 
@@ -113,6 +130,7 @@ def test_default_bot_commands_expose_telegram_menu_entries():
     ]
     assert all("/" not in item["command"] for item in commands)
     assert all(item["description"] for item in commands)
+    assert commands[0]["description"] == "Show the menu and project status"
 
 
 def test_help_command_returns_text_with_no_buttons(project_registry: ProjectRegistry):
@@ -557,6 +575,7 @@ def test_clear_branch_command_requests_confirmation(project_registry: ProjectReg
 def test_clear_branch_command_uses_confirmation_buttons_when_enabled(project_registry: ProjectRegistry):
     advanced_settings_store = Mock()
     advanced_settings_store.get.return_value = AdvancedSettings(
+        ui_language="ko",
         natural_job_confirmation_buttons_enabled=True,
     )
     ctx = _ctx(project_registry, advanced_settings_store=advanced_settings_store)

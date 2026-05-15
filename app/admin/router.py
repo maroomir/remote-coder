@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, SecretStr
 from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsStore
 from app.admin.database_browser import ConversationDatabaseBrowser
 from app.config import Settings
-from app.models import ModelName
+from app.models import ModelName, UiLanguage
 from app.monitoring.events import EventLogger
 from app.monitoring.log_buffer import InMemoryLogBuffer
 from app.projects.registry import (
@@ -100,6 +100,7 @@ def create_admin_router(
     conversation_store: SQLiteConversationStore,
     bot_instance_manager: BotInstanceManager | None = None,
     webhook_registrar: TelegramWebhookRegistrar | None = None,
+    bot_commands_builder: Callable[[UiLanguage], list[dict[str, str]]] | None = None,
 ) -> APIRouter:
     router = APIRouter(tags=["admin"])
 
@@ -473,8 +474,13 @@ def create_admin_router(
     @router.put("/api/advanced-settings")
     def api_advanced_settings_put(body: AdvancedSettings, _: LocalhostOnly) -> dict:
         saved = advanced_settings_store.save(body)
+        if webhook_registrar is not None and bot_commands_builder is not None:
+            webhook_registrar.set_bot_commands(bot_commands_builder(saved.ui_language))
+            for project in registry.list_projects():
+                webhook_registrar.sync_project_commands(project)
         _adminlog.info(
-            "advanced settings updated lifecycle_notify=%s pull_startup=%s auto_merge=%s delete_rebased_branch=%s natural_confirm_buttons=%s status_limit=%d job_timeout=%s memory_limit=%s",
+            "advanced settings updated ui_language=%s lifecycle_notify=%s pull_startup=%s auto_merge=%s delete_rebased_branch=%s natural_confirm_buttons=%s status_limit=%d job_timeout=%s memory_limit=%s",
+            saved.ui_language.value,
             saved.server_lifecycle_notify_enabled,
             saved.pull_projects_on_server_startup_enabled,
             saved.auto_merge_to_main_enabled,

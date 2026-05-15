@@ -91,7 +91,7 @@ def _build_bot_instance(record):
     return BotInstance(
         project_name=record.name,
         token_hash=compute_token_hash_prefix(record.bot_token.get_secret_value()),
-        notifier=TelegramNotifier(record.bot_token.get_secret_value()),
+        notifier=TelegramNotifier(record.bot_token.get_secret_value(), advanced_settings_store),
         auth_service=AllowlistAuthService(set(record.allowed_chat_ids), set(record.allowed_user_ids)),
         command_context=command_context,
         webhook_secret=record.webhook_secret.get_secret_value() if record.webhook_secret else None,
@@ -129,7 +129,7 @@ command_context.job_manager = job_manager
 webhook_registrar = (
     TelegramWebhookRegistrar(
         settings.telegram_webhook_public_base_url,
-        bot_commands=command_registry.bot_commands(),
+        bot_commands=command_registry.bot_commands(advanced_settings_store.get().ui_language),
     )
     if settings.telegram_webhook_public_base_url
     else None
@@ -233,6 +233,7 @@ app.include_router(
         conversation_store,
         bot_instance_manager=bot_instance_manager,
         webhook_registrar=webhook_registrar,
+        bot_commands_builder=command_registry.bot_commands,
     )
 )
 app.include_router(

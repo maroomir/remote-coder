@@ -7,10 +7,13 @@ from typing import Self
 
 from pydantic import BaseModel, model_validator
 
+from app.models import UiLanguage
+
 
 class AdvancedSettings(BaseModel):
     model_config = {"extra": "forbid"}
 
+    ui_language: UiLanguage = UiLanguage.ENGLISH
     server_lifecycle_notify_enabled: bool = True
     pull_projects_on_server_startup_enabled: bool = False
     auto_merge_to_main_enabled: bool = False

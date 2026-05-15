@@ -5,6 +5,7 @@ import respx
 from httpx import Response
 from pathlib import Path
 
+from app.admin.advanced_settings import AdvancedSettings
 from app.jobs.schemas import Job, JobMode, JobRequest, JobStatus
 from app.models import ModelName
 from app.telegram.notifier import TelegramNotifier
@@ -33,6 +34,32 @@ def test_notifier_send_job_accepted_includes_mode_for_plan_ask():
         payload = json.loads(route.calls[0].request.content.decode())
         assert expected in payload["text"]
         assert "모델: claude" in payload["text"]
+
+
+@respx.mock
+def test_notifier_uses_english_when_advanced_language_default():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    advanced_settings_store = type("Store", (), {"get": lambda self: AdvancedSettings()})()
+    notifier = TelegramNotifier("token", advanced_settings_store)
+    job = Job(
+        id="j-en",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+    )
+
+    notifier.send_job_accepted(job)
+
+    payload = json.loads(route.calls[0].request.content.decode())
+    assert "Job accepted" in payload["text"]
+    assert "Project: proj" in payload["text"]
+    assert payload["reply_markup"]["inline_keyboard"][0][0]["text"] == "Stop job"
 
 
 @respx.mock
