@@ -143,10 +143,10 @@ def _format_recent_usage_section(summary: RecentUsageSummary | None) -> str | No
     if summary is None:
         return None
 
-    lines = ["최근 Job 사용량"]
+    lines = ["Recent job usage"]
     if summary.inspected_jobs == 0:
-        lines.append("- 이 채팅/프로젝트/모델로 완료되거나 실행된 Job 기록이 아직 없습니다.")
-        lines.append("- 실제 세부 모델명과 토큰은 CLI 출력·로컬 로그에 남은 경우에만 표시됩니다.")
+        lines.append("- No completed/running jobs for this chat/project/model.")
+        lines.append("- Model details/tokens appear only when available in CLI output or local logs.")
         return "\n".join(lines)
 
     latest_bits = [summary.latest_job_id or "-"]
@@ -154,16 +154,16 @@ def _format_recent_usage_section(summary: RecentUsageSummary | None) -> str | No
         latest_bits.append(summary.latest_status)
     if summary.latest_finished_at:
         latest_bits.append(summary.latest_finished_at.isoformat())
-    lines.append(f"- 최근 Job: {' / '.join(latest_bits)}")
-    lines.append(f"- 확인한 Job 수: {summary.inspected_jobs}")
+    lines.append(f"- Recent job: {' / '.join(latest_bits)}")
+    lines.append(f"- Inspected jobs: {summary.inspected_jobs}")
     if summary.actual_model:
-        lines.append(f"- 관측된 세부 모델: {summary.actual_model}")
+        lines.append(f"- Observed detailed model: {summary.actual_model}")
     else:
-        lines.append("- 관측된 세부 모델: CLI 기본값/설정에서 자동 선택됨 (로그에서 확인 불가)")
+        lines.append("- Observed detailed model: selected by CLI default/settings (not found in logs)")
     if summary.token_metrics:
-        lines.append(f"- 관측된 토큰 합계: {format_token_usage(summary.token_metrics)}")
+        lines.append(f"- Observed tokens: {format_token_usage(summary.token_metrics)}")
     else:
-        lines.append("- 관측된 토큰 합계: 토큰 사용량 패턴을 로그에서 찾지 못했습니다.")
+        lines.append("- Observed tokens: no token usage pattern found in logs.")
     return "\n".join(lines)
 
 
@@ -177,32 +177,32 @@ def _read_local_usage_snapshot(model: ModelName) -> LocalUsageSnapshot | None:
 
 def _format_local_usage_section(snapshot: LocalUsageSnapshot | None) -> str | None:
     if snapshot is None:
-        return "실제 로컬 사용량/잔여량\n- 로컬 CLI 사용량 로그를 찾지 못했습니다."
+        return "Local usage/quota snapshot\n- No local CLI usage logs found."
 
-    lines = ["실제 로컬 사용량/잔여량", f"- 출처: {snapshot.source}"]
+    lines = ["Local usage/quota snapshot", f"- Source: {snapshot.source}"]
     if snapshot.observed_at:
-        lines.append(f"- 관측 시각: {snapshot.observed_at.astimezone().isoformat(timespec='seconds')}")
+        lines.append(f"- Observed at: {snapshot.observed_at.astimezone().isoformat(timespec='seconds')}")
     if snapshot.plan_type:
-        lines.append(f"- 플랜/계정 유형: {snapshot.plan_type}")
+        lines.append(f"- Plan/account type: {snapshot.plan_type}")
     if snapshot.actual_model:
-        lines.append(f"- 관측된 세부 모델: {snapshot.actual_model}")
+        lines.append(f"- Observed detailed model: {snapshot.actual_model}")
     if snapshot.token_metrics:
         formatted = format_token_usage(snapshot.token_metrics)
         if formatted:
-            lines.append(f"- 관측된 토큰: {formatted}")
+            lines.append(f"- Observed tokens: {formatted}")
     if snapshot.requests_today is not None:
-        lines.append(f"- 오늘 로컬 로그 기준 요청 수: {snapshot.requests_today:,}")
+        lines.append(f"- Requests today from local logs: {snapshot.requests_today:,}")
     if snapshot.quota_windows:
         for window in snapshot.quota_windows:
             reset = ""
             if window.resets_at is not None:
-                reset = f", 리셋 {window.resets_at.astimezone().isoformat(timespec='minutes')}"
+                reset = f", reset {window.resets_at.astimezone().isoformat(timespec='minutes')}"
             lines.append(
-                f"- {window.label}: 잔여 {window.remaining_percent:g}% "
-                f"(사용 {window.used_percent:g}%{reset})"
+                f"- {window.label}: remaining {window.remaining_percent:g}% "
+                f"(used {window.used_percent:g}%{reset})"
             )
     elif snapshot.remaining_note:
-        lines.append(f"- 잔여량: {snapshot.remaining_note}")
+        lines.append(f"- Remaining quota: {snapshot.remaining_note}")
     return "\n".join(lines)
 
 
@@ -235,13 +235,13 @@ def _read_codex_local_usage() -> LocalUsageSnapshot | None:
         token_metrics=token_usage or None,
         quota_windows=tuple(windows),
         plan_type=_string_or_none(rate_limits.get("plan_type")),
-        remaining_note=None if windows else "Codex 세션 로그에서 rate_limits 스냅샷을 찾지 못했습니다.",
+        remaining_note=None if windows else "No rate_limits snapshot found in Codex session logs.",
     )
 
 
 def _codex_quota_windows(rate_limits: dict[str, Any]) -> list[LocalQuotaWindow]:
     windows: list[LocalQuotaWindow] = []
-    for key, fallback in (("primary", "기본 윈도우"), ("secondary", "보조 윈도우")):
+    for key, fallback in (("primary", "primary window"), ("secondary", "secondary window")):
         raw = rate_limits.get(key)
         if not isinstance(raw, dict):
             continue
@@ -282,7 +282,7 @@ def _read_claude_local_usage() -> LocalUsageSnapshot | None:
         observed_at=observed,
         actual_model=_string_or_none(message.get("model")),
         token_metrics=_normalize_token_dict(message.get("usage")) or None,
-        remaining_note="Claude 로컬 transcript에는 세션 토큰은 남지만 계정 잔여 quota 스냅샷은 저장되지 않았습니다.",
+        remaining_note="Claude local transcripts include session tokens but not account remaining quota snapshots.",
     )
 
 
@@ -310,7 +310,7 @@ def _read_gemini_local_usage() -> LocalUsageSnapshot | None:
         actual_model=_string_or_none(item.get("model")),
         token_metrics=_normalize_token_dict(item.get("tokens")) or None,
         requests_today=requests_today,
-        remaining_note="Gemini 로컬 chat 로그에는 요청·토큰은 남지만 계정 잔여 quota 스냅샷은 저장되지 않았습니다.",
+        remaining_note="Gemini local chat logs include requests/tokens but not account remaining quota snapshots.",
     )
 
 
@@ -390,14 +390,14 @@ def _datetime_from_epoch(raw: object) -> datetime | None:
 
 def _format_window_label(minutes: int) -> str:
     if minutes == 300:
-        return "5시간 한도"
+        return "5-hour limit"
     if minutes == 10080:
-        return "주간 한도"
+        return "Weekly limit"
     if minutes % 1440 == 0:
-        return f"{minutes // 1440}일 한도"
+        return f"{minutes // 1440}-day limit"
     if minutes % 60 == 0:
-        return f"{minutes // 60}시간 한도"
-    return f"{minutes}분 한도"
+        return f"{minutes // 60}-hour limit"
+    return f"{minutes}-minute limit"
 
 
 def _compact_home(path: Path) -> str:
@@ -466,18 +466,18 @@ def _format_claude_monitor(timeout_seconds: int) -> str:
             shell=False,
         )
     except FileNotFoundError:
-        lines.append("CLI: `claude` 명령을 찾을 수 없습니다. Claude Code CLI 설치 및 PATH를 확인하세요.")
+        lines.append("CLI: `claude` command not found. Check Claude Code CLI installation and PATH.")
         lines.extend(_claude_footer())
         return "\n".join(lines)
     except subprocess.TimeoutExpired:
-        lines.append("`claude auth status --text` 시간 초과.")
+        lines.append("`claude auth status --text` timed out.")
         lines.extend(_claude_footer())
         return "\n".join(lines)
 
     out = (proc.stdout or "").strip()
     err = (proc.stderr or "").strip()
     if proc.returncode == 0 and out:
-        snippet = out if len(out) <= 2500 else out[:2500].rstrip() + "\n...(생략)"
+        snippet = out if len(out) <= 2500 else out[:2500].rstrip() + "\n...(omitted)"
         lines.append("auth status (--text):")
         lines.append(snippet)
     else:
@@ -498,17 +498,17 @@ def _claude_auth_fallback_json(timeout_seconds: int, prev_code: int, prev_msg: s
             shell=False,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        lines.append(f"auth status 실패 (이전 exit {prev_code}): {prev_msg[:400]}")
+        lines.append(f"auth status failed (previous exit {prev_code}): {prev_msg[:400]}")
         return lines
 
     raw = (proc.stdout or "").strip()
     if proc.returncode != 0 or not raw:
-        lines.append(f"auth status 실패 (exit {proc.returncode}): {(proc.stderr or prev_msg)[:400]}")
+        lines.append(f"auth status failed (exit {proc.returncode}): {(proc.stderr or prev_msg)[:400]}")
         return lines
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        lines.append("auth status: JSON이 아닌 출력입니다 (처음 400자).")
+        lines.append("auth status: non-JSON output (first 400 chars).")
         lines.append(raw[:400])
         return lines
 
@@ -526,10 +526,10 @@ def _claude_auth_fallback_json(timeout_seconds: int, prev_code: int, prev_msg: s
         for k in safe_keys:
             if k in data:
                 picked[k] = data[k]
-        lines.append("auth status (JSON 요약, 민감값 제외):")
+        lines.append("auth status (JSON summary, sensitive values excluded):")
         lines.append(json.dumps(picked, ensure_ascii=False, indent=2) if picked else "{}")
     else:
-        lines.append("auth status: 예상과 다른 JSON 형식입니다.")
+        lines.append("auth status: unexpected JSON shape.")
     return lines
 
 
@@ -548,20 +548,20 @@ def _format_codex_monitor(timeout_seconds: int) -> str:
             shell=False,
         )
     except FileNotFoundError:
-        lines.append("CLI: `codex` 명령을 찾을 수 없습니다. Codex CLI 설치 및 PATH를 확인하세요.")
+        lines.append("CLI: `codex` command not found. Check Codex CLI installation and PATH.")
         lines.extend(_codex_footer())
         return "\n".join(lines)
     except subprocess.TimeoutExpired:
-        lines.append("`codex --version` 시간 초과.")
+        lines.append("`codex --version` timed out.")
         lines.extend(_codex_footer())
         return "\n".join(lines)
 
     ver = (proc.stdout or proc.stderr or "").strip()
     if ver:
         snippet = ver if len(ver) <= 500 else ver[:500] + "..."
-        lines.append(f"CLI 버전:\n{snippet}")
+        lines.append(f"CLI version:\n{snippet}")
     else:
-        lines.append(f"버전 확인 실패 (exit {proc.returncode}).")
+        lines.append(f"Version check failed (exit {proc.returncode}).")
 
     lines.extend(_codex_footer())
     return "\n".join(lines)
@@ -582,20 +582,20 @@ def _format_gemini_monitor(timeout_seconds: int) -> str:
             shell=False,
         )
     except FileNotFoundError:
-        lines.append("CLI: `gemini` 명령을 찾을 수 없습니다. Gemini CLI 설치 및 PATH를 확인하세요.")
+        lines.append("CLI: `gemini` command not found. Check Gemini CLI installation and PATH.")
         lines.extend(_gemini_footer())
         return "\n".join(lines)
     except subprocess.TimeoutExpired:
-        lines.append("`gemini --version` 시간 초과.")
+        lines.append("`gemini --version` timed out.")
         lines.extend(_gemini_footer())
         return "\n".join(lines)
 
     ver = (proc.stdout or proc.stderr or "").strip()
     if ver:
         snippet = ver if len(ver) <= 500 else ver[:500] + "..."
-        lines.append(f"CLI 버전:\n{snippet}")
+        lines.append(f"CLI version:\n{snippet}")
     else:
-        lines.append(f"버전 확인 실패 (exit {proc.returncode}).")
+        lines.append(f"Version check failed (exit {proc.returncode}).")
 
     lines.extend(_gemini_footer())
     return "\n".join(lines)
@@ -604,5 +604,5 @@ def _format_gemini_monitor(timeout_seconds: int) -> str:
 def _gemini_footer() -> list[str]:
     return [
         "",
-        "설치: npm install -g @google/gemini-cli",
+        "Install: npm install -g @google/gemini-cli",
     ]

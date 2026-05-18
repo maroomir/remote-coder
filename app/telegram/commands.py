@@ -1001,7 +1001,7 @@ class MonitorCommand(TelegramCommand):
         tokens = message.text.strip().split()
         if len(tokens) < 2:
             _cmd_evt.info("monitor usage requested", chat_id=message.chat_id, user_id=message.user_id)
-            return "확인할 모니터링 항목을 선택하세요."
+            return "Choose a monitoring view."
 
         sub = tokens[1].lower()
         valid = {"model", "memory", "branch", "worktrees", "code", "project"}
@@ -1012,18 +1012,15 @@ class MonitorCommand(TelegramCommand):
                 chat_id=message.chat_id,
                 user_id=message.user_id,
             )
-            return format_usage(
-                "/monitor <model|memory|branch|worktrees|code|project>",
-                "예: /monitor memory",
-            )
+            return "Usage\n\n- /monitor <model|memory|branch|worktrees|code|project>\n- Example: /monitor memory"
 
         if sub == "project":
             effective = effective_project_name_for_chat(ctx, message.chat_id)
             if not effective:
-                return "이 봇의 프로젝트 컨텍스트를 찾을 수 없습니다."
+                return "Could not find the project context for this bot."
             entry = ctx.project_registry.get(effective)
             if entry is None:
-                return f"알 수 없는 프로젝트: {effective}"
+                return f"Unknown project: {effective}"
             _cmd_evt.info(
                 "monitor project requested effective=%s",
                 effective or "-",
@@ -1034,8 +1031,8 @@ class MonitorCommand(TelegramCommand):
             state = "on" if entry.enabled else "off"
             return "\n".join(
                 [
-                    f"이 봇 프로젝트: {entry.name}",
-                    f"상태: {state}",
+                    f"This bot project: {entry.name}",
+                    f"Status: {state}",
                     f"root_path: {entry.root_path}",
                     f"default_model: {entry.default_model.value}",
                     f"worktree_base_dir: {entry.worktree_base_dir}",
@@ -1051,8 +1048,8 @@ class MonitorCommand(TelegramCommand):
                 user_id=message.user_id,
             )
             return (
-                "등록된 프로젝트가 없습니다. "
-                "브라우저에서 http://127.0.0.1:8000/projects 로 프로젝트를 등록하세요."
+                "No projects are registered. "
+                "Register one at http://127.0.0.1:8000/projects."
             )
 
         entry = ctx.project_registry.get(project_name)
@@ -1064,7 +1061,7 @@ class MonitorCommand(TelegramCommand):
                 user_id=message.user_id,
                 project=project_name,
             )
-            return f"알 수 없는 프로젝트: {project_name}"
+            return f"Unknown project: {project_name}"
         if not entry.enabled:
             _cmd_evt.warning(
                 "monitor disabled project sub=%s",
@@ -1073,7 +1070,7 @@ class MonitorCommand(TelegramCommand):
                 user_id=message.user_id,
                 project=project_name,
             )
-            return f"비활성화된 프로젝트: {project_name}"
+            return f"Disabled project: {project_name}"
 
         _cmd_evt.info(
             "monitor requested sub=%s",
@@ -1092,11 +1089,11 @@ class MonitorCommand(TelegramCommand):
                 chat_id=message.chat_id,
                 project=project_name,
             )
-            return f"현재 채팅 기본 모델: {current.value}\n\n{body}"
+            return f"Current chat default model: {current.value}\n\n{body}"
 
         if sub == "memory":
             if ctx.conversation_store is None:
-                return "대화 기억 저장소가 설정되지 않았습니다."
+                return "Conversation memory store is not configured."
             stats = ctx.conversation_store.get_chat_stats(project_name, message.chat_id)
             return format_memory_monitor(stats, project_name, message.chat_id)
 
@@ -1161,13 +1158,13 @@ class ClearCommand(ConfirmableCommand):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
         if len(tokens) == 1:
-            return "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다."
+            return "Choose what to clear. Confirmation with y/Y is required before running."
         if len(tokens) != 2 or tokens[1] not in {"branch", "memory", "worktrees"}:
-            return "사용법: /clear branch 또는 /clear worktrees 또는 /clear memory"
+            return "Usage: /clear branch or /clear worktrees or /clear memory"
 
         action = tokens[1]
         if action == "memory" and ctx.conversation_store is None:
-            return "기억 저장소가 설정되지 않았습니다."
+            return "Memory store is not configured."
 
         ctx.confirmation_store.set(
             effective_project_name_for_chat(ctx, message.chat_id),
@@ -1176,16 +1173,16 @@ class ClearCommand(ConfirmableCommand):
         )
 
         if action == "branch":
-            summary = "이 봇 프로젝트에서 remote-* 브랜치와 연결된 worktree를 삭제합니다."
+            summary = "Delete remote-* branches and their linked worktrees in this bot project."
         elif action == "worktrees":
-            summary = "이 봇 프로젝트의 관리 대상 worktree를 정리하고 stale 엔트리를 prune 합니다."
+            summary = "Clean managed worktrees and prune stale entries in this bot project."
         else:
-            summary = "이 봇 프로젝트에서 이 채팅방의 대화 기억만 삭제합니다."
+            summary = "Delete only this chat's conversation memory in this bot project."
         if _confirmation_buttons_enabled(ctx):
-            return f"현재 할 작업: {summary}\n실행 여부를 선택하세요."
+            return f"Pending action: {summary}\nChoose whether to run it."
         return (
-            f"현재 할 작업: {summary}\n"
-            "실행하려면 `y` 또는 `Y`를 입력하세요. 그 외 응답은 취소됩니다."
+            f"Pending action: {summary}\n"
+            "Send y or Y to run it. Any other response cancels it."
         )
 
     def get_inline_buttons(
@@ -1212,7 +1209,7 @@ class ClearCommand(ConfirmableCommand):
         )
         if pending is None or pending.command_name != self.name:
             return None
-        return [[InlineButton("네", "Y"), InlineButton("아니오", "n")]]
+        return [[InlineButton("Yes", "Y"), InlineButton("No", "n")]]
 
     def confirm(
         self,
@@ -1222,12 +1219,12 @@ class ClearCommand(ConfirmableCommand):
     ) -> str:
         if message.text.strip() not in {"y", "Y"}:
             if pending.action == "branch":
-                target = "브랜치 삭제"
+                target = "Branch cleanup"
             elif pending.action == "worktrees":
-                target = "worktree 정리"
+                target = "Worktree cleanup"
             else:
-                target = "기억 삭제"
-            return f"{target}를 취소했습니다."
+                target = "Memory cleanup"
+            return f"{target} was cancelled."
 
         _cmd_evt.info("clear confirmed action=%s", pending.action, chat_id=message.chat_id)
         if pending.action == "branch":
@@ -1236,7 +1233,7 @@ class ClearCommand(ConfirmableCommand):
             return self._clear_worktrees(ctx)
         if pending.action == "memory":
             return self._clear_memory(ctx, message.chat_id)
-        return "알 수 없는 clear 작업입니다."
+        return "Unknown clear action."
 
     def _bound_project_record(self, ctx: CommandContext) -> ProjectRecord | None:
         name = ctx.project_name
@@ -1247,9 +1244,9 @@ class ClearCommand(ConfirmableCommand):
     def _clear_branches(self, ctx: CommandContext) -> str:
         p = self._bound_project_record(ctx)
         if p is None:
-            return "봇에 연결된 프로젝트가 없거나 레지스트리에서 찾을 수 없습니다."
+            return "No project is bound to this bot or the project was not found in the registry."
         if not p.enabled:
-            return f"프로젝트가 비활성화되어 있습니다: {p.name}"
+            return f"Project is disabled: {p.name}"
 
         try:
             ctx.git_service.checkout_integrate_branch(p.root_path)
@@ -1263,32 +1260,32 @@ class ClearCommand(ConfirmableCommand):
                 ctx.git_service.remove_linked_worktrees_for_branches(p.root_path, local_branches)
                 ctx.git_service.delete_local_branches(p.root_path, local_branches)
             return (
-                f"{p.name}: 원격 {len(remote_branches)}개, 로컬 {len(local_branches)}개 삭제 "
+                f"{p.name}: remote {len(remote_branches)}, local {len(local_branches)} deleted "
                 f"({ctx.git_remote_name})"
             )
         except RuntimeError as exc:
-            return f"{p.name}: 실패 — {exc}"
+            return f"{p.name}: failed - {exc}"
 
     def _clear_memory(self, ctx: CommandContext, chat_id: int) -> str:
         if ctx.conversation_store is None:
-            return "기억 저장소가 설정되지 않았습니다."
+            return "Memory store is not configured."
         project_name = ctx.project_name
         if not project_name:
-            return "봇에 연결된 프로젝트가 없습니다."
+            return "No project is bound to this bot."
         entries_removed, links_removed = ctx.conversation_store.delete_chat_memory(
             project=project_name, chat_id=chat_id
         )
         return (
-            f"이 채팅방의 대화 기억을 삭제했습니다. "
-            f"(project={project_name}, 대화 {entries_removed}건, 브랜치 연결 {links_removed}건)"
+            f"Deleted this chat's conversation memory. "
+            f"(project={project_name}, entries {entries_removed}, branch links {links_removed})"
         )
 
     def _clear_worktrees(self, ctx: CommandContext) -> str:
         p = self._bound_project_record(ctx)
         if p is None:
-            return "봇에 연결된 프로젝트가 없거나 레지스트리에서 찾을 수 없습니다."
+            return "No project is bound to this bot or the project was not found in the registry."
         if not p.enabled:
-            return f"프로젝트가 비활성화되어 있습니다: {p.name}"
+            return f"Project is disabled: {p.name}"
 
         try:
             removed_count = ctx.git_service.cleanup_managed_worktrees(
@@ -1296,9 +1293,9 @@ class ClearCommand(ConfirmableCommand):
                 p.worktree_base_dir,
                 branch_prefix="remote-",
             )
-            return f"{p.name}: worktree {removed_count}개 삭제, stale prune 완료"
+            return f"{p.name}: {removed_count} worktrees deleted, stale entries pruned"
         except RuntimeError as exc:
-            return f"{p.name}: 실패 — {exc}"
+            return f"{p.name}: failed - {exc}"
 
 
 class StopCommand(TelegramCommand):
