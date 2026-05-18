@@ -29,3 +29,9 @@ def test_translate_text_still_replaces_distinct_bot_phrases():
     out = translate_text(raw, UiLanguage.ENGLISH)
     assert "Job accepted" in out
     assert "Branch" in out
+
+
+def test_translate_text_translates_confirmation_mode_label():
+    raw = "- 모드: agent (코드 수정·커밋·push 가능)"
+    out = translate_text(raw, UiLanguage.ENGLISH)
+    assert out == "- Mode: agent (allows edit, commit, and push)"
