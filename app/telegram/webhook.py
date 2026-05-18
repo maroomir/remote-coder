@@ -91,34 +91,34 @@ def _format_natural_job_confirmation(
     use_buttons: bool = False,
 ) -> str:
     lines = [
-        "현재 할 작업을 확인하세요.",
+        "Confirm the work to run.",
         "",
-        f"- 프로젝트: {request.project}",
-        f"- 작업 브랜치: {current_branch}",
-        f"- 사용 모델: {request.model.value}",
+        f"- Project: {request.project}",
+        f"- Work branch: {current_branch}",
+        f"- Model: {request.model.value}",
     ]
     if request.mode is JobMode.PLAN:
-        lines.append("- 모드: plan (읽기 전용 · 커밋·push 없음)")
+        lines.append("- Mode: plan (read-only, no commit/push)")
     elif request.mode is JobMode.ASK:
-        lines.append("- 모드: ask (읽기 전용 · 커밋·push 없음)")
+        lines.append("- Mode: ask (read-only, no commit/push)")
     else:
-        lines.append("- 모드: agent (코드 수정·커밋·push 가능)")
+        lines.append("- Mode: agent (may edit code, commit, and push)")
     if request.branch:
-        lines.append(f"- 요청 브랜치: {request.branch}")
+        lines.append(f"- Requested branch: {request.branch}")
     if use_buttons:
-        footer = "실행 여부를 선택하세요."
+        footer = "Choose whether to run it."
     else:
         footer = (
-            "실행하려면 `y` 또는 `Y`를 입력하세요. "
-            "새 자연어 요청으로 이 확인을 바꿀 수 있습니다. "
-            "파싱되지 않는 입력은 대기 작업이 취소됩니다."
+            "Send `y` or `Y` to run it. "
+            "A new natural-language request can replace this confirmation. "
+            "Unparsed input cancels the pending work."
         )
     lines.extend(["", footer])
     return "\n".join(lines)
 
 
 def _natural_job_confirmation_buttons() -> list[list[InlineButton]]:
-    return [[InlineButton("네", _NATURAL_JOB_CONFIRM_YES), InlineButton("아니오", _NATURAL_JOB_CONFIRM_NO)]]
+    return [[InlineButton("Yes", _NATURAL_JOB_CONFIRM_YES), InlineButton("No", _NATURAL_JOB_CONFIRM_NO)]]
 
 
 def _natural_job_confirmation_buttons_enabled(command_context: CommandContext) -> bool:
@@ -129,22 +129,22 @@ def _natural_job_confirmation_buttons_enabled(command_context: CommandContext) -
 
 def _format_natural_job_cancelled(request: JobRequest | None) -> str:
     if request is None:
-        return "작업 요청을 취소했습니다."
-    return f"작업 요청을 취소했습니다. (프로젝트: {request.project}, 모델: {request.model.value})"
+        return "Cancelled the work request."
+    return f"Cancelled the work request. (project: {request.project}, model: {request.model.value})"
 
 
 def _format_mode_input_prompt(mode: JobMode) -> str:
     if mode is JobMode.PLAN:
         return (
-            "plan 모드로 실행할 작업 지시문을 보내주세요.\n\n"
-            "예: 로그인 수정 계획 세워줘\n"
-            "예: model: codex API 경계 리스크만 나열해줘"
+            "Send the instruction to run in plan mode.\n\n"
+            "Example: Plan a login fix\n"
+            "Example: model: codex List only API boundary risks"
         )
     if mode is JobMode.ASK:
         return (
-            "ask 모드로 실행할 질문을 보내주세요.\n\n"
-            "예: JobManager 흐름 설명해줘\n"
-            "예: model: codex pytest 실행 방법 알려줘"
+            "Send the question to run in ask mode.\n\n"
+            "Example: Explain the JobManager flow\n"
+            "Example: model: codex How do I run pytest?"
         )
     raise AssertionError(mode)
 
@@ -383,13 +383,13 @@ def create_webhook_router(
                 background_tasks.add_task(
                     notifier.send_text,
                     chat_id,
-                    f"알 수 없는 프로젝트: {bot_instance.project_name}",
+                    f"Unknown project: {bot_instance.project_name}",
                 )
                 return False
             try:
                 current_branch = str(command_context.git_service.get_current_branch(ent.root_path))
             except RuntimeError as exc:
-                background_tasks.add_task(notifier.send_text, chat_id, f"작업 브랜치 확인 실패: {exc}")
+                background_tasks.add_task(notifier.send_text, chat_id, f"Could not resolve work branch: {exc}")
                 return False
             command_context.confirmation_store.set(
                 scope_project,

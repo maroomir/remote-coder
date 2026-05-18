@@ -22,21 +22,21 @@ def format_branch_monitor(
         local_block = git.format_local_branches(root)
         remote_block = git.format_remote_branches_for_remote(root, remote)
     except RuntimeError as exc:
-        return f"/monitor branch 실패: {exc}"
+        return f"/monitor branch failed: {exc}"
 
     header = (
-        f"브랜치 모니터\n"
-        f"프로젝트: {project_name}\n"
+        f"Branch monitor\n"
+        f"Project: {project_name}\n"
         f"root: {root}\n"
-        f"원격 이름: {remote}\n"
-        f"현재 checkout: {current}\n"
-        f"로컬 브랜치 수: {local_n}\n"
-        f"{remote} 원격 추적 브랜치 수: {remote_n}\n\n"
+        f"Remote: {remote}\n"
+        f"Current checkout: {current}\n"
+        f"Local branches: {local_n}\n"
+        f"{remote} remote-tracking branches: {remote_n}\n\n"
     )
-    body = f"[로컬]\n{local_block}\n\n[{remote} 원격]\n{remote_block}"
+    body = f"[Local]\n{local_block}\n\n[{remote} remote]\n{remote_block}"
     text = header + body
     if len(text) > max_len:
-        text = text[:max_len].rstrip() + "\n\n...(메시지 길이 제한으로 생략)"
+        text = text[:max_len].rstrip() + "\n\n...(truncated for message length)"
     return text
 
 
@@ -51,7 +51,7 @@ def format_worktree_monitor(
     try:
         entries = git.list_worktree_entries(project_path)
     except RuntimeError as exc:
-        return f"/monitor worktrees 실패: {exc}"
+        return f"/monitor worktrees failed: {exc}"
 
     root = project_path.resolve()
     managed_base = worktree_base_dir.resolve()
@@ -85,18 +85,18 @@ def format_worktree_monitor(
 
     extra = ""
     if len(entries) > max_detail:
-        extra = f"\n...(외 {len(entries) - max_detail}개 생략)"
+        extra = f"\n...({len(entries) - max_detail} more omitted)"
 
     lines = [
-        "워크트리 모니터",
-        f"프로젝트: {project_name}",
+        "Worktree monitor",
+        f"Project: {project_name}",
         f"root: {root}",
-        f"관리 기준 디렉터리(worktree_base): {managed_base}",
-        f"총 worktree 수: {len(entries)}",
-        f"detached 수: {detached_n}",
-        f"managed 후보 수(remote-*·base·_rebase_ops): {managed_n}",
+        f"Managed base directory (worktree_base): {managed_base}",
+        f"Total worktrees: {len(entries)}",
+        f"Detached worktrees: {detached_n}",
+        f"Managed candidates (remote-*, base, _rebase_ops): {managed_n}",
         "",
-        "[항목]",
+        "[Entries]",
         *detail_lines,
         extra,
     ]

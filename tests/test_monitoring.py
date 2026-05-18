@@ -68,8 +68,8 @@ def test_format_model_monitor_includes_recent_job_usage():
         chat_id=7,
         project="remote-coder",
     )
-    assert "최근 Job 사용량" in text
-    assert "관측된 세부 모델: ChatGPT 5.5" in text
+    assert "Recent job usage" in text
+    assert "Observed detailed model: ChatGPT 5.5" in text
     assert "input=1,200" in text
     assert "output=300" in text
 
@@ -96,8 +96,8 @@ def test_format_model_monitor_prefers_structured_usage():
         chat_id=7,
         project="remote-coder",
     )
-    assert "관측된 세부 모델: ChatGPT 5.5" in text
-    assert "관측된 토큰 합계: 1,500" in text
+    assert "Observed detailed model: ChatGPT 5.5" in text
+    assert "Observed tokens: 1,500" in text
 
 
 def test_format_model_monitor_includes_codex_local_rate_limits(tmp_path: Path, monkeypatch):
@@ -141,11 +141,11 @@ def test_format_model_monitor_includes_codex_local_rate_limits(tmp_path: Path, m
 
     text = format_model_monitor(ModelName.CODEX, timeout_seconds=2)
 
-    assert "실제 로컬 사용량/잔여량" in text
-    assert "플랜/계정 유형: plus" in text
-    assert "5시간 한도: 잔여 44%" in text
-    assert "주간 한도: 잔여 90%" in text
-    assert "관측된 토큰: 125" in text
+    assert "Local usage/quota snapshot" in text
+    assert "Plan/account type: plus" in text
+    assert "5-hour limit: remaining 44%" in text
+    assert "Weekly limit: remaining 90%" in text
+    assert "Observed tokens: 125" in text
 
 
 def test_format_model_monitor_includes_claude_local_transcript_usage(tmp_path: Path, monkeypatch):
@@ -175,11 +175,11 @@ def test_format_model_monitor_includes_claude_local_transcript_usage(tmp_path: P
 
     text = format_model_monitor(ModelName.CLAUDE, timeout_seconds=2)
 
-    assert "실제 로컬 사용량/잔여량" in text
-    assert "관측된 세부 모델: claude-sonnet-4-6" in text
+    assert "Local usage/quota snapshot" in text
+    assert "Observed detailed model: claude-sonnet-4-6" in text
     assert "input=10" in text
     assert "output=5" in text
-    assert "계정 잔여 quota 스냅샷은 저장되지 않았습니다" in text
+    assert "not account remaining quota snapshots" in text
 
 
 def test_format_model_monitor_includes_gemini_local_chat_usage(tmp_path: Path, monkeypatch):
@@ -204,8 +204,8 @@ def test_format_model_monitor_includes_gemini_local_chat_usage(tmp_path: Path, m
 
     text = format_model_monitor(ModelName.GEMINI, timeout_seconds=2)
 
-    assert "실제 로컬 사용량/잔여량" in text
-    assert "관측된 세부 모델: gemini-3-flash-preview" in text
-    assert "오늘 로컬 로그 기준 요청 수: 1" in text
+    assert "Local usage/quota snapshot" in text
+    assert "Observed detailed model: gemini-3-flash-preview" in text
+    assert "Requests today from local logs: 1" in text
     assert "input=30" in text
-    assert "계정 잔여 quota 스냅샷은 저장되지 않았습니다" in text
+    assert "not account remaining quota snapshots" in text

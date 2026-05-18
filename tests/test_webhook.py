@@ -258,10 +258,10 @@ def test_webhook_accepts_natural_message(project_registry):
     )
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert notifier.sent[0][1].startswith("현재 할 작업을 확인하세요.")
-    assert "- 프로젝트: remote-coder" in notifier.sent[0][1]
-    assert "- 작업 브랜치: main" in notifier.sent[0][1]
-    assert "- 사용 모델: claude" in notifier.sent[0][1]
+    assert notifier.sent[0][1].startswith("Confirm the work to run.")
+    assert "- Project: remote-coder" in notifier.sent[0][1]
+    assert "- Work branch: main" in notifier.sent[0][1]
+    assert "- Model: claude" in notifier.sent[0][1]
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "accepted"
 
@@ -325,7 +325,7 @@ def test_webhook_plan_mode_requires_confirmation_then_accepts_y(project_registry
     assert pending.job_request is not None
     assert pending.job_request.mode == JobMode.PLAN
     assert "outline the refactor" in pending.job_request.instruction
-    assert "- 모드: plan" in notifier.sent[0][1]
+    assert "- Mode: plan" in notifier.sent[0][1]
     git_service.get_current_branch.assert_called_once()
 
     confirm_response = client.post(
@@ -538,7 +538,7 @@ def test_webhook_empty_slash_plan_waits_for_next_instruction(project_registry):
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert "plan 모드로 실행할 작업 지시문" in notifier.sent[0][1]
+    assert "Send the instruction to run in plan mode" in notifier.sent[0][1]
     pending_input = command_context.confirmation_store.get("remote-coder", 123)
     assert pending_input is not None
     assert pending_input.action == JobMode.PLAN.value
@@ -567,7 +567,7 @@ def test_webhook_empty_slash_plan_waits_for_next_instruction(project_registry):
     assert pending.job_request.model == ModelName.CODEX
     assert pending.job_request.instruction == "outline only"
     assert pending.original_text == "model: codex outline only"
-    assert "- 모드: plan" in notifier.sent[-1][1]
+    assert "- Mode: plan" in notifier.sent[-1][1]
     git_service.get_current_branch.assert_called_once()
 
 
@@ -632,14 +632,14 @@ def test_webhook_empty_slash_ask_waits_for_next_instruction(project_registry):
     )
 
     assert response.status_code == 200
-    assert "ask 모드로 실행할 질문" in notifier.sent[0][1]
+    assert "Send the question to run in ask mode" in notifier.sent[0][1]
     assert followup.status_code == 200
     pending = command_context.confirmation_store.get("remote-coder", 123)
     assert pending is not None
     assert pending.job_request is not None
     assert pending.job_request.mode == JobMode.ASK
     assert "routing" in pending.job_request.instruction
-    assert "- 모드: ask" in notifier.sent[-1][1]
+    assert "- Mode: ask" in notifier.sent[-1][1]
 
 
 def test_webhook_init_cancels_empty_slash_plan_wait(project_registry):
@@ -761,7 +761,7 @@ def test_webhook_ask_mode_requires_confirmation_then_accepts_y(project_registry)
     assert pending is not None
     assert pending.job_request.mode == JobMode.ASK
     assert "routing" in pending.job_request.instruction
-    assert "- 모드: ask" in notifier.sent[0][1]
+    assert "- Mode: ask" in notifier.sent[0][1]
     git_service.get_current_branch.assert_called_once()
 
     confirm_response = client.post(
@@ -823,7 +823,7 @@ def test_webhook_natural_pending_replaced_silently_when_new_message_parses(proje
         },
     )
     assert command_context.confirmation_store.get("remote-coder", 123) is not None
-    assert not any(m[1].startswith("작업 요청을 취소") for m in notifier.sent)
+    assert not any(m[1].startswith("Cancelled the work request") for m in notifier.sent)
 
     replace = client.post(
         wh,
@@ -839,13 +839,13 @@ def test_webhook_natural_pending_replaced_silently_when_new_message_parses(proje
     )
     assert replace.status_code == 200
     assert replace.json()["status"] == "ok"
-    assert not any(m[1].startswith("작업 요청을 취소") for m in notifier.sent)
+    assert not any(m[1].startswith("Cancelled the work request") for m in notifier.sent)
     pending = command_context.confirmation_store.get("remote-coder", 123)
     assert pending is not None
     assert pending.job_request is not None
     assert pending.job_request.mode == JobMode.PLAN
     assert "outline only" in pending.job_request.instruction
-    assert notifier.sent[-1][1].count("- 모드: plan") >= 1
+    assert notifier.sent[-1][1].count("- Mode: plan") >= 1
 
     confirm = client.post(
         wh,
@@ -915,7 +915,7 @@ def test_webhook_natural_pending_parse_failure_sends_cancel_and_error(project_re
     assert fail.json()["status"] == "ignored"
     assert command_context.confirmation_store.get("remote-coder", 123) is None
     bodies = [m[1] for m in notifier.sent]
-    assert any(t.startswith("작업 요청을 취소") for t in bodies)
+    assert any(t.startswith("Cancelled the work request") for t in bodies)
     assert any("The work instruction is empty" in t for t in bodies)
 
 
@@ -987,10 +987,10 @@ def test_webhook_accepts_natural_message_with_confirmation_buttons(project_regis
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert notifier.sent_with_buttons[0][1].startswith("현재 할 작업을 확인하세요.")
-    assert "실행 여부를 선택하세요." in notifier.sent_with_buttons[0][1]
-    assert buttons[0][0].label == "네"
-    assert buttons[0][1].label == "아니오"
+    assert notifier.sent_with_buttons[0][1].startswith("Confirm the work to run.")
+    assert "Choose whether to run it." in notifier.sent_with_buttons[0][1]
+    assert buttons[0][0].label == "Yes"
+    assert buttons[0][1].label == "No"
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "accepted"
     assert "cq_confirm_yes" in notifier.answered_callbacks
@@ -1064,7 +1064,7 @@ def test_webhook_cancels_natural_message_with_confirmation_button(project_regist
 
     assert cancel_response.status_code == 200
     assert cancel_response.json()["status"] == "ok"
-    assert notifier.sent[-1][1].startswith("작업 요청을 취소했습니다.")
+    assert notifier.sent[-1][1].startswith("Cancelled the work request.")
     assert "cq_confirm_no" in notifier.answered_callbacks
 
 
@@ -1175,8 +1175,8 @@ def test_webhook_executes_pending_clear_confirmation(project_registry):
     assert prompt_response.json()["status"] == "ok"
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "ok"
-    assert "현재 할 작업" in notifier.sent[0][1]
-    assert "원격 1개" in notifier.sent[1][1]
+    assert "Pending action" in notifier.sent[0][1]
+    assert "remote 1" in notifier.sent[1][1]
 
 
 def test_webhook_executes_pending_clear_confirmation_with_buttons(project_registry):
@@ -1251,11 +1251,11 @@ def test_webhook_executes_pending_clear_confirmation_with_buttons(project_regist
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "ok"
     assert notifier.sent_with_buttons[0][0] == 123
-    assert "실행 여부를 선택하세요." in notifier.sent_with_buttons[0][1]
-    assert buttons[0][0].label == "네"
-    assert buttons[0][1].label == "아니오"
+    assert "Choose whether to run it." in notifier.sent_with_buttons[0][1]
+    assert buttons[0][0].label == "Yes"
+    assert buttons[0][1].label == "No"
     assert "cq_clear_confirm_yes" in notifier.answered_callbacks
-    assert "원격 1개" in notifier.sent[0][1]
+    assert "remote 1" in notifier.sent[0][1]
 
 
 def test_webhook_executes_pending_clear_worktrees_confirmation(project_registry):
@@ -1316,8 +1316,8 @@ def test_webhook_executes_pending_clear_worktrees_confirmation(project_registry)
     assert prompt_response.json()["status"] == "ok"
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "ok"
-    assert "현재 할 작업" in notifier.sent[0][1]
-    assert "worktree 3개 삭제" in notifier.sent[1][1]
+    assert "Pending action" in notifier.sent[0][1]
+    assert "3 worktrees deleted" in notifier.sent[1][1]
 
 
 def test_webhook_ambiguous_followup_uses_conversation_history(project_registry, tmp_path):

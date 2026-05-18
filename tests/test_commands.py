@@ -341,7 +341,7 @@ def test_monitor_project_lists_registry(project_registry: ProjectRegistry):
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/monitor project"), _ctx(project_registry))
     assert text is not None
     assert "remote-coder" in text
-    assert "이 봇 프로젝트" in text
+    assert "This bot project" in text
 
 
 def test_init_command_resets_project_model_and_pending(project_registry: ProjectRegistry):
@@ -589,7 +589,7 @@ def test_clear_branch_command_requests_confirmation(project_registry: ProjectReg
     ctx = _ctx(project_registry)
     registry = CommandRegistry([ClearCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
-    assert "현재 할 작업" in (text or "")
+    assert "Pending action" in (text or "")
     assert "remote-*" in (text or "")
     ctx.git_service.delete_remote_branches.assert_not_called()
     ctx.git_service.delete_local_branches.assert_not_called()
@@ -607,10 +607,10 @@ def test_clear_branch_command_uses_confirmation_buttons_when_enabled(project_reg
     response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
 
     assert response is not None
-    assert "현재 할 작업" in response.text
-    assert "실행 여부를 선택하세요." in response.text
+    assert "Pending action" in response.text
+    assert "Choose whether to run it." in response.text
     assert "y 또는 `Y`" not in response.text
-    assert response.inline_buttons == [[InlineButton("네", "Y"), InlineButton("아니오", "n")]]
+    assert response.inline_buttons == [[InlineButton("Yes", "Y"), InlineButton("No", "n")]]
     ctx.git_service.delete_remote_branches.assert_not_called()
     ctx.git_service.delete_local_branches.assert_not_called()
 
@@ -622,7 +622,7 @@ def test_clear_command_lists_cleanup_options_as_buttons(project_registry: Projec
     response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/clear"), ctx)
 
     assert response is not None
-    assert response.text == "정리할 항목을 선택하세요. 실행 전 y/Y 확인이 필요합니다."
+    assert response.text == "Choose what to clear. Confirmation with y/Y is required before running."
     assert response.inline_buttons == [
         [
             InlineButton("branch", "/clear branch"),
@@ -636,7 +636,7 @@ def test_clear_worktrees_command_requests_confirmation(project_registry: Project
     ctx = _ctx(project_registry)
     registry = CommandRegistry([ClearCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear worktrees"), ctx)
-    assert "현재 할 작업" in (text or "")
+    assert "Pending action" in (text or "")
     assert "stale" in (text or "")
     ctx.git_service.cleanup_managed_worktrees.assert_not_called()
 
@@ -649,8 +649,8 @@ def test_clear_branch_confirmation_executes_matching_deletes(project_registry: P
     registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="y"), ctx)
     assert "remote-coder" in (text or "")
-    assert "원격 1개" in (text or "")
-    assert "로컬 1개" in (text or "")
+    assert "remote 1" in (text or "")
+    assert "local 1" in (text or "")
     assert "(origin)" in (text or "")
     ctx.git_service.checkout_integrate_branch.assert_called()
     ctx.git_service.delete_remote_branches.assert_called_once()
@@ -665,8 +665,8 @@ def test_clear_worktrees_confirmation_executes_cleanup(project_registry: Project
     registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear worktrees"), ctx)
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="y"), ctx)
     assert "remote-coder" in (text or "")
-    assert "worktree 2개 삭제" in (text or "")
-    assert "prune 완료" in (text or "")
+    assert "2 worktrees deleted" in (text or "")
+    assert "stale entries pruned" in (text or "")
     ctx.git_service.cleanup_managed_worktrees.assert_called_once()
 
 
@@ -749,7 +749,7 @@ def test_clear_memory_only_deletes_current_project_and_chat(
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="y"), ctx)
 
     assert text is not None
-    assert "대화 기억을 삭제했습니다" in text
+    assert "Deleted this chat's conversation memory" in text
     assert "project=remote-coder" in text
     assert len(conversation_store.list_recent("remote-coder", 1, 10)) == 1
     assert conversation_store.list_recent("remote-coder", 77, 10) == []
@@ -805,7 +805,7 @@ def test_monitor_command_shows_usage(project_registry: ProjectRegistry):
     )
 
     assert response is not None
-    assert response.text == "확인할 모니터링 항목을 선택하세요."
+    assert response.text == "Choose a monitoring view."
     assert response.inline_buttons == [
         [
             InlineButton("model", "/monitor model"),
@@ -827,7 +827,7 @@ def test_monitor_command_rejects_invalid_subcommand(project_registry: ProjectReg
         _ctx(project_registry),
     )
     assert text is not None
-    assert "사용법" in text
+    assert "Usage" in text
 
 
 def test_monitor_memory_shows_sqlite_stats(project_registry: ProjectRegistry, tmp_path):
@@ -839,8 +839,8 @@ def test_monitor_memory_shows_sqlite_stats(project_registry: ProjectRegistry, tm
     registry = CommandRegistry([MonitorCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=42, user_id=1, text="/monitor memory"), ctx)
     assert text is not None
-    assert "메모리(SQLite)" in text
-    assert "이 채팅 저장 행 수: 1" in text
+    assert "Memory (SQLite)" in text
+    assert "Rows for this chat: 1" in text
     assert "user=1" in text
 
 
@@ -854,7 +854,7 @@ def test_monitor_branch_uses_git_service(project_registry: ProjectRegistry):
     registry = CommandRegistry([MonitorCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/monitor branch"), ctx)
     assert text is not None
-    assert "브랜치 모니터" in text
+    assert "Branch monitor" in text
     ctx.git_service.count_local_branches.assert_called_once()
 
 
@@ -867,7 +867,7 @@ def test_monitor_worktrees_lists_entries(project_registry: ProjectRegistry):
     registry = CommandRegistry([MonitorCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/monitor worktrees"), ctx)
     assert text is not None
-    assert "워크트리 모니터" in text
+    assert "Worktree monitor" in text
     assert "detached" in text
 
 
@@ -886,9 +886,9 @@ def test_monitor_model_invokes_claude_probe(project_registry: ProjectRegistry):
             ctx,
         )
     assert text is not None
-    assert "현재 채팅 기본 모델: claude" in text
+    assert "Current chat default model: claude" in text
     assert "[Claude]" in text
-    assert "관측된 세부 모델: Claude Opus 4.7" in text
+    assert "Observed detailed model: Claude Opus 4.7" in text
     assert "input=100" in text
 
 
@@ -912,8 +912,8 @@ def test_monitor_code_counts_lines(project_registry: ProjectRegistry, tmp_path):
     ctx.project_name = "countproj"
     text = registry.dispatch(TelegramMessage(chat_id=7, user_id=1, text="/monitor code"), ctx)
     assert text is not None
-    assert "코드 규모" in text
-    assert "스캔한 코드 파일 수: 1" in text
+    assert "Code size" in text
+    assert "Code files scanned: 1" in text
 
 
 def test_help_command_get_inline_buttons_returns_none():

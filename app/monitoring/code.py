@@ -133,14 +133,14 @@ def count_project_code(
 def format_code_monitor(stats: ProjectCodeStats, project_name: str, root: Path) -> str:
     return "\n".join(
         [
-            "코드 규모(추정)",
-            f"프로젝트: {project_name}",
+            "Code size (estimated)",
+            f"Project: {project_name}",
             f"root: {root}",
-            f"스캔한 코드 파일 수: {stats.files_scanned}",
-            f"합계 줄 수(대략): {stats.total_lines}",
-            f"건너뜀(바이너리/읽기 오류): {stats.skipped_binary_or_error}",
+            f"Code files scanned: {stats.files_scanned}",
+            f"Total lines (approx): {stats.total_lines}",
+            f"Skipped (binary/read errors): {stats.skipped_binary_or_error}",
             "",
-            "참고: 확장자 기준 텍스트 파일만 포함합니다. 대용량 저장소에서는 상한에 도달하면 일부만 집계됩니다.",
+            "Note: only extension-based text files are included. Large repositories may be partially counted when limits are reached.",
         ]
     )
 
