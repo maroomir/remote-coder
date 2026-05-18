@@ -243,6 +243,7 @@ _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
     ("프로젝트", "Project"),
     ("요청 모델", "Requested model"),
     ("사용 모델", "Model used"),
+    ("- 모드", "- Mode"),
     ("토큰 사용량", "Token usage"),
     ("확인 불가", "unavailable"),
     ("작업 접수 완료", "Job accepted"),
