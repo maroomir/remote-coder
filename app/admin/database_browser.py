@@ -21,7 +21,7 @@ class _TableSpec:
 _TABLES: Final[dict[str, _TableSpec]] = {
     "conversation_entries": _TableSpec(
         name="conversation_entries",
-        label="대화·작업 기록",
+        label="Conversation & job history",
         columns=(
             "id",
             "project",
@@ -38,7 +38,7 @@ _TABLES: Final[dict[str, _TableSpec]] = {
     ),
     "message_branch_links": _TableSpec(
         name="message_branch_links",
-        label="메시지–브랜치 연결",
+        label="Message–branch links",
         columns=(
             "project",
             "chat_id",
@@ -111,7 +111,7 @@ def _build_where(
 
 
 class ConversationDatabaseBrowser:
-    # SECURITY: `_TABLES` 화이트리스트 외 테이블은 노출하지 않으며, sqlite는 read-only URI로만 엽니다.
+    # SECURITY: Only tables in the `_TABLES` whitelist are exposed, and sqlite is opened read-only URI.
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path.resolve()
 
@@ -241,7 +241,7 @@ class ConversationDatabaseBrowser:
         max_rows: int = _DEFAULT_EXPORT_MAX_ROWS,
         chunk_size: int = _EXPORT_CHUNK,
     ) -> Iterator[bytes]:
-        # Excel·한글 환경에서 CSV가 UTF-8로 인식되도록 BOM을 먼저 보냅니다.
+        # NOTE: Emit a BOM first so Excel and CJK locales detect the CSV as UTF-8.
         spec = _TABLES.get(table)
         if spec is None:
             raise ValueError(f"unknown table: {table}")

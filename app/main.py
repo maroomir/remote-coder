@@ -109,7 +109,7 @@ def _notifier_for_project(project_name: str) -> TelegramNotifier:
     instance = bot_instance_manager.get_by_name(project_name)
     if instance is None:
         raise RuntimeError(
-            "Telegram 알림용 봇 인스턴스를 찾을 수 없습니다. "
+            "No Telegram notifier bot instance found for project. "
             f"project={project_name!r}"
         )
     return instance.notifier

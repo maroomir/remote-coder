@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Remote AI Coder - 프로젝트 등록</title>
+  <title data-i18n="title.projects">Remote AI Coder - Projects</title>
   <style>
     :root {
       --bg: #0f1419;
@@ -494,117 +494,117 @@
     <header class="app-header">
       <div class="header-row">
         <div>
-          <h1>프로젝트 등록</h1>
-          <p class="tagline">각 등록 항목은 <strong>하나의 Telegram 봇</strong>과 고정된 저장소에 연결됩니다.</p>
+          <h1 data-i18n="projects.h1">Project registration</h1>
+          <p class="tagline" data-i18n-html="projects.tagline">Each entry is bound to <strong>one Telegram bot</strong> and a fixed repository.</p>
         </div>
-        <nav class="header-icon-nav" aria-label="페이지 이동">
-          <a href="/" class="header-icon-link" title="관리 홈" aria-label="관리 홈">
+        <nav class="header-icon-nav" aria-label="Page navigation" data-i18n-aria-label="nav.aria">
+          <a href="/" class="header-icon-link" title="Admin home" aria-label="Admin home" data-i18n-title="nav.home" data-i18n-aria-label="nav.home">
             <img src="/admin-static/icons/home.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/projects" class="header-icon-link is-current" title="프로젝트 등록" aria-label="프로젝트 등록">
+          <a href="/projects" class="header-icon-link is-current" title="Projects" aria-label="Projects" data-i18n-title="nav.projects" data-i18n-aria-label="nav.projects">
             <img src="/admin-static/icons/projects.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/advanced" class="header-icon-link" title="고급 설정" aria-label="고급 설정">
+          <a href="/advanced" class="header-icon-link" title="Advanced settings" aria-label="Advanced settings" data-i18n-title="nav.advanced" data-i18n-aria-label="nav.advanced">
             <img src="/admin-static/icons/advanced.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/logs" class="header-icon-link" title="서버 로그" aria-label="서버 로그">
+          <a href="/logs" class="header-icon-link" title="Server logs" aria-label="Server logs" data-i18n-title="nav.logs" data-i18n-aria-label="nav.logs">
             <img src="/admin-static/icons/logs.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/database" class="header-icon-link" title="데이터 조회" aria-label="데이터 조회">
+          <a href="/database" class="header-icon-link" title="Data browser" aria-label="Data browser" data-i18n-title="nav.database" data-i18n-aria-label="nav.database">
             <img src="/admin-static/icons/database.svg" width="22" height="22" alt="" />
           </a>
         </nav>
       </div>
-      <span class="localhost-pill" aria-hidden="true">로컬 전용</span>
-      <p class="tagline" style="margin-top:0.65rem">이 페이지는 <strong>127.0.0.1</strong>에서만 열립니다.</p>
+      <span class="localhost-pill" aria-hidden="true" data-i18n="common.localOnly">Local only</span>
+      <p class="tagline" style="margin-top:0.65rem" data-i18n-html="common.localhostNote">This page is only available from <strong>127.0.0.1</strong>.</p>
     </header>
 
     <div id="global-msg" role="status" aria-live="polite"></div>
 
-    <div class="summary-grid" id="summary-grid" aria-label="요약"></div>
+    <div class="summary-grid" id="summary-grid" aria-label="Summary" data-i18n-aria-label="common.summaryAria"></div>
 
     <section class="card" aria-labelledby="projects-heading">
-      <h2 id="projects-heading">등록 목록</h2>
-      <p class="lead">프로젝트를 추가하거나 기본 폴백 프로젝트를 지정합니다. 저장 시 실행 중인 서버의 <code>BotInstanceManager</code>에 즉시 반영됩니다.</p>
+      <h2 id="projects-heading" data-i18n="projects.listHeading">Registered projects</h2>
+      <p class="lead" data-i18n-html="projects.listLead">Add a project or pick the fallback default. Saving is applied immediately to the running server's <code>BotInstanceManager</code>.</p>
 
       <div class="table-wrap">
         <table class="data" id="proj-table">
           <thead>
             <tr>
-              <th>이름</th>
-              <th>상태</th>
-              <th>Git 루트</th>
-              <th>워크트리</th>
-              <th>모델</th>
+              <th data-i18n="common.name">Name</th>
+              <th data-i18n="common.status">Status</th>
+              <th data-i18n="projects.colGitRoot">Git root</th>
+              <th data-i18n="common.worktree">Worktree</th>
+              <th data-i18n="common.model">Model</th>
               <th>Telegram</th>
-              <th>동작</th>
+              <th data-i18n="common.actions">Actions</th>
             </tr>
           </thead>
           <tbody id="proj-tbody"></tbody>
         </table>
       </div>
 
-      <h2 style="margin-top:1.5rem;font-size:1.05rem" id="form-heading">추가 / 수정</h2>
-      <div class="form-mode mode-add" id="form-mode-banner" aria-live="polite">새 프로젝트 추가</div>
+      <h2 style="margin-top:1.5rem;font-size:1.05rem" id="form-heading" data-i18n="projects.formHeading">Add / edit</h2>
+      <div class="form-mode mode-add" id="form-mode-banner" aria-live="polite" data-i18n="projects.addNew">Add new project</div>
 
       <form id="proj-form">
         <label class="field" for="f-name">
-          이름
-          <span class="hint">영문·숫자로 시작, <code>.</code> <code>_</code> <code>-</code> 허용</span>
+          <span data-i18n="common.name">Name</span>
+          <span class="hint" data-i18n-html="projects.nameHint">Start with a letter or digit; <code>.</code> <code>_</code> <code>-</code> allowed</span>
         </label>
         <input id="f-name" name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._-]*" autocomplete="off" />
 
-        <label class="field" for="f-root">Git 루트 경로</label>
-        <p class="hint" style="margin:0.35rem 0 0">절대 경로. 디렉터리가 존재해야 저장됩니다.</p>
+        <label class="field" for="f-root" data-i18n="projects.gitRootPath">Git root path</label>
+        <p class="hint" style="margin:0.35rem 0 0" data-i18n="projects.gitRootHint">Absolute path. The directory must exist to save.</p>
         <input id="f-root" name="root_path" required autocomplete="off" />
 
-        <label class="field" for="f-wt">워크트리 베이스 디렉터리</label>
-        <p class="hint" style="margin:0.35rem 0 0">없으면 생성됩니다.</p>
+        <label class="field" for="f-wt" data-i18n="projects.worktreeBaseDir">Worktree base directory</label>
+        <p class="hint" style="margin:0.35rem 0 0" data-i18n="projects.worktreeHint">Created if missing.</p>
         <input id="f-wt" name="worktree_base_dir" required autocomplete="off" />
 
-        <label class="field" for="f-model">기본 모델</label>
+        <label class="field" for="f-model" data-i18n="common.defaultModel">Default model</label>
         <select id="f-model" name="default_model">
           <option value="claude">claude</option>
           <option value="codex">codex</option>
           <option value="gemini">gemini</option>
         </select>
 
-        <label class="checkbox"><input type="checkbox" name="enabled" checked /> 활성</label>
+        <label class="checkbox"><input type="checkbox" name="enabled" checked /> <span data-i18n="common.enabled">Enabled</span></label>
 
         <label class="field" for="f-bot-token">
-          봇 토큰
-          <span class="hint">
-            Telegram의 BotFather에서 <code>/newbot</code> 후 받은 API 토큰. 평문은 레지스트리 파일에만 저장되며,
-            목록·API에는 마스킹된 값만 표시됩니다.
+          <span data-i18n="projects.botToken">Bot token</span>
+          <span class="hint" data-i18n-html="projects.botTokenHint">
+            API token from Telegram BotFather after <code>/newbot</code>. The plaintext is stored only in the registry file; lists and APIs show a masked value.
           </span>
         </label>
         <input id="f-bot-token" name="bot_token" type="password" autocomplete="new-password" placeholder="123456789:AA…" />
 
-        <label class="field" for="f-chats">허용 Chat ID</label>
-        <p class="hint" style="margin:0.35rem 0 0">쉼표 또는 공백으로 구분. 최소 1개.</p>
+        <label class="field" for="f-chats" data-i18n="common.allowedChatIds">Allowed Chat IDs</label>
+        <p class="hint" style="margin:0.35rem 0 0" data-i18n="projects.chatIdsHint">Comma- or space-separated. At least one.</p>
         <input id="f-chats" name="allowed_chat_ids" required autocomplete="off" placeholder="-1001234567890, 123456789" />
 
         <details class="optional-fields">
-          <summary>선택 항목</summary>
+          <summary data-i18n="projects.optional">Optional fields</summary>
           <label class="field" for="f-wh-secret">
-            웹훅 시크릿 (선택)
-            <span class="hint">Telegram <code>secret_token</code>. 편집 시 비우면 기존 값 유지.</span>
+            <span data-i18n="projects.webhookSecret">Webhook secret (optional)</span>
+            <span class="hint" data-i18n-html="projects.webhookSecretHint">Telegram <code>secret_token</code>. Leave blank when editing to keep the existing value.</span>
           </label>
           <input id="f-wh-secret" name="webhook_secret" type="password" autocomplete="new-password" />
 
-          <label class="field" for="f-users">허용 User ID (선택)</label>
-          <p class="hint" style="margin:0.35rem 0 0">비우면 채팅 ID만으로 허용합니다.</p>
+          <label class="field" for="f-users" data-i18n="projects.allowedUserIdsOptional">Allowed User IDs (optional)</label>
+          <p class="hint" style="margin:0.35rem 0 0" data-i18n="projects.userIdsHint">Blank allows by chat ID only.</p>
           <input id="f-users" name="allowed_user_ids" autocomplete="off" placeholder="123456789" />
         </details>
 
         <div class="form-actions">
-          <button type="submit" class="btn-primary" id="btn-submit">추가</button>
-          <button type="button" class="btn-ghost" id="btn-clear">폼 비우기</button>
+          <button type="submit" class="btn-primary" id="btn-submit" data-i18n="projects.btnAdd">Add</button>
+          <button type="button" class="btn-ghost" id="btn-clear" data-i18n="projects.btnClear">Clear form</button>
         </div>
       </form>
     </section>
   </div>
 
+  <script src="/admin-static/i18n.js"></script>
   <script src="/admin-static/summary.js"></script>
   <script>
     const $ = (s) => document.querySelector(s);
@@ -644,7 +644,7 @@
           }
         } catch (_) { /* ignore */ }
       }
-      return rawText || "요청 실패 (" + r.status + ")";
+      return rawText || "Request failed (" + r.status + ")";
     }
 
     function setBusy(v) {
@@ -664,7 +664,7 @@
       const banner = $("#form-mode-banner");
       const editing = f.name.readOnly;
       banner.className = "form-mode " + (editing ? "mode-edit" : "mode-add");
-      banner.textContent = editing ? "편집 중: " + f.name.value : "새 프로젝트 추가";
+      banner.textContent = editing ? i18n.t("projects.editingPrefix") + f.name.value : i18n.t("projects.addNew");
     }
 
     function parseIdList(raw) {
@@ -684,14 +684,14 @@
       const oldCap = tbl.querySelector("caption");
       if (oldCap) oldCap.remove();
       const cap = document.createElement("caption");
-      cap.textContent = "등록 폴백 기본값: " + (lastDefault || "(없음)");
+      cap.textContent = i18n.t("projects.captionDefault") + (lastDefault || i18n.t("common.none"));
       tbl.prepend(cap);
 
       const list = projectsPayload.projects || [];
       if (!list.length) {
         const tr = document.createElement("tr");
         tr.innerHTML =
-          '<td colspan="7" class="empty-state">등록된 프로젝트가 없습니다. 아래 폼에서 추가하세요.</td>';
+          '<td colspan="7" class="empty-state">' + escapeHtml(i18n.t("projects.emptyRow")) + "</td>";
         tb.appendChild(tr);
       } else {
         list.forEach((p) => tb.appendChild(row(p, lastDefault)));
@@ -702,10 +702,12 @@
       const tr = document.createElement("tr");
       const isDefault = p.name === defaultName;
       const badges =
-        (isDefault ? '<span class="badge badge-default">기본</span>' : "") +
-        (p.enabled ? '<span class="badge badge-on">활성</span>' : '<span class="badge badge-off">비활성</span>');
+        (isDefault ? '<span class="badge badge-default">' + escapeHtml(i18n.t("projects.badgeDefault")) + "</span>" : "") +
+        (p.enabled
+          ? '<span class="badge badge-on">' + escapeHtml(i18n.t("projects.badgeOn")) + "</span>"
+          : '<span class="badge badge-off">' + escapeHtml(i18n.t("projects.badgeOff")) + "</span>");
       const secretBadge = p.webhook_secret_set
-        ? '<span class="badge badge-on" title="웹훅 시크릿 설정됨">시크릿</span>'
+        ? '<span class="badge badge-on" title="' + escapeAttr(i18n.t("projects.secretSetTitle")) + '">' + escapeHtml(i18n.t("projects.secretBadge")) + "</span>"
         : "";
       tr.innerHTML = `
         <td><code>${escapeHtml(p.name)}</code></td>
@@ -714,14 +716,14 @@
         <td class="path-cell">${escapeHtml(String(p.worktree_base_dir))}</td>
         <td>${escapeHtml(p.default_model)}</td>
         <td>
-          <div title="마스킹된 봇 토큰">${escapeHtml(p.bot_token_masked || "")}</div>
+          <div title="${escapeAttr(i18n.t("projects.maskedTokenTitle"))}">${escapeHtml(i18n.tv(p.bot_token_masked || ""))}</div>
           ${secretBadge}
         </td>
         <td>
           <div class="btn-row">
-            <button type="button" class="btn-primary" data-a="default" data-n="${escapeAttr(p.name)}" ${isDefault ? "disabled" : ""}>기본으로</button>
-            <button type="button" data-a="edit" data-n="${escapeAttr(p.name)}">편집</button>
-            <button type="button" class="btn-danger" data-a="del" data-n="${escapeAttr(p.name)}">삭제</button>
+            <button type="button" class="btn-primary" data-a="default" data-n="${escapeAttr(p.name)}" ${isDefault ? "disabled" : ""}>${escapeHtml(i18n.t("projects.btnMakeDefault"))}</button>
+            <button type="button" data-a="edit" data-n="${escapeAttr(p.name)}">${escapeHtml(i18n.t("common.edit"))}</button>
+            <button type="button" class="btn-danger" data-a="del" data-n="${escapeAttr(p.name)}">${escapeHtml(i18n.t("common.delete"))}</button>
           </div>
         </td>`;
       return tr;
@@ -762,14 +764,14 @@
             setGlobalMsg("err", await parseApiError(r, t));
             return;
           }
-          setGlobalMsg("ok", "기본 프로젝트를 \"" + n + "\"(으)로 설정했습니다.");
+          setGlobalMsg("ok", i18n.t("projects.setDefaultOk", { name: n }));
           await loadAll();
         } finally {
           setBusy(false);
         }
       }
       if (a === "del") {
-        if (!confirm("프로젝트 \"" + n + "\"을(를) 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) return;
+        if (!confirm(i18n.t("projects.confirmDelete", { name: n }))) return;
         setBusy(true);
         try {
           const r = await fetch("/api/projects/" + encodeURIComponent(n), { method: "DELETE" });
@@ -778,7 +780,7 @@
             setGlobalMsg("err", await parseApiError(r, t));
             return;
           }
-          setGlobalMsg("ok", "삭제했습니다.");
+          setGlobalMsg("ok", i18n.t("projects.deletedOk"));
           await loadAll();
         } finally {
           setBusy(false);
@@ -799,11 +801,8 @@
         $("#f-chats").value = (p.allowed_chat_ids || []).join(", ");
         $("#f-users").value = (p.allowed_user_ids || []).join(", ");
         f.name.readOnly = true;
-        $("#btn-submit").textContent = "저장 (PUT)";
-        setGlobalMsg(
-          "info",
-          "이름은 변경할 수 없습니다. 봇 토큰·웹훅 시크릿은 비워 두면 기존 값이 유지됩니다.",
-        );
+        $("#btn-submit").textContent = i18n.t("projects.btnSave");
+        setGlobalMsg("info", i18n.t("projects.editInfo"));
         updateFormModeBanner();
         f.name.focus();
       }
@@ -813,7 +812,7 @@
       $("#proj-form").reset();
       $("#proj-form").name.readOnly = false;
       $("#f-bot-token").setAttribute("required", "");
-      $("#btn-submit").textContent = "추가";
+      $("#btn-submit").textContent = i18n.t("projects.btnAdd");
       setGlobalMsg("", "");
       updateFormModeBanner();
     });
@@ -827,12 +826,12 @@
       const allowed_chat_ids = parseIdList($("#f-chats").value);
       const allowed_user_ids = parseIdList($("#f-users").value);
       if (!allowed_chat_ids.length) {
-        setGlobalMsg("err", "허용 Chat ID를 하나 이상 입력하세요.");
+        setGlobalMsg("err", i18n.t("projects.errChatIds"));
         return;
       }
       const botTok = $("#f-bot-token").value.trim();
       if (!editing && !botTok) {
-        setGlobalMsg("err", "봇 토큰을 입력하세요.");
+        setGlobalMsg("err", i18n.t("projects.errBotToken"));
         return;
       }
       const body = {
@@ -863,10 +862,10 @@
           return;
         }
         f.name.readOnly = false;
-        $("#btn-submit").textContent = "추가";
+        $("#btn-submit").textContent = i18n.t("projects.btnAdd");
         $("#f-bot-token").setAttribute("required", "");
         f.reset();
-        setGlobalMsg("ok", editing ? "수정했습니다." : "추가했습니다.");
+        setGlobalMsg("ok", editing ? i18n.t("projects.updatedOk") : i18n.t("projects.createdOk"));
         await loadAll();
       } finally {
         setBusy(false);

@@ -1,9 +1,29 @@
+import re
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import app.admin.router as admin_router_module
+from app.admin.advanced_settings import AdvancedSettings
+from app.admin.database_browser import _TABLES
 from app.admin.router import create_admin_router
-from app.models import ModelName
+from app.models import ModelName, UiLanguage
+
+_ADMIN_DIR = Path(admin_router_module.__file__).parent
+_I18N_JS = (_ADMIN_DIR / "static" / "i18n.js").read_text(encoding="utf-8")
+_CATALOG_KEYS = set(re.findall(r'"([A-Za-z0-9_.]+)":\s*\{\s*en:', _I18N_JS))
+
+
+def _referenced_i18n_keys() -> set[str]:
+    keys: set[str] = set()
+    sources = list((_ADMIN_DIR / "templates").glob("*.html"))
+    sources.append(_ADMIN_DIR / "static" / "summary.js")
+    for source in sources:
+        text = source.read_text(encoding="utf-8")
+        keys |= set(re.findall(r'data-i18n(?:-[a-z-]+)?="([^"]+)"', text))
+        keys |= set(re.findall(r'i18n\.t\("([^"]+)"', text))
+    return keys
 
 
 def test_admin_root_returns_html(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):
@@ -19,12 +39,14 @@ def test_admin_root_returns_html(test_settings, project_registry, advanced_setti
     assert 'href="/advanced"' in response.text
     assert 'href="/logs"' in response.text
     assert 'href="/database"' in response.text
-    assert "프로젝트 등록" in response.text
-    assert "고급 설정" in response.text
+    assert "Projects" in response.text
+    assert "Advanced settings" in response.text
+    assert 'window.__UI_LANG__="en"' in response.text
     assert 'id="proj-form"' not in response.text
     assert 'id="adv-form"' not in response.text
     assert 'id="active-projects-view"' in response.text
     assert 'id="summary-grid"' in response.text
+    assert "/admin-static/i18n.js" in response.text
     assert "/admin-static/summary.js" in response.text
 
 
@@ -36,14 +58,14 @@ def test_admin_projects_page_returns_html(test_settings, project_registry, advan
     client = TestClient(app)
     response = client.get("/projects")
     assert response.status_code == 200
-    assert "프로젝트 등록" in response.text
+    assert "Project registration" in response.text
     assert 'id="proj-form"' in response.text
     assert 'href="/"' in response.text
     assert 'href="/advanced"' in response.text
     assert "Telegram webhook (멀티봇)" not in response.text
     assert "webhook-base-preview" not in response.text
     assert 'class="optional-fields"' in response.text
-    assert "선택 항목" in response.text
+    assert "Optional fields" in response.text
     assert 'id="f-wh-secret"' in response.text
     assert 'id="f-users"' in response.text
 
@@ -463,7 +485,7 @@ def test_admin_logs_page_returns_html(test_settings, project_registry, advanced_
     client = TestClient(app)
     response = client.get("/logs")
     assert response.status_code == 200
-    assert "서버 로그" in response.text
+    assert "Server logs" in response.text
     assert 'id="console"' in response.text
     assert 'id="f-category"' in response.text
     assert 'id="f-job-id"' in response.text
@@ -579,7 +601,7 @@ def test_admin_database_page_returns_html(
     client = TestClient(app)
     response = client.get("/database")
     assert response.status_code == 200
-    assert "데이터 조회" in response.text
+    assert "Data browser" in response.text
     assert 'id="data-table"' in response.text
     assert 'id="text-detail-modal"' in response.text
     assert "btn-detail" in response.text
@@ -739,3 +761,72 @@ def test_admin_api_database_export_csv(
     assert body.startswith("\ufeff")
     assert "id,project" in body.split("\n")[0]
     assert "csv_p" in body
+
+
+def test_admin_i18n_js_served(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    app = FastAPI()
+    app.include_router(
+        create_admin_router(
+            test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+        )
+    )
+    client = TestClient(app)
+    r = client.get("/admin-static/i18n.js")
+    assert r.status_code == 200
+    assert "javascript" in (r.headers.get("content-type") or "")
+    assert "window.i18n" in r.text
+
+
+def test_admin_pages_default_to_english(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    app = FastAPI()
+    app.include_router(
+        create_admin_router(
+            test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+        )
+    )
+    client = TestClient(app)
+    for path in ("/", "/projects", "/advanced", "/logs", "/database"):
+        r = client.get(path)
+        assert r.status_code == 200
+        assert 'window.__UI_LANG__="en"' in r.text
+
+
+def test_admin_pages_inject_korean_when_selected(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    advanced_settings_store.save(AdvancedSettings(ui_language=UiLanguage.KOREAN))
+    app = FastAPI()
+    app.include_router(
+        create_admin_router(
+            test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+        )
+    )
+    client = TestClient(app)
+    r = client.get("/")
+    assert 'window.__UI_LANG__="ko"' in r.text
+    # English stays canonical in the DOM; Korean is applied client-side from the catalog.
+    assert "Active projects" in r.text
+    advanced_settings_store.save(AdvancedSettings(ui_language=UiLanguage.ENGLISH))
+
+
+def test_admin_i18n_referenced_keys_exist_in_catalog():
+    missing = _referenced_i18n_keys() - _CATALOG_KEYS
+    assert not missing, f"i18n keys referenced but missing from catalog: {sorted(missing)}"
+
+
+def test_admin_i18n_catalog_entries_have_english():
+    entries = re.findall(r'"[A-Za-z0-9_.]+":\s*\{\s*en:\s*("(?:[^"\\]|\\.)*")', _I18N_JS)
+    assert entries
+    assert all(len(en) > 2 for en in entries)
+
+
+def test_admin_i18n_covers_backend_supplied_values():
+    # tv() resolves backend English values via reverse lookup, so they must be catalog en values.
+    backend_values = {spec.label for spec in _TABLES.values()}
+    backend_values.add("(not set)")
+    catalog_en = set(re.findall(r'en:\s*"((?:[^"\\]|\\.)*)"', _I18N_JS))
+    assert backend_values <= catalog_en, f"untranslatable backend values: {backend_values - catalog_en}"

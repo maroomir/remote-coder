@@ -18,7 +18,7 @@
         }
       } catch (_) { /* ignore */ }
     }
-    return rawText || "요청 실패 (" + r.status + ")";
+    return rawText || "Request failed (" + r.status + ")";
   }
 
   function renderSummaryGrid(settings, projectsPayload) {
@@ -26,23 +26,23 @@
     if (!grid) return;
     var list = projectsPayload.projects || [];
     var enabled = list.filter(function (p) { return p.enabled; }).length;
-    var defName = projectsPayload.default_project || "(없음)";
+    var defName = projectsPayload.default_project || window.i18n.t("common.none");
     var envModel = settings.default_model_env || "—";
     var timeout = settings.job_timeout_seconds_env != null
-      ? String(settings.job_timeout_seconds_env) + "초"
+      ? String(settings.job_timeout_seconds_env) + window.i18n.t("common.secondsSuffix")
       : "—";
     var tokenOk = settings.telegram_bot_token_masked &&
-      settings.telegram_bot_token_masked !== "(설정 안 됨)";
+      settings.telegram_bot_token_masked !== "(not set)";
 
     grid.innerHTML =
-      '<div class="stat-card"><p class="label">등록 프로젝트</p><p class="value">' + list.length + "</p></div>" +
-      '<div class="stat-card"><p class="label">활성</p><p class="value">' + enabled + "</p></div>" +
-      '<div class="stat-card"><p class="label">폴백 기본</p><p class="value" style="font-size:1rem">' + _escapeHtml(defName) + "</p></div>" +
-      '<div class="stat-card"><p class="label">환경 기본 모델</p><p class="value" style="font-size:1rem">' + _escapeHtml(envModel) + "</p></div>" +
-      '<div class="stat-card"><p class="label">환경 타임아웃</p><p class="value" style="font-size:1rem">' + _escapeHtml(timeout) + "</p></div>" +
-      '<div class="stat-card"><p class="label">봇 토큰</p><p class="value" style="font-size:0.95rem">' +
-        (tokenOk ? "설정됨" : "미설정") +
-      '</p><p class="sub">' + _escapeHtml(settings.telegram_bot_token_masked || "") + "</p></div>";
+      '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("summary.registered")) + '</p><p class="value">' + list.length + "</p></div>" +
+      '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("summary.active")) + '</p><p class="value">' + enabled + "</p></div>" +
+      '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("common.fallbackDefault")) + '</p><p class="value" style="font-size:1rem">' + _escapeHtml(defName) + "</p></div>" +
+      '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("summary.envModel")) + '</p><p class="value" style="font-size:1rem">' + _escapeHtml(envModel) + "</p></div>" +
+      '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("summary.envTimeout")) + '</p><p class="value" style="font-size:1rem">' + _escapeHtml(timeout) + "</p></div>" +
+      '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("summary.botToken")) + '</p><p class="value" style="font-size:0.95rem">' +
+        (tokenOk ? _escapeHtml(window.i18n.t("common.set")) : _escapeHtml(window.i18n.t("common.unset"))) +
+      '</p><p class="sub">' + _escapeHtml(window.i18n.tv(settings.telegram_bot_token_masked || "")) + "</p></div>";
   }
 
   async function loadSummaryGrid(onError) {

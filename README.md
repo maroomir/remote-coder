@@ -135,7 +135,7 @@ cp .env.example .env
 
 ### 고급 설정 (위험 옵션)
 
-관리 UI의 **고급 설정** 페이지(`http://127.0.0.1:8000/advanced`)에서 전역 설정 파일 `PROJECT_ROOT/.remote-coder/advanced_settings.json`을 읽고 저장할 수 있습니다. **Interface language** (`ui_language`): 기본값은 **English**이며, Telegram 봇이 보내는 안내·버튼 라벨 등이 이 언어를 따릅니다. **한국어**로 바꾼 뒤 저장하면 기존처럼 한국어 응답을 받을 수 있습니다.
+관리 UI의 **고급 설정** 페이지(`http://127.0.0.1:8000/advanced`)에서 전역 설정 파일 `PROJECT_ROOT/.remote-coder/advanced_settings.json`을 읽고 저장할 수 있습니다. **Interface language** (`ui_language`): 기본값은 **English**이며, Telegram 봇이 보내는 안내·버튼 라벨뿐 아니라 **관리 UI(`/`, `/projects`, `/advanced`, `/logs`, `/database`) 전체**가 이 언어를 따릅니다. **한국어**로 바꾼 뒤 저장하고 페이지를 새로고침하면 관리 UI와 Telegram 응답이 모두 한국어로 표시됩니다. (관리 UI는 영어를 기본값으로 렌더링하고, 한국어는 클라이언트에서 오버레이합니다.)
 
 옵션마다 기본값이 다르며(예: 서버 생명주기 Telegram 알림은 기본 켜짐, 서버 시작 시 저장소 `git pull`은 기본 꺼짐), 켜지 않은 옵션은 해당 기능이 비활성인 것과 같습니다. 예전 버전에서만 쓰이던 키는 로드 시 무시됩니다(예: 제거된 `auto_pull_on_project_switch`).
 

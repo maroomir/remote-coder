@@ -34,18 +34,17 @@ class AdvancedSettings(BaseModel):
             )
             if not has_rows and not has_bytes:
                 raise ValueError(
-                    "conversation_memory_limit_enabled일 때는 "
-                    "conversation_memory_max_rows 또는 conversation_memory_max_bytes 중 "
-                    "하나 이상을 양수로 지정해야 합니다.",
+                    "When conversation_memory_limit_enabled is set, at least one of "
+                    "conversation_memory_max_rows or conversation_memory_max_bytes must be a positive value.",
                 )
         if self.conversation_memory_max_rows is not None and self.conversation_memory_max_rows <= 0:
-            raise ValueError("conversation_memory_max_rows는 양수이거나 비워야 합니다.")
+            raise ValueError("conversation_memory_max_rows must be positive or blank.")
         if self.conversation_memory_max_bytes is not None and self.conversation_memory_max_bytes <= 0:
-            raise ValueError("conversation_memory_max_bytes는 양수이거나 비워야 합니다.")
+            raise ValueError("conversation_memory_max_bytes must be positive or blank.")
         if self.status_recent_job_limit < 1:
-            raise ValueError("status_recent_job_limit는 1 이상이어야 합니다.")
+            raise ValueError("status_recent_job_limit must be at least 1.")
         if self.job_timeout_seconds is not None and self.job_timeout_seconds <= 0:
-            raise ValueError("job_timeout_seconds는 양수이거나 비워야 합니다.")
+            raise ValueError("job_timeout_seconds must be positive or blank.")
         return self
 
 

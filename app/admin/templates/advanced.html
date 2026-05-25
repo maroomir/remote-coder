@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Remote AI Coder - Advanced Settings</title>
+  <title data-i18n="title.advanced">Remote AI Coder - Advanced Settings</title>
   <style>
     :root {
       --bg: #0f1419;
@@ -354,142 +354,143 @@
     <header class="app-header">
       <div class="header-row">
         <div>
-          <h1>Advanced Settings</h1>
-          <p class="tagline">Options that can affect repositories and conversation memory.</p>
+          <h1 data-i18n="advanced.h1">Advanced Settings</h1>
+          <p class="tagline" data-i18n="advanced.tagline">Options that can affect repositories and conversation memory.</p>
         </div>
-        <nav class="header-icon-nav" aria-label="Page navigation">
-          <a href="/" class="header-icon-link" title="Admin home" aria-label="Admin home">
+        <nav class="header-icon-nav" aria-label="Page navigation" data-i18n-aria-label="nav.aria">
+          <a href="/" class="header-icon-link" title="Admin home" aria-label="Admin home" data-i18n-title="nav.home" data-i18n-aria-label="nav.home">
             <img src="/admin-static/icons/home.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/projects" class="header-icon-link" title="Projects" aria-label="Projects">
+          <a href="/projects" class="header-icon-link" title="Projects" aria-label="Projects" data-i18n-title="nav.projects" data-i18n-aria-label="nav.projects">
             <img src="/admin-static/icons/projects.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/advanced" class="header-icon-link is-current" title="Advanced settings" aria-label="Advanced settings">
+          <a href="/advanced" class="header-icon-link is-current" title="Advanced settings" aria-label="Advanced settings" data-i18n-title="nav.advanced" data-i18n-aria-label="nav.advanced">
             <img src="/admin-static/icons/advanced.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/logs" class="header-icon-link" title="Server logs" aria-label="Server logs">
+          <a href="/logs" class="header-icon-link" title="Server logs" aria-label="Server logs" data-i18n-title="nav.logs" data-i18n-aria-label="nav.logs">
             <img src="/admin-static/icons/logs.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/database" class="header-icon-link" title="Data browser" aria-label="Data browser">
+          <a href="/database" class="header-icon-link" title="Data browser" aria-label="Data browser" data-i18n-title="nav.database" data-i18n-aria-label="nav.database">
             <img src="/admin-static/icons/database.svg" width="22" height="22" alt="" />
           </a>
         </nav>
       </div>
-      <span class="localhost-pill" aria-hidden="true">Local only</span>
-      <p class="tagline" style="margin-top:0.65rem">This page is only available from <strong>127.0.0.1</strong>.</p>
+      <span class="localhost-pill" aria-hidden="true" data-i18n="common.localOnly">Local only</span>
+      <p class="tagline" style="margin-top:0.65rem" data-i18n-html="common.localhostNote">This page is only available from <strong>127.0.0.1</strong>.</p>
     </header>
 
     <div id="global-msg" role="status" aria-live="polite"></div>
 
-    <div class="summary-grid" id="summary-grid" aria-label="Summary"></div>
+    <div class="summary-grid" id="summary-grid" aria-label="Summary" data-i18n-aria-label="common.summaryAria"></div>
 
     <form id="adv-form">
 
-      <!-- ── Telegram 알림 ─────────────────────────────────────────── -->
+      <!-- Telegram notifications -->
       <section class="card" aria-labelledby="section-telegram">
-        <h2 id="section-telegram">Telegram Notifications</h2>
-        <p class="lead">Configure message display and server event notifications.</p>
+        <h2 id="section-telegram" data-i18n="advanced.secTelegram">Telegram Notifications</h2>
+        <p class="lead" data-i18n="advanced.secTelegramLead">Configure message display and server event notifications.</p>
 
-        <label class="field" for="adv-ui-language">Interface language</label>
-        <p class="hint">Default: English. Korean can be selected here for the server-wide Telegram interface.</p>
+        <label class="field" for="adv-ui-language" data-i18n="advanced.uiLangLabel">Interface language</label>
+        <p class="hint" data-i18n="advanced.uiLangHint">Default: English. Choose Korean here for the Telegram bot and this admin UI.</p>
         <select id="adv-ui-language" name="ui_language">
           <option value="en">English</option>
           <option value="ko">한국어</option>
         </select>
 
-        <label class="field" for="adv-status-job-limit">Recent jobs shown by /status</label>
-        <p class="hint">Maximum number of recent jobs selectable with inline buttons in /status. Default: 10</p>
-        <input type="number" id="adv-status-job-limit" name="status_recent_job_limit" min="1" max="50" step="1" placeholder="Example: 10" autocomplete="off" />
+        <label class="field" for="adv-status-job-limit" data-i18n="advanced.statusLimitLabel">Recent jobs shown by /status</label>
+        <p class="hint" data-i18n="advanced.statusLimitHint">Maximum number of recent jobs selectable with inline buttons in /status. Default: 10</p>
+        <input type="number" id="adv-status-job-limit" name="status_recent_job_limit" min="1" max="50" step="1" placeholder="Example: 10" data-i18n-placeholder="advanced.phStatus" autocomplete="off" />
 
         <label class="checkbox" style="margin-top:1.1rem">
           <input type="checkbox" id="adv-natural-confirm-buttons" name="natural_job_confirmation_buttons_enabled" />
-          Use inline buttons instead of <code>y</code>/<code>Y</code> for natural-language job confirmations
+          <span data-i18n-html="advanced.naturalConfirmLabel">Use inline buttons instead of <code>y</code>/<code>Y</code> for natural-language job confirmations</span>
         </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem">
+        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.naturalConfirmHint">
           Default: off. When enabled, job confirmation messages show <strong>Yes</strong>/<strong>No</strong> buttons.
         </p>
 
         <label class="checkbox" style="margin-top:1.1rem">
           <input type="checkbox" id="adv-lifecycle-notify" name="server_lifecycle_notify_enabled" />
-          Send Telegram notifications when the server starts or stops
+          <span data-i18n="advanced.lifecycleLabel">Send Telegram notifications when the server starts or stops</span>
         </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem">
+        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n="advanced.lifecycleHint">
           Default: on. When disabled, restarts do not send server start/stop messages.
         </p>
       </section>
 
-      <!-- ── Job 실행 ──────────────────────────────────────────────── -->
+      <!-- Job execution -->
       <section class="card" aria-labelledby="section-job">
-        <h2 id="section-job">Job Execution</h2>
-        <p class="lead">Configure AI job execution limits.</p>
+        <h2 id="section-job" data-i18n="advanced.secJob">Job Execution</h2>
+        <p class="lead" data-i18n="advanced.secJobLead">Configure AI job execution limits.</p>
 
-        <label class="field" for="adv-job-timeout">AI job timeout (seconds, blank uses environment default)</label>
-        <p class="hint">If a Claude/Codex/Gemini runner does not finish within this time, the job fails.</p>
-        <input type="number" id="adv-job-timeout" name="job_timeout_seconds" min="1" step="1" placeholder="Example: 3600" autocomplete="off" />
+        <label class="field" for="adv-job-timeout" data-i18n="advanced.jobTimeoutLabel">AI job timeout (seconds, blank uses environment default)</label>
+        <p class="hint" data-i18n="advanced.jobTimeoutHint">If a Claude/Codex/Gemini runner does not finish within this time, the job fails.</p>
+        <input type="number" id="adv-job-timeout" name="job_timeout_seconds" min="1" step="1" placeholder="Example: 3600" data-i18n-placeholder="advanced.phTimeout" autocomplete="off" />
       </section>
 
-      <!-- ── Git 통합 ───────────────────────────────────────────────── -->
+      <!-- Git integration -->
       <section class="card" aria-labelledby="section-git">
-        <h2 id="section-git">Git Integration</h2>
-        <p class="lead danger">
+        <h2 id="section-git" data-i18n="advanced.secGit">Git Integration</h2>
+        <p class="lead danger" data-i18n="advanced.secGitLead">
           These options can broadly affect repositories. Use them only when you understand the impact.
         </p>
 
         <label class="checkbox">
           <input type="checkbox" id="adv-startup-pull" name="pull_projects_on_server_startup_enabled" />
-          Run <code>git pull</code> for registered active project repositories on server startup/restart
+          <span data-i18n-html="advanced.startupPullLabel">Run <code>git pull</code> for registered active project repositories on server startup/restart</span>
         </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem">
+        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n="advanced.startupPullHint">
           Default: off. Pulls from the remote based on each active project's checked-out branch. Network errors, conflicts, or local changes can fail; the server still starts.
         </p>
 
         <label class="checkbox" style="margin-top:1.1rem">
           <input type="checkbox" id="adv-merge-main" name="auto_merge_to_main_enabled" />
-          Apply job results immediately to <code>main</code>/<code>master</code>, then push
+          <span data-i18n-html="advanced.mergeMainLabel">Apply job results immediately to <code>main</code>/<code>master</code>, then push</span>
         </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem">
+        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.mergeMainHint">
           When disabled, jobs only commit and push to their work branch. When enabled, successful jobs run an integration similar to <code>/rebase</code> (rebase -> main fast-forward merge -> push).
         </p>
 
         <label class="checkbox" style="margin-top:1.1rem">
           <input type="checkbox" id="adv-delete-rebased-branch" name="delete_rebased_branch_enabled" />
-          Delete the rebased branch locally and remotely after <code>/rebase</code>
+          <span data-i18n-html="advanced.deleteRebasedLabel">Delete the rebased branch locally and remotely after <code>/rebase</code></span>
         </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem">
+        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.deleteRebasedHint">
           Default: on. When disabled, <code>/rebase</code> only merges into main/master and pushes; the target branch remains.
         </p>
       </section>
 
-      <!-- ── 대화 기억 저장 ─────────────────────────────────────────── -->
+      <!-- Conversation memory -->
       <section class="card" aria-labelledby="section-memory">
-        <h2 id="section-memory">Conversation Memory (SQLite)</h2>
-        <p class="lead danger">
+        <h2 id="section-memory" data-i18n="advanced.secMemory">Conversation Memory (SQLite)</h2>
+        <p class="lead danger" data-i18n="advanced.secMemoryLead">
           These options can broadly affect the conversation memory SQLite database. Enable only when needed.
         </p>
 
         <label class="checkbox">
           <input type="checkbox" id="adv-memory-enabled" name="conversation_memory_limit_enabled" />
-          Limit SQLite conversation memory storage
+          <span data-i18n="advanced.memoryEnabledLabel">Limit SQLite conversation memory storage</span>
         </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem">
+        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.memoryEnabledHint">
           When enabled, old <code>conversation_entries</code> rows are deleted <strong>globally</strong>. Set at least one positive row-count or DB-size limit.
         </p>
 
-        <label class="field" for="adv-max-rows">Maximum rows (blank disables)</label>
-        <input type="number" id="adv-max-rows" name="conversation_memory_max_rows" min="1" step="1" placeholder="Example: 5000" autocomplete="off" />
+        <label class="field" for="adv-max-rows" data-i18n="advanced.maxRowsLabel">Maximum rows (blank disables)</label>
+        <input type="number" id="adv-max-rows" name="conversation_memory_max_rows" min="1" step="1" placeholder="Example: 5000" data-i18n-placeholder="advanced.phRows" autocomplete="off" />
 
-        <label class="field" for="adv-max-bytes">Maximum DB size (bytes, blank disables)</label>
-        <input type="number" id="adv-max-bytes" name="conversation_memory_max_bytes" min="1" step="1" placeholder="Example: 10485760" autocomplete="off" />
+        <label class="field" for="adv-max-bytes" data-i18n="advanced.maxBytesLabel">Maximum DB size (bytes, blank disables)</label>
+        <input type="number" id="adv-max-bytes" name="conversation_memory_max_bytes" min="1" step="1" placeholder="Example: 10485760" data-i18n-placeholder="advanced.phBytes" autocomplete="off" />
       </section>
 
       <div class="form-actions">
-        <button type="submit" class="btn-primary" id="btn-adv-save">Save</button>
-        <button type="button" class="btn-ghost" id="btn-adv-reload">Reload</button>
+        <button type="submit" class="btn-primary" id="btn-adv-save" data-i18n="advanced.btnSave">Save</button>
+        <button type="button" class="btn-ghost" id="btn-adv-reload" data-i18n="advanced.btnReload">Reload</button>
       </div>
 
     </form>
   </div>
 
+  <script src="/admin-static/i18n.js"></script>
   <script src="/admin-static/summary.js"></script>
   <script>
     const $ = (s) => document.querySelector(s);
@@ -583,7 +584,7 @@
       try {
         const [okSum, okAdv] = await Promise.all([loadSummary(), loadAdvancedSettings()]);
         if (okSum && okAdv) {
-          setGlobalMsg("ok", "Summary and advanced settings loaded.");
+          setGlobalMsg("ok", i18n.t("advanced.loadedMsg"));
         }
       } finally {
         setBusy(false);
@@ -620,7 +621,7 @@
           setGlobalMsg("err", await parseApiError(r, t));
           return;
         }
-        setGlobalMsg("ok", "Advanced settings saved.");
+        setGlobalMsg("ok", i18n.t("advanced.savedMsg"));
       } finally {
         setBusy(false);
       }

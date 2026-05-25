@@ -38,7 +38,7 @@ def require_localhost(request: Request) -> None:
     host = _client_host(request)
     if host in ("127.0.0.1", "::1", "localhost", "testclient"):
         return
-    raise HTTPException(status_code=403, detail="관리 UI는 로컬호스트에서만 사용할 수 있습니다.")
+    raise HTTPException(status_code=403, detail="The admin UI is only available from localhost.")
 
 
 LocalhostOnly = Annotated[None, Depends(require_localhost)]
@@ -73,6 +73,12 @@ def _load_template_html(template_name: str) -> str:
     return template_path.read_text(encoding="utf-8")
 
 
+def _render_admin_page(template_name: str, lang: UiLanguage) -> str:
+    html = _load_template_html(template_name)
+    inject = f'<script>window.__UI_LANG__="{lang.value}";</script>\n</head>'
+    return html.replace("</head>", inject, 1)
+
+
 def _sync_bot_instance(manager: BotInstanceManager | None, record: ProjectRecord) -> None:
     if manager is None:
         return
@@ -104,30 +110,33 @@ def create_admin_router(
 ) -> APIRouter:
     router = APIRouter(tags=["admin"])
 
+    def _ui_language() -> UiLanguage:
+        return advanced_settings_store.get().ui_language
+
     @router.get("/", response_class=HTMLResponse)
     def admin_hub(_: LocalhostOnly) -> str:
         _adminlog.info("page served path=/")
-        return _load_template_html("admin.html")
+        return _render_admin_page("admin.html", _ui_language())
 
     @router.get("/projects", response_class=HTMLResponse)
     def admin_projects(_: LocalhostOnly) -> str:
         _adminlog.info("page served path=/projects")
-        return _load_template_html("projects.html")
+        return _render_admin_page("projects.html", _ui_language())
 
     @router.get("/advanced", response_class=HTMLResponse)
     def admin_advanced(_: LocalhostOnly) -> str:
         _adminlog.info("page served path=/advanced")
-        return _load_template_html("advanced.html")
+        return _render_admin_page("advanced.html", _ui_language())
 
     @router.get("/logs", response_class=HTMLResponse)
     def admin_logs(_: LocalhostOnly) -> str:
         _adminlog.info("page served path=/logs")
-        return _load_template_html("logs.html")
+        return _render_admin_page("logs.html", _ui_language())
 
     @router.get("/database", response_class=HTMLResponse)
     def admin_database(_: LocalhostOnly) -> str:
         _adminlog.info("page served path=/database")
-        return _load_template_html("database.html")
+        return _render_admin_page("database.html", _ui_language())
 
     @router.get("/api/database/tables")
     def api_database_tables(_: LocalhostOnly) -> dict[str, object]:
@@ -165,7 +174,7 @@ def create_admin_router(
         offset: int = Query(0, ge=0),
     ) -> dict[str, object]:
         if order not in ("asc", "desc"):
-            raise HTTPException(status_code=422, detail="order는 asc 또는 desc 여야 합니다.")
+            raise HTTPException(status_code=422, detail="order must be asc or desc.")
         browser = ConversationDatabaseBrowser(conversation_store.db_path)
         try:
             payload = browser.query_rows(
@@ -210,7 +219,7 @@ def create_admin_router(
         max_rows: int = Query(50_000, ge=1, le=100_000),
     ) -> StreamingResponse:
         if order not in ("asc", "desc"):
-            raise HTTPException(status_code=422, detail="order는 asc 또는 desc 여야 합니다.")
+            raise HTTPException(status_code=422, detail="order must be asc or desc.")
         browser = ConversationDatabaseBrowser(conversation_store.db_path)
         try:
             stream = browser.iter_csv_rows(
@@ -250,7 +259,7 @@ def create_admin_router(
         _: LocalhostOnly,
         limit: int = Query(200, ge=1, le=1000),
         after_id: int | None = Query(None, ge=1),
-        level: str | None = Query(None, description="최소 로그 레벨 (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
+        level: str | None = Query(None, description="Minimum log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"),
         q: str | None = Query(None, max_length=500),
         logger: str | None = Query(None, max_length=200),
         chat_id: int | None = Query(None),
@@ -337,15 +346,16 @@ def create_admin_router(
             "projects_config_path": str(registry.config_path),
             "webhook_token_hash_prefix_length": WEBHOOK_TOKEN_HASH_PREFIX_LENGTH,
             "webhook_route_template": "/telegram/webhook/{token_hash_prefix}",
-            "webhook_public_url_rule": "<공개 HTTPS Base URL> + 각 프로젝트의 webhook_path",
-            "webhook_hint": "각 프로젝트(봇)마다 webhook_path·token_hash_prefix가 다릅니다. "
-            "전체 URL은 공개 Base에 webhook_path를 이어붙입니다. ./run.sh 실행 중에는 등록·수정 시 자동 갱신됩니다. "
-            "수동 등록: python scripts/set_webhook.py <Base URL>",
+            "webhook_public_url_rule": "<public HTTPS Base URL> + each project's webhook_path",
+            "webhook_hint": "Each project (bot) has its own webhook_path and token_hash_prefix. "
+            "The full URL is the public Base joined with webhook_path. While ./run.sh is running, "
+            "registration/edits refresh it automatically. "
+            "Manual registration: python scripts/set_webhook.py <Base URL>",
             "webhook_deleted_disabled_note": (
-                "프로젝트를 비활성화하거나 삭제하면 서버는 해당 token_hash_prefix로 들어오는 업데이트를 "
-                "더 이상 처리하지 않습니다(매칭 실패·404). Telegram이 예전 URL로 호출을 보내도 이 앱에서는 "
-                "무시됩니다. 봇의 webhook을 비우거나 새 URL로 맞추려면 Bot API deleteWebhook 또는 "
-                "갱신된 레지스트리로 scripts/set_webhook.py 를 다시 실행하세요."
+                "When a project is disabled or deleted, the server no longer handles updates arriving "
+                "with that token_hash_prefix (match failure / 404). Even if Telegram calls the old URL, "
+                "this app ignores it. To clear the bot's webhook or point it at a new URL, run Bot API "
+                "deleteWebhook or rerun scripts/set_webhook.py with the updated registry."
             ),
         }
 
@@ -491,6 +501,13 @@ def create_admin_router(
             saved.conversation_memory_limit_enabled,
         )
         return saved.model_dump(mode="json")
+
+    @router.get("/admin-static/i18n.js")
+    def admin_i18n_js(_: LocalhostOnly) -> FileResponse:
+        path = Path(__file__).parent / "static" / "i18n.js"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(path, media_type="application/javascript; charset=utf-8")
 
     @router.get("/admin-static/summary.js")
     def admin_summary_js(_: LocalhostOnly) -> FileResponse:

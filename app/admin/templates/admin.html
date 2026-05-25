@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Remote AI Coder - 관리</title>
+  <title data-i18n="title.admin">Remote AI Coder - Admin</title>
   <style>
     :root {
       --bg: #0f1419;
@@ -364,50 +364,51 @@
       <div class="header-row">
         <div>
           <h1>Remote AI Coder</h1>
-          <p class="tagline">로컬 관리 UI</p>
+          <p class="tagline" data-i18n="admin.tagline">Local admin UI</p>
         </div>
-        <nav class="header-icon-nav" aria-label="빠른 이동">
-          <a href="/" class="header-icon-link is-current" title="관리 홈" aria-label="관리 홈">
+        <nav class="header-icon-nav" aria-label="Page navigation" data-i18n-aria-label="nav.aria">
+          <a href="/" class="header-icon-link is-current" title="Admin home" aria-label="Admin home" data-i18n-title="nav.home" data-i18n-aria-label="nav.home">
             <img src="/admin-static/icons/home.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/projects" class="header-icon-link" title="프로젝트 등록" aria-label="프로젝트 등록">
+          <a href="/projects" class="header-icon-link" title="Projects" aria-label="Projects" data-i18n-title="nav.projects" data-i18n-aria-label="nav.projects">
             <img src="/admin-static/icons/projects.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/advanced" class="header-icon-link" title="고급 설정" aria-label="고급 설정">
+          <a href="/advanced" class="header-icon-link" title="Advanced settings" aria-label="Advanced settings" data-i18n-title="nav.advanced" data-i18n-aria-label="nav.advanced">
             <img src="/admin-static/icons/advanced.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/logs" class="header-icon-link" title="서버 로그" aria-label="서버 로그">
+          <a href="/logs" class="header-icon-link" title="Server logs" aria-label="Server logs" data-i18n-title="nav.logs" data-i18n-aria-label="nav.logs">
             <img src="/admin-static/icons/logs.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/database" class="header-icon-link" title="데이터 조회" aria-label="데이터 조회">
+          <a href="/database" class="header-icon-link" title="Data browser" aria-label="Data browser" data-i18n-title="nav.database" data-i18n-aria-label="nav.database">
             <img src="/admin-static/icons/database.svg" width="22" height="22" alt="" />
           </a>
         </nav>
       </div>
-      <span class="localhost-pill" aria-hidden="true">로컬 전용</span>
-      <p class="tagline" style="margin-top:0.65rem">이 페이지는 <strong>127.0.0.1</strong>에서만 열립니다.</p>
+      <span class="localhost-pill" aria-hidden="true" data-i18n="common.localOnly">Local only</span>
+      <p class="tagline" style="margin-top:0.65rem" data-i18n-html="common.localhostNote">This page is only available from <strong>127.0.0.1</strong>.</p>
     </header>
 
     <div id="global-msg" role="status" aria-live="polite"></div>
 
-    <div class="summary-grid" id="summary-grid" aria-label="요약"></div>
+    <div class="summary-grid" id="summary-grid" aria-label="Summary" data-i18n-aria-label="common.summaryAria"></div>
 
     <section class="card" aria-labelledby="active-projects-heading">
       <div class="section-head">
-        <h2 id="active-projects-heading">활성 프로젝트</h2>
-        <a href="/projects" class="link-manage">등록·편집</a>
+        <h2 id="active-projects-heading" data-i18n="admin.activeProjects">Active projects</h2>
+        <a href="/projects" class="link-manage" data-i18n="admin.manageLink">Manage</a>
       </div>
-      <p class="lead">활성화된 프로젝트만 표시합니다. 추가·비활성·삭제는 프로젝트 등록 화면에서 할 수 있습니다.</p>
+      <p class="lead" data-i18n="admin.activeLead">Only enabled projects are shown. Add, disable, or delete them on the Projects page.</p>
       <div id="active-projects-view" aria-live="polite"></div>
     </section>
 
     <section class="card" aria-labelledby="settings-heading">
-      <h2 id="settings-heading">환경 요약</h2>
-      <p class="lead">등록 파일 경로와 텔레그램 관련 설정(마스킹)입니다. Webhook은 스크립트로 등록합니다.</p>
+      <h2 id="settings-heading" data-i18n="admin.envSummary">Environment summary</h2>
+      <p class="lead" data-i18n="admin.envLead">Registry file path and Telegram-related settings (masked). Webhooks are registered via script.</p>
       <dl class="settings-meta" id="settings-meta"></dl>
     </section>
   </div>
 
+  <script src="/admin-static/i18n.js"></script>
   <script src="/admin-static/summary.js"></script>
   <script>
     const $ = (s) => document.querySelector(s);
@@ -441,7 +442,7 @@
           }
         } catch (_) { /* ignore */ }
       }
-      return rawText || "요청 실패 (" + r.status + ")";
+      return rawText || "Request failed (" + r.status + ")";
     }
 
     function renderActiveProjects(projectsPayload) {
@@ -449,25 +450,26 @@
       const defaultName = projectsPayload.default_project || "";
       const active = (projectsPayload.projects || [])
         .filter((p) => p.enabled)
-        .sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 
       if (!active.length) {
         container.innerHTML =
-          '<p class="active-proj-empty">활성화된 프로젝트가 없습니다. ' +
-          '<a href="/projects" class="link-manage">프로젝트 등록</a>에서 추가·활성화할 수 있습니다.</p>';
+          '<p class="active-proj-empty">' + i18n.t("admin.noActiveHtml") + "</p>";
         return;
       }
 
       const items = active
         .map((p) => {
           const isDef = p.name === defaultName;
-          const badge = isDef ? '<span class="badge badge-default">폴백 기본</span>' : "";
+          const badge = isDef
+            ? '<span class="badge badge-default">' + escapeHtml(i18n.t("common.fallbackDefault")) + "</span>"
+            : "";
           return `<li class="active-proj-item">
           <h3><code>${escapeHtml(p.name)}</code>${badge}</h3>
           <dl class="active-proj-dl">
-            <div><dt>루트</dt><dd class="mono">${escapeHtml(String(p.root_path))}</dd></div>
-            <div><dt>워크트리</dt><dd class="mono">${escapeHtml(String(p.worktree_base_dir))}</dd></div>
-            <div><dt>기본 모델</dt><dd>${escapeHtml(String(p.default_model))}</dd></div>
+            <div><dt>${escapeHtml(i18n.t("common.root"))}</dt><dd class="mono">${escapeHtml(String(p.root_path))}</dd></div>
+            <div><dt>${escapeHtml(i18n.t("common.worktree"))}</dt><dd class="mono">${escapeHtml(String(p.worktree_base_dir))}</dd></div>
+            <div><dt>${escapeHtml(i18n.t("common.defaultModel"))}</dt><dd>${escapeHtml(String(p.default_model))}</dd></div>
           </dl>
         </li>`;
         })
@@ -478,15 +480,16 @@
 
     function renderSettings(settings) {
       const dl = $("#settings-meta");
-      const chats = (settings.telegram_allowed_chat_ids || []).join(", ") || "(없음)";
-      const users = (settings.telegram_allowed_user_ids || []).join(", ") || "(없음)";
+      const none = i18n.t("common.none");
+      const chats = (settings.telegram_allowed_chat_ids || []).join(", ") || none;
+      const users = (settings.telegram_allowed_user_ids || []).join(", ") || none;
       dl.innerHTML = `
-        <div><dt>프로젝트 설정 파일</dt><dd class="mono">${escapeHtml(settings.projects_config_path || "")}</dd></div>
-        <div><dt>봇 토큰 (마스킹)</dt><dd class="mono">${escapeHtml(settings.telegram_bot_token_masked || "")}</dd></div>
-        <div><dt>허용 Chat ID</dt><dd>${escapeHtml(chats)}</dd></div>
-        <div><dt>허용 User ID</dt><dd>${escapeHtml(users)}</dd></div>
-        <div><dt>Webhook 시크릿</dt><dd>${settings.telegram_webhook_secret_set ? "설정됨" : "미설정"}</dd></div>
-        <div><dt>Webhook 안내</dt><dd>${escapeHtml(settings.webhook_hint || "")}</dd></div>
+        <div><dt>${escapeHtml(i18n.t("admin.projectsConfigFile"))}</dt><dd class="mono">${escapeHtml(settings.projects_config_path || "")}</dd></div>
+        <div><dt>${escapeHtml(i18n.t("admin.botTokenMasked"))}</dt><dd class="mono">${escapeHtml(i18n.tv(settings.telegram_bot_token_masked || ""))}</dd></div>
+        <div><dt>${escapeHtml(i18n.t("common.allowedChatIds"))}</dt><dd>${escapeHtml(chats)}</dd></div>
+        <div><dt>${escapeHtml(i18n.t("common.allowedUserIds"))}</dt><dd>${escapeHtml(users)}</dd></div>
+        <div><dt>${escapeHtml(i18n.t("admin.webhookSecret"))}</dt><dd>${settings.telegram_webhook_secret_set ? escapeHtml(i18n.t("common.set")) : escapeHtml(i18n.t("common.unset"))}</dd></div>
+        <div><dt>${escapeHtml(i18n.t("admin.webhookHintLabel"))}</dt><dd>${escapeHtml(i18n.tv(settings.webhook_hint || ""))}</dd></div>
       `;
     }
 

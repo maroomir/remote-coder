@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Remote AI Coder - 데이터 조회</title>
+  <title data-i18n="title.database">Remote AI Coder - Data Browser</title>
   <style>
     :root {
       --bg: #0f1419;
@@ -446,59 +446,59 @@
     <header class="app-header">
       <div class="header-row">
         <div>
-          <h1>데이터 조회</h1>
-          <p class="tagline">대화 기억 SQLite를 읽기 전용으로 조회합니다. 임의 SQL은 실행되지 않습니다.</p>
+          <h1 data-i18n="database.h1">Data browser</h1>
+          <p class="tagline" data-i18n="database.tagline">Read-only view of the conversation memory SQLite. Arbitrary SQL is never run.</p>
         </div>
-        <nav class="header-icon-nav" aria-label="페이지 이동">
-          <a href="/" class="header-icon-link" title="관리 홈" aria-label="관리 홈">
+        <nav class="header-icon-nav" aria-label="Page navigation" data-i18n-aria-label="nav.aria">
+          <a href="/" class="header-icon-link" title="Admin home" aria-label="Admin home" data-i18n-title="nav.home" data-i18n-aria-label="nav.home">
             <img src="/admin-static/icons/home.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/projects" class="header-icon-link" title="프로젝트 등록" aria-label="프로젝트 등록">
+          <a href="/projects" class="header-icon-link" title="Projects" aria-label="Projects" data-i18n-title="nav.projects" data-i18n-aria-label="nav.projects">
             <img src="/admin-static/icons/projects.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/advanced" class="header-icon-link" title="고급 설정" aria-label="고급 설정">
+          <a href="/advanced" class="header-icon-link" title="Advanced settings" aria-label="Advanced settings" data-i18n-title="nav.advanced" data-i18n-aria-label="nav.advanced">
             <img src="/admin-static/icons/advanced.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/logs" class="header-icon-link" title="서버 로그" aria-label="서버 로그">
+          <a href="/logs" class="header-icon-link" title="Server logs" aria-label="Server logs" data-i18n-title="nav.logs" data-i18n-aria-label="nav.logs">
             <img src="/admin-static/icons/logs.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/database" class="header-icon-link is-current" title="데이터 조회" aria-label="데이터 조회">
+          <a href="/database" class="header-icon-link is-current" title="Data browser" aria-label="Data browser" data-i18n-title="nav.database" data-i18n-aria-label="nav.database">
             <img src="/admin-static/icons/database.svg" width="22" height="22" alt="" />
           </a>
         </nav>
       </div>
-      <span class="localhost-pill" aria-hidden="true">로컬 전용</span>
-      <p class="tagline" style="margin-top:0.65rem">이 페이지는 <strong>127.0.0.1</strong>에서만 열립니다.</p>
+      <span class="localhost-pill" aria-hidden="true" data-i18n="common.localOnly">Local only</span>
+      <p class="tagline" style="margin-top:0.65rem" data-i18n-html="common.localhostNote">This page is only available from <strong>127.0.0.1</strong>.</p>
     </header>
 
     <div id="global-msg" role="status" aria-live="polite"></div>
 
-    <div class="summary-grid" id="summary-grid" aria-label="요약"></div>
+    <div class="summary-grid" id="summary-grid" aria-label="Summary" data-i18n-aria-label="common.summaryAria"></div>
 
     <section class="card" aria-labelledby="db-heading">
-      <h2 id="db-heading">표</h2>
-      <p class="lead">테이블과 정렬 컬럼은 서버 화이트리스트로만 허용됩니다.</p>
+      <h2 id="db-heading" data-i18n="database.tablesHeading">Tables</h2>
+      <p class="lead" data-i18n="database.lead">Tables and sort columns are restricted to a server whitelist.</p>
       <p class="db-path" id="db-path-line"></p>
 
       <div class="toolbar">
         <div class="field-inline mid">
-          <label for="f-table">테이블</label>
-          <select id="f-table" aria-label="테이블"></select>
+          <label for="f-table" data-i18n="database.table">Table</label>
+          <select id="f-table" aria-label="Table" data-i18n-aria-label="database.tableAria"></select>
         </div>
         <div class="field-inline narrow">
-          <label for="f-sort">정렬</label>
-          <select id="f-sort" aria-label="정렬 컬럼"></select>
+          <label for="f-sort" data-i18n="database.sort">Sort</label>
+          <select id="f-sort" aria-label="Sort column" data-i18n-aria-label="database.sortAria"></select>
         </div>
         <div class="field-inline narrow">
-          <label for="f-order">순서</label>
-          <select id="f-order" aria-label="정렬 순서">
-            <option value="desc">내림차순</option>
-            <option value="asc">오름차순</option>
+          <label for="f-order" data-i18n="database.order">Order</label>
+          <select id="f-order" aria-label="Sort order" data-i18n-aria-label="database.orderAria">
+            <option value="desc" data-i18n="database.desc">Descending</option>
+            <option value="asc" data-i18n="database.asc">Ascending</option>
           </select>
         </div>
         <div class="field-inline narrow">
-          <label for="f-limit">페이지 크기</label>
-          <select id="f-limit" aria-label="페이지 크기">
+          <label for="f-limit" data-i18n="database.pageSize">Page size</label>
+          <select id="f-limit" aria-label="Page size" data-i18n-aria-label="database.pageSizeAria">
             <option value="25">25</option>
             <option value="50" selected>50</option>
             <option value="100">100</option>
@@ -507,19 +507,19 @@
         </div>
         <div class="field-inline mid">
           <label for="f-project">project</label>
-          <select id="f-project" aria-label="프로젝트 필터"></select>
+          <select id="f-project" aria-label="Project filter" data-i18n-aria-label="database.projectAria"></select>
         </div>
         <div class="field-inline mid role-wrap" id="role-wrap">
           <label for="f-role">role</label>
-          <select id="f-role" aria-label="역할 필터"></select>
+          <select id="f-role" aria-label="Role filter" data-i18n-aria-label="database.roleAria"></select>
         </div>
         <div class="field-inline mid">
-          <label for="f-q">검색 (부분 일치)</label>
+          <label for="f-q" data-i18n="database.searchPartial">Search (partial match)</label>
           <input id="f-q" type="text" autocomplete="off" />
         </div>
         <div class="btn-row-actions">
-          <button type="button" class="btn-primary" id="btn-load">조회</button>
-          <button type="button" class="btn-icon" id="btn-csv" title="CSV 다운로드 (현재 필터·정렬, 최대 5만행)" aria-label="CSV 다운로드">
+          <button type="button" class="btn-primary" id="btn-load" data-i18n="database.btnLoad">Load</button>
+          <button type="button" class="btn-icon" id="btn-csv" title="Download CSV (current filters/sort, up to 50,000 rows)" aria-label="Download CSV" data-i18n-title="database.csvTitle" data-i18n-aria-label="database.csvAria">
             <img src="/admin-static/icons/download.svg" width="20" height="20" alt="" />
           </button>
         </div>
@@ -527,8 +527,8 @@
 
       <div class="pager">
         <span id="pager-summary"></span>
-        <button type="button" id="btn-prev" disabled>이전</button>
-        <button type="button" id="btn-next" disabled>다음</button>
+        <button type="button" id="btn-prev" disabled data-i18n="common.prev">Prev</button>
+        <button type="button" id="btn-next" disabled data-i18n="common.next">Next</button>
       </div>
 
       <div class="table-wrap">
@@ -542,14 +542,15 @@
 
   <dialog class="text-detail-dlg" id="text-detail-modal" aria-labelledby="text-detail-title">
     <div class="text-detail-head">
-      <h2 id="text-detail-title">text 내용</h2>
-      <button type="button" id="text-detail-close">닫기</button>
+      <h2 id="text-detail-title" data-i18n="database.textContent">Text content</h2>
+      <button type="button" id="text-detail-close" data-i18n="common.close">Close</button>
     </div>
     <div class="text-detail-body-wrap">
       <pre id="text-detail-body"></pre>
     </div>
   </dialog>
 
+  <script src="/admin-static/i18n.js"></script>
   <script src="/admin-static/summary.js"></script>
   <script>
     const $ = (s) => document.querySelector(s);
@@ -627,7 +628,7 @@
       const r = await fetch("/api/database/filter-options?table=" + encodeURIComponent(table));
       const raw = await r.text();
       if (!r.ok) {
-        let detail = raw || "요청 실패 (" + r.status + ")";
+        let detail = raw || "Request failed (" + r.status + ")";
         try {
           const j = JSON.parse(raw);
           if (j && typeof j.detail === "string") detail = j.detail;
@@ -635,9 +636,9 @@
         throw new Error(detail);
       }
       const d = JSON.parse(raw);
-      fillSelectOptions($("#f-project"), d.projects || [], "전체");
+      fillSelectOptions($("#f-project"), d.projects || [], i18n.t("common.all"));
       if ($("#f-table").value === "conversation_entries") {
-        fillSelectOptions($("#f-role"), d.roles || [], "전체");
+        fillSelectOptions($("#f-role"), d.roles || [], i18n.t("common.all"));
       } else {
         $("#f-role").innerHTML = "";
       }
@@ -665,7 +666,7 @@
       const r = await fetch("/api/database/tables");
       const raw = await r.text();
       if (!r.ok) {
-        let detail = raw || "요청 실패 (" + r.status + ")";
+        let detail = raw || "Request failed (" + r.status + ")";
         try {
           const j = JSON.parse(raw);
           if (j && typeof j.detail === "string") detail = j.detail;
@@ -674,17 +675,19 @@
       }
       const d = JSON.parse(raw);
       tablesMeta = d.tables || [];
-      $("#db-path-line").textContent = d.db_exists ? "DB: " + d.db_path : "DB 파일 없음: " + d.db_path;
+      $("#db-path-line").textContent = d.db_exists
+        ? i18n.t("database.dbPrefix", { path: d.db_path })
+        : i18n.t("database.dbMissing", { path: d.db_path });
       const sel = $("#f-table");
       sel.innerHTML = "";
       tablesMeta.forEach((t) => {
         const o = document.createElement("option");
         o.value = t.name;
-        o.textContent = t.label + " (" + t.name + ")";
+        o.textContent = i18n.tv(t.label) + " (" + t.name + ")";
         sel.appendChild(o);
       });
       if (!tablesMeta.length) {
-        setGlobalMsg("err", "등록된 테이블 메타가 없습니다.");
+        setGlobalMsg("err", i18n.t("database.noTableMeta"));
         return;
       }
       syncRoleVisibility();
@@ -746,7 +749,7 @@
         tbody.innerHTML =
           '<tr><td colspan="' +
           Math.max(cols.length, 1) +
-          '" style="color:var(--text-muted);text-align:center;padding:1.5rem">행이 없습니다.</td></tr>';
+          '" style="color:var(--text-muted);text-align:center;padding:1.5rem">' + escapeHtml(i18n.t("database.noRows")) + "</td></tr>";
         return;
       }
       tbody.innerHTML = lastRows
@@ -759,7 +762,7 @@
                   return (
                     '<td><button type="button" class="btn-detail" data-row="' +
                     rowIdx +
-                    '">상세보기</button></td>'
+                    '">' + escapeHtml(i18n.t("database.viewDetail")) + "</button></td>"
                   );
                 }
                 const v = row[c];
@@ -785,8 +788,13 @@
       lastTotal = Number(d.total) || 0;
       const from = lastTotal === 0 ? 0 : currentOffset + 1;
       const to = Math.min(currentOffset + (d.rows || []).length, lastTotal);
-      $("#pager-summary").textContent =
-        "총 " + lastTotal + "행 · 표시 " + from + "–" + to + " (limit " + lastLimit + ", offset " + currentOffset + ")";
+      $("#pager-summary").textContent = i18n.t("database.pagerSummary", {
+        total: lastTotal,
+        from: from,
+        to: to,
+        limit: lastLimit,
+        offset: currentOffset,
+      });
       $("#btn-prev").disabled = currentOffset <= 0;
       $("#btn-next").disabled = currentOffset + lastLimit >= lastTotal;
     }
@@ -796,7 +804,7 @@
       const r = await fetch("/api/database/rows?" + buildRowsQuery());
       const raw = await r.text();
       if (!r.ok) {
-        let detail = raw || "요청 실패 (" + r.status + ")";
+        let detail = raw || "Request failed (" + r.status + ")";
         try {
           const j = JSON.parse(raw);
           if (j && typeof j.detail === "string") detail = j.detail;

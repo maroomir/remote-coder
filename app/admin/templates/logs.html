@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Remote AI Coder - 서버 로그</title>
+  <title data-i18n="title.logs">Remote AI Coder - Server Logs</title>
   <style>
     :root {
       --bg: #0f1419;
@@ -376,44 +376,44 @@
     <header class="app-header">
       <div class="header-row">
         <div>
-          <h1>서버 로그</h1>
-          <p class="tagline"><code>app</code> 패키지 로거에 쌓인 최근 로그입니다. 자동 새로고침으로 실시간에 가깝게 볼 수 있습니다.</p>
+          <h1 data-i18n="logs.h1">Server logs</h1>
+          <p class="tagline" data-i18n-html="logs.tagline">Recent logs collected by the <code>app</code> package logger. Auto-refresh shows them near real time.</p>
         </div>
-        <nav class="header-icon-nav" aria-label="페이지 이동">
-          <a href="/" class="header-icon-link" title="관리 홈" aria-label="관리 홈">
+        <nav class="header-icon-nav" aria-label="Page navigation" data-i18n-aria-label="nav.aria">
+          <a href="/" class="header-icon-link" title="Admin home" aria-label="Admin home" data-i18n-title="nav.home" data-i18n-aria-label="nav.home">
             <img src="/admin-static/icons/home.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/projects" class="header-icon-link" title="프로젝트 등록" aria-label="프로젝트 등록">
+          <a href="/projects" class="header-icon-link" title="Projects" aria-label="Projects" data-i18n-title="nav.projects" data-i18n-aria-label="nav.projects">
             <img src="/admin-static/icons/projects.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/advanced" class="header-icon-link" title="고급 설정" aria-label="고급 설정">
+          <a href="/advanced" class="header-icon-link" title="Advanced settings" aria-label="Advanced settings" data-i18n-title="nav.advanced" data-i18n-aria-label="nav.advanced">
             <img src="/admin-static/icons/advanced.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/logs" class="header-icon-link is-current" title="서버 로그" aria-label="서버 로그">
+          <a href="/logs" class="header-icon-link is-current" title="Server logs" aria-label="Server logs" data-i18n-title="nav.logs" data-i18n-aria-label="nav.logs">
             <img src="/admin-static/icons/logs.svg" width="22" height="22" alt="" />
           </a>
-          <a href="/database" class="header-icon-link" title="데이터 조회" aria-label="데이터 조회">
+          <a href="/database" class="header-icon-link" title="Data browser" aria-label="Data browser" data-i18n-title="nav.database" data-i18n-aria-label="nav.database">
             <img src="/admin-static/icons/database.svg" width="22" height="22" alt="" />
           </a>
         </nav>
       </div>
-      <span class="localhost-pill" aria-hidden="true">로컬 전용</span>
-      <p class="tagline" style="margin-top:0.65rem">이 페이지는 <strong>127.0.0.1</strong>에서만 열립니다.</p>
+      <span class="localhost-pill" aria-hidden="true" data-i18n="common.localOnly">Local only</span>
+      <p class="tagline" style="margin-top:0.65rem" data-i18n-html="common.localhostNote">This page is only available from <strong>127.0.0.1</strong>.</p>
     </header>
 
     <div id="global-msg" role="status" aria-live="polite"></div>
 
-    <div class="summary-grid" id="summary-grid" aria-label="요약"></div>
+    <div class="summary-grid" id="summary-grid" aria-label="Summary" data-i18n-aria-label="common.summaryAria"></div>
 
     <section class="card" aria-labelledby="logs-heading">
-      <h2 id="logs-heading">콘솔</h2>
-      <p class="lead">레벨은 <strong>최소</strong> 기준입니다. 검색어는 메시지·예외 텍스트에 부분 일치합니다. 배지를 클릭하면 해당 필터가 채워집니다.</p>
+      <h2 id="logs-heading" data-i18n="logs.console">Console</h2>
+      <p class="lead" data-i18n-html="logs.lead">Level is a <strong>minimum</strong>. Search partially matches message and exception text. Click a badge to fill that filter.</p>
 
       <div class="toolbar">
         <div class="field-inline narrow">
-          <label for="f-level">레벨</label>
-          <select id="f-level" aria-label="최소 로그 레벨">
-            <option value="">전체</option>
+          <label for="f-level" data-i18n="logs.level">Level</label>
+          <select id="f-level" aria-label="Minimum log level" data-i18n-aria-label="logs.levelAria">
+            <option value="" data-i18n="common.all">All</option>
             <option value="DEBUG">DEBUG</option>
             <option value="INFO">INFO</option>
             <option value="WARNING">WARNING</option>
@@ -422,9 +422,9 @@
           </select>
         </div>
         <div class="field-inline narrow">
-          <label for="f-category">카테고리</label>
-          <select id="f-category" aria-label="이벤트 카테고리">
-            <option value="">전체</option>
+          <label for="f-category" data-i18n="logs.category">Category</label>
+          <select id="f-category" aria-label="Event category" data-i18n-aria-label="logs.categoryAria">
+            <option value="" data-i18n="common.all">All</option>
             <option value="telegram.inbound">telegram.inbound</option>
             <option value="telegram.outbound">telegram.outbound</option>
             <option value="telegram.command">telegram.command</option>
@@ -436,48 +436,48 @@
         </div>
         <div class="field-inline narrow">
           <label for="f-chat-id">chat_id</label>
-          <input id="f-chat-id" type="text" inputmode="numeric" placeholder="예: 123" autocomplete="off" />
+          <input id="f-chat-id" type="text" inputmode="numeric" placeholder="e.g. 123" data-i18n-placeholder="logs.phChatId" autocomplete="off" />
         </div>
         <div class="field-inline narrow">
           <label for="f-user-id">user_id</label>
-          <input id="f-user-id" type="text" inputmode="numeric" placeholder="예: 456" autocomplete="off" />
+          <input id="f-user-id" type="text" inputmode="numeric" placeholder="e.g. 456" data-i18n-placeholder="logs.phUserId" autocomplete="off" />
         </div>
         <div class="field-inline wide">
           <label for="f-job-id">job_id</label>
-          <input id="f-job-id" type="text" placeholder="예: job_…" autocomplete="off" />
+          <input id="f-job-id" type="text" placeholder="e.g. job_…" data-i18n-placeholder="logs.phJobId" autocomplete="off" />
         </div>
         <div class="field-inline wide">
           <label for="f-project">project</label>
-          <input id="f-project" type="text" placeholder="프로젝트 이름" autocomplete="off" />
+          <input id="f-project" type="text" placeholder="Project name" data-i18n-placeholder="logs.phProject" autocomplete="off" />
         </div>
         <div class="field-inline wide">
-          <label for="f-logger">로거 (부분 일치)</label>
-          <input id="f-logger" type="text" placeholder="예: app.telegram" autocomplete="off" />
+          <label for="f-logger" data-i18n="logs.logger">Logger (partial match)</label>
+          <input id="f-logger" type="text" placeholder="e.g. app.telegram" data-i18n-placeholder="logs.phLogger" autocomplete="off" />
         </div>
         <div class="field-inline wide">
-          <label for="f-q">검색</label>
-          <input id="f-q" type="text" placeholder="메시지·예외" autocomplete="off" />
+          <label for="f-q" data-i18n="common.search">Search</label>
+          <input id="f-q" type="text" placeholder="Message/exception" data-i18n-placeholder="logs.phSearch" autocomplete="off" />
         </div>
         <div class="field-inline narrow">
-          <label for="f-interval">새로고침(초)</label>
-          <select id="f-interval" aria-label="자동 새로고침 간격">
-            <option value="0">끔</option>
+          <label for="f-interval" data-i18n="logs.refresh">Refresh (s)</label>
+          <select id="f-interval" aria-label="Auto-refresh interval" data-i18n-aria-label="logs.refreshAria">
+            <option value="0" data-i18n="common.off">Off</option>
             <option value="1">1</option>
             <option value="2" selected>2</option>
             <option value="5">5</option>
           </select>
         </div>
-        <button type="button" class="btn-primary" id="btn-apply">필터 적용</button>
-        <button type="button" id="btn-clear-view">화면 비우기</button>
+        <button type="button" class="btn-primary" id="btn-apply" data-i18n="logs.applyFilter">Apply filters</button>
+        <button type="button" id="btn-clear-view" data-i18n="logs.clearView">Clear view</button>
       </div>
 
       <div class="checks">
-        <label><input type="checkbox" id="chk-stick" checked /> 맨 아래로 스크롤</label>
+        <label><input type="checkbox" id="chk-stick" checked /> <span data-i18n="logs.stickBottom">Scroll to bottom</span></label>
       </div>
 
       <div class="console-wrap" style="margin-top:0.75rem">
         <div class="console-meta">
-          <span id="meta-count">로드 대기</span>
+          <span id="meta-count" data-i18n="logs.loadWaiting">Waiting to load</span>
           <span id="meta-max">max_id: —</span>
         </div>
         <div id="console" role="log" aria-live="polite" aria-relevant="additions"></div>
@@ -485,6 +485,7 @@
     </section>
   </div>
 
+  <script src="/admin-static/i18n.js"></script>
   <script src="/admin-static/summary.js"></script>
   <script>
     const $ = (s) => document.querySelector(s);
@@ -582,7 +583,7 @@
       const r = await fetch("/api/logs?" + qs);
       const raw = await r.text();
       if (!r.ok) {
-        let detail = raw || "요청 실패 (" + r.status + ")";
+        let detail = raw || "Request failed (" + r.status + ")";
         try {
           const j = JSON.parse(raw);
           if (j && typeof j.detail === "string") detail = j.detail;
@@ -603,7 +604,7 @@
         seen.add(id);
         consoleEl.insertAdjacentHTML("beforeend", formatLine(e));
       }
-      $("#meta-count").textContent = "표시 줄 수: " + seen.size;
+      $("#meta-count").textContent = i18n.t("logs.shownLines", { n: seen.size });
       scrollToBottom();
     }
 
@@ -622,7 +623,7 @@
         $("#meta-max").textContent = "max_id: " + lastMaxId;
         if ((d.entries || []).length) {
           applyEntries(d.entries, true);
-          $("#meta-count").textContent = "표시 줄 수: " + seen.size;
+          $("#meta-count").textContent = i18n.t("logs.shownLines", { n: seen.size });
         }
       } catch (e) {
         setGlobalMsg("err", String(e));
@@ -670,7 +671,7 @@
       consoleEl.innerHTML = "";
       seen.clear();
       lastMaxId = 0;
-      $("#meta-count").textContent = "표시 줄 수: 0";
+      $("#meta-count").textContent = i18n.t("logs.shownLines", { n: 0 });
       $("#meta-max").textContent = "max_id: —";
     });
 

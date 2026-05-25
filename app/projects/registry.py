@@ -107,7 +107,7 @@ def _fill_legacy_projects_payload_from_env(data: dict) -> dict:
 
 def mask_bot_token(token: str) -> str:
     if not token:
-        return "(설정 안 됨)"
+        return "(not set)"
     if len(token) <= 8:
         return "***"
     return f"***…{token[-4:]}"
