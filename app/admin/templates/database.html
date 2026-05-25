@@ -39,7 +39,7 @@
       padding: 1.25rem 1rem 2.5rem;
     }
 
-    .wrap { max-width: 90rem; margin: 0 auto; }
+    .wrap { max-width: 72rem; margin: 0 auto; }
 
     .app-header {
       margin-bottom: 1.5rem;
@@ -561,7 +561,7 @@
     let lastRows = [];
 
     function hiddenDisplayColumns(tableName, allCols) {
-      const hide = new Set();
+      const hide = new Set(["created_at"]);
       if (tableName === "conversation_entries") {
         hide.add("message_id");
         hide.add("reply_to_message_id");
