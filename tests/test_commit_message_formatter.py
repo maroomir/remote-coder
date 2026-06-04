@@ -105,3 +105,52 @@ def test_commit_message_formatter_rejects_ai_title_that_repeats_prompt():
 
     assert message.startswith("refactor: refactor src/utils source\n\n")
     assert "부탁드립니다" not in message.splitlines()[0]
+
+
+def test_commit_message_formatter_skips_reply_job_context_block_for_title():
+    instruction = (
+        "[Reply job context]\n"
+        "job_id=job_20260604224346_0794a6:\n"
+        "  original_message_id: 635\n"
+        "  original_user: ask: previous question text\n"
+        "  job_result: status=succeeded model=gpt-5.5 stdout_preview=...\n"
+        "  job_history:\n"
+        "    - user message_id=635: ask: previous question text\n"
+        "    - job_result message_id=639: status=succeeded\n"
+        "[/Reply job context]\n"
+        "\n"
+        "Fix the broken commit automation so titles describe the change."
+    )
+
+    message = CommitMessageFormatter.format(
+        job_id="job_20260604231739_fe1058",
+        instruction=instruction,
+        changed_files=["app/git/commit_message.py"],
+    )
+
+    title_line = message.splitlines()[0]
+    assert "job_id=" not in title_line
+    assert "original_user" not in title_line
+    assert title_line.startswith("fix:")
+
+
+def test_commit_message_formatter_extracts_current_request_inner_line():
+    instruction = (
+        "[Previous conversation/job context]\n"
+        "user (job_id=job_20260601_aaaaaa): earlier conversation snippet\n"
+        "[/previous context block]\n"
+        "\n"
+        "[Current request]\n"
+        "fix the commit title selection bug\n"
+        "[/current request]"
+    )
+
+    message = CommitMessageFormatter.format(
+        job_id="job_20260604231739_fe1058",
+        instruction=instruction,
+        changed_files=["app/git/commit_message.py"],
+    )
+
+    title_line = message.splitlines()[0]
+    assert title_line.startswith("fix:")
+    assert "earlier conversation" not in title_line

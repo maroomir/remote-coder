@@ -838,6 +838,48 @@ def test_job_manager_notifier_resolver_invoked_with_job_project(test_settings, p
     notifier.send_job_result.assert_called_once()
 
 
+def test_job_manager_forwards_selected_model_to_ai_commit_generator(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = ["a.py"]
+    git_service.commit_all.return_value = "abc123"
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    branch_strategy.make_branch_name.return_value = "remote-test"
+    notifier = Mock()
+    ai_commit = Mock()
+    ai_commit.generate.return_value = (None, None)
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+        ai_commit_body_generator=ai_commit,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CODEX,
+        instruction="apply codex fix",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    manager.run(job.id)
+
+    ai_commit.generate.assert_called_once()
+    assert ai_commit.generate.call_args.kwargs["model_name"] == ModelName.CODEX
+
+
 def test_job_manager_routes_notifications_by_project_name(test_settings, project_registry):
     store = InMemoryJobStore()
     git_service = Mock()

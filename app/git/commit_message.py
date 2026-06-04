@@ -193,17 +193,36 @@ class CommitMessageFormatter:
             return f"{'/'.join(common)} source"
         return f"{source_files[0].split('/', 1)[0]} source"
 
-    @staticmethod
-    def _first_meaningful_instruction_line(instruction: str) -> str:
+    _CURRENT_REQUEST_MARKERS = (
+        "[Current request]",
+        "[/current request]",
+        "[현재 요청]",
+        "[/현재 요청]",
+    )
+    _CONTEXT_NOISE_PREFIXES = (
+        "job_id=",
+        "message_id=",
+        "Job 결과:",
+    )
+
+    @classmethod
+    def _first_meaningful_instruction_line(cls, instruction: str) -> str:
+        skip_depth = 0
         for raw_line in instruction.splitlines():
             line = raw_line.strip()
             if not line:
                 continue
+            if line in cls._CURRENT_REQUEST_MARKERS:
+                continue
+            if line.startswith("[/") and line.endswith("]"):
+                skip_depth = max(0, skip_depth - 1)
+                continue
             if line.startswith("[") and line.endswith("]"):
+                skip_depth += 1
                 continue
-            if line.startswith("message_id="):
+            if skip_depth > 0:
                 continue
-            if line.startswith("Job 결과:"):
+            if any(line.startswith(prefix) for prefix in cls._CONTEXT_NOISE_PREFIXES):
                 continue
             return line
         return ""

@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import tempfile
 
+from app.models import ModelName
 from app.monitoring.events import EventLogger
 
 _log = EventLogger("app.git.ai_commit", "git.commit")
@@ -27,16 +28,18 @@ class AiCommitBodyGenerator:
         self,
         instruction: str,
         changed_files: list[str],
+        model_name: ModelName = ModelName.CLAUDE,
         timeout: int = 30,
     ) -> tuple[str | None, str | None]:
         prompt = self._PROMPT.format(
             instruction=instruction.strip(),
             files=", ".join(changed_files) if changed_files else "(none)",
         )
+        argv = self._build_argv(model_name, prompt)
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
                 result = subprocess.run(
-                    ["claude", "-p", prompt, "--dangerously-skip-permissions"],
+                    argv,
                     capture_output=True,
                     text=True,
                     timeout=timeout,
@@ -45,16 +48,34 @@ class AiCommitBodyGenerator:
                     shell=False,
                 )
         except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
-            _log.warning("ai commit generation failed: %s", exc)
+            _log.warning("ai commit generation failed model=%s: %s", model_name.value, exc)
             return None, None
 
         if result.returncode != 0 or not result.stdout.strip():
-            _log.warning("ai commit generation failed exit=%d", result.returncode)
+            _log.warning(
+                "ai commit generation failed model=%s exit=%d",
+                model_name.value,
+                result.returncode,
+            )
             return None, None
 
+        return self._parse_output(result.stdout)
+
+    @staticmethod
+    def _build_argv(model_name: ModelName, prompt: str) -> list[str]:
+        if model_name == ModelName.CLAUDE:
+            return ["claude", "-p", prompt, "--dangerously-skip-permissions"]
+        if model_name == ModelName.CODEX:
+            return ["codex", "exec", "--sandbox", "read-only", prompt]
+        if model_name == ModelName.GEMINI:
+            return ["gemini", "-p", prompt]
+        raise ValueError(f"Unsupported model for commit body generation: {model_name}")
+
+    @staticmethod
+    def _parse_output(stdout: str) -> tuple[str | None, str | None]:
         ai_title: str | None = None
         bullet_lines: list[str] = []
-        for line in result.stdout.strip().splitlines():
+        for line in stdout.strip().splitlines():
             stripped = line.strip()
             if ai_title is None and stripped.startswith("title: "):
                 ai_title = stripped[len("title: "):].strip()

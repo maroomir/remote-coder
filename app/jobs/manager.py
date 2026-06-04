@@ -438,6 +438,7 @@ class JobManager:
                             ai_title, ai_body = self._ai_commit_body_generator.generate(
                                 instruction=job.request.instruction,
                                 changed_files=job.changed_files,
+                                model_name=job.request.model,
                             )
                         commit_message = CommitMessageFormatter.format(
                             job_id=job.id,
