@@ -41,7 +41,10 @@ def test_gemini_runner_plan_mode_skips_yolo_flags(mock_popen, caplog):
             )
         )
     command = mock_popen.call_args.args[0]
-    assert command[0] == "gemini" and command[1] == "-p"
-    assert "ASK mode" in command[2]
-    assert "what is X" in command[2]
+    assert command[0] == "gemini"
+    assert "--skip-trust" in command
+    assert "-p" in command
+    prompt_arg = command[command.index("-p") + 1]
+    assert "ASK mode" in prompt_arg
+    assert "what is X" in prompt_arg
     assert "--approval-mode" not in command

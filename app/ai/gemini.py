@@ -25,7 +25,7 @@ class GeminiRunner(AiRunner):
         started_at = datetime.now(UTC)
         if runner_input.mode in (JobMode.PLAN, JobMode.ASK):
             prompt = instruction_for_runner_mode(runner_input.instruction, runner_input.mode)
-            argv = ["gemini", "-p", prompt]
+            argv = ["gemini", "--skip-trust", "-p", prompt]
         else:
             argv = ["gemini", "--approval-mode", "yolo", "--skip-trust", "-p", runner_input.instruction]
         proc = subprocess.Popen(
