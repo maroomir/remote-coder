@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import deque
 from dataclasses import replace
 from functools import partial
@@ -10,15 +11,19 @@ from pydantic import BaseModel, Field
 
 from app.ai.usage import format_token_usage
 from app.jobs.manager import JobManager
-from app.jobs.schemas import Job, JobMode, JobRequest
+from app.jobs.schemas import FixKind, Job, JobMode, JobRequest
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.events import EventLogger
 from app.telegram.commands import (
     CommandContext,
     CommandRegistry,
     CommandResponse,
+    FIX_COMMIT_PENDING_ACTION,
+    FIX_SOURCE_AWAIT_ACTION,
+    FIX_SOURCE_PENDING_ACTION,
     InlineButton,
     TelegramMessage,
+    effective_project_name_for_chat,
 )
 from app.projects.registry import normalize_webhook_token_hash_path_segment
 from app.telegram.bot_instances import BotInstanceManager
@@ -114,6 +119,45 @@ def _format_natural_job_confirmation(
             "Unparsed input cancels the pending work."
         )
     lines.extend(["", footer])
+    return "\n".join(lines)
+
+
+_FIX_REPLY_PREFIX_RE = re.compile(r"^(?:fix|수정)\s*[:：]\s*", re.IGNORECASE)
+
+
+def _match_fix_reply_prefix(text: str) -> str | None:
+    stripped = text.lstrip()
+    match = _FIX_REPLY_PREFIX_RE.match(stripped)
+    if match is None:
+        return None
+    return stripped[match.end() :]
+
+
+def _format_fix_source_confirmation(
+    request: JobRequest,
+    target_job: Job,
+    *,
+    use_buttons: bool,
+) -> str:
+    lines = [
+        "수정 작업을 확인하세요.",
+        "",
+        f"- Project: {request.project}",
+        f"- 대상 Job: {target_job.id}",
+        f"- 브랜치: {target_job.branch}",
+        f"- 원본 커밋: {target_job.commit_hash}",
+        f"- Model: {request.model.value}",
+        "- Mode: agent_fix (source) — 기존 커밋을 amend 후 --force-with-lease push",
+    ]
+    if use_buttons:
+        lines.extend(["", "Choose whether to run it."])
+    else:
+        lines.extend(
+            [
+                "",
+                "Send `y` or `Y` to run it. Any other response cancels it.",
+            ]
+        )
     return "\n".join(lines)
 
 
@@ -530,6 +574,101 @@ def create_webhook_router(
                 return {"status": "ok"}
             return {"status": "ignored"}
 
+        if (
+            pending is not None
+            and pending.command_name == "/fix"
+            and pending.action == FIX_SOURCE_AWAIT_ACTION
+            and message_head_lower != "/init"
+            and not message.text.strip().startswith("/")
+        ):
+            command_context.confirmation_store.pop(scope_project, chat_id)
+            target_job = (
+                job_store.get(pending.target_job_id)
+                if pending.target_job_id is not None
+                else None
+            )
+            project_name = effective_project_name_for_chat(command_context, chat_id)
+            if (
+                target_job is None
+                or project_name is None
+                or not job_manager.is_fix_candidate(target_job, project_name, chat_id)
+            ):
+                background_tasks.add_task(
+                    notifier.send_text,
+                    chat_id,
+                    "수정 대상 Job을 더 이상 사용할 수 없습니다.",
+                )
+                return {"status": "ignored"}
+            fix_request = JobRequest(
+                project=project_name,
+                model=target_job.request.model,
+                instruction=message.text.strip(),
+                mode=JobMode.AGENT_FIX,
+                fix_kind=FixKind.SOURCE,
+                parent_job_id=target_job.id,
+                branch=target_job.branch,
+                chat_id=chat_id,
+                requested_by=user_id,
+                message_id=update.message.message_id,
+                reply_to_message_id=reply_mid,
+            )
+            command_context.confirmation_store.set(
+                scope_project,
+                chat_id,
+                PendingConfirmation(
+                    command_name="/fix",
+                    action=FIX_SOURCE_PENDING_ACTION,
+                    job_request=fix_request,
+                    original_text=message.text.strip(),
+                    target_job_id=target_job.id,
+                ),
+            )
+            use_buttons = _natural_job_confirmation_buttons_enabled(command_context)
+            confirmation_text = _format_fix_source_confirmation(
+                fix_request, target_job, use_buttons=use_buttons
+            )
+            if use_buttons:
+                background_tasks.add_task(
+                    notifier.send_with_buttons,
+                    chat_id,
+                    confirmation_text,
+                    _natural_job_confirmation_buttons(),
+                )
+            else:
+                background_tasks.add_task(notifier.send_text, chat_id, confirmation_text)
+            return {"status": "ok"}
+
+        if (
+            pending is not None
+            and pending.command_name == "/fix"
+            and pending.action == FIX_SOURCE_PENDING_ACTION
+            and message_head_lower != "/init"
+        ):
+            if message.text.strip() in {"y", "Y"}:
+                confirmed = command_context.confirmation_store.pop(scope_project, chat_id)
+                if (
+                    confirmed is None
+                    or confirmed.job_request is None
+                    or confirmed.job_request.parent_job_id is None
+                ):
+                    background_tasks.add_task(
+                        notifier.send_text,
+                        chat_id,
+                        "확인 대기 작업을 처리할 수 없습니다.",
+                    )
+                    return {"status": "ignored"}
+                background_tasks.add_task(
+                    job_manager.execute_fix_job, confirmed.job_request, None
+                )
+                return {"status": "accepted"}
+            command_context.confirmation_store.pop(scope_project, chat_id)
+            background_tasks.add_task(
+                notifier.send_text,
+                chat_id,
+                "수정 작업을 취소했습니다.",
+            )
+            return {"status": "ignored"}
+
         if message_head_lower in {"/plan", "/ask"} and len(message_tokens) == 1:
             mode = JobMode.PLAN if message_head_lower == "/plan" else JobMode.ASK
             command_context.confirmation_store.set(
@@ -575,6 +714,63 @@ def create_webhook_router(
                     )
                 )
             return {"status": "ok"}
+
+        fix_reply_match = _match_fix_reply_prefix(message.text)
+        if (
+            fix_reply_match is not None
+            and reply_mid is not None
+            and conversation_store is not None
+        ):
+            fix_instruction = fix_reply_match.strip()
+            project_name_for_fix = effective_project_name_for_chat(command_context, chat_id)
+            linked_job_id = conversation_store.get_job_id_for_message_id(
+                bot_instance.project_name, chat_id, reply_mid
+            )
+            target_job = job_store.get(linked_job_id) if linked_job_id else None
+            if (
+                fix_instruction
+                and project_name_for_fix is not None
+                and target_job is not None
+                and job_manager.is_fix_candidate(target_job, project_name_for_fix, chat_id)
+            ):
+                fix_request = JobRequest(
+                    project=project_name_for_fix,
+                    model=target_job.request.model,
+                    instruction=fix_instruction,
+                    mode=JobMode.AGENT_FIX,
+                    fix_kind=FixKind.SOURCE,
+                    parent_job_id=target_job.id,
+                    branch=target_job.branch,
+                    chat_id=chat_id,
+                    requested_by=user_id,
+                    message_id=update.message.message_id,
+                    reply_to_message_id=reply_mid,
+                )
+                command_context.confirmation_store.set(
+                    scope_project,
+                    chat_id,
+                    PendingConfirmation(
+                        command_name="/fix",
+                        action=FIX_SOURCE_PENDING_ACTION,
+                        job_request=fix_request,
+                        original_text=message.text.strip(),
+                        target_job_id=target_job.id,
+                    ),
+                )
+                use_buttons = _natural_job_confirmation_buttons_enabled(command_context)
+                confirmation_text = _format_fix_source_confirmation(
+                    fix_request, target_job, use_buttons=use_buttons
+                )
+                if use_buttons:
+                    background_tasks.add_task(
+                        notifier.send_with_buttons,
+                        chat_id,
+                        confirmation_text,
+                        _natural_job_confirmation_buttons(),
+                    )
+                else:
+                    background_tasks.add_task(notifier.send_text, chat_id, confirmation_text)
+                return {"status": "ok"}
 
         try:
             parsed_request = parser.parse_natural(

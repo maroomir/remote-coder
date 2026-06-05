@@ -16,7 +16,7 @@ from app.git.ai_commit import AiCommitBodyGenerator
 from app.git.branch_naming import BranchNamingStrategy
 from app.git.commit_message import CommitMessageFormatter
 from app.git.service import GitWorktreeService
-from app.jobs.schemas import Job, JobMode, JobRequest
+from app.jobs.schemas import FixKind, Job, JobMode, JobRequest, JobStatus
 from app.jobs.store import InMemoryJobStore
 from app.monitoring.events import EventLogger
 from app.projects.registry import ProjectRegistry
@@ -589,6 +589,269 @@ class JobManager:
                         job_id=job.id,
                     )
                     pass
+            result_message_ids = self._message_ids_or_empty(
+                self._notifier_for(job.request.project).send_job_result(job)
+            )
+            job.result_message_ids = result_message_ids
+            self._job_store.update(job)
+        return job
+
+    def is_fix_candidate(self, job: Job, project: str, chat_id: int) -> bool:
+        return (
+            job.request.project == project
+            and job.request.chat_id == chat_id
+            and job.status == JobStatus.SUCCEEDED
+            and bool(job.branch)
+            and bool(job.commit_hash)
+        )
+
+    def list_fix_candidates(self, project: str, chat_id: int, limit: int = 8) -> list[Job]:
+        return [
+            job
+            for job in self._job_store.list_recent_for_project_chat(project, chat_id, limit * 4)
+            if self.is_fix_candidate(job, project, chat_id)
+        ][:limit]
+
+    def build_fix_commit_preview(self, parent_job: Job) -> str:
+        ai_title = None
+        ai_body = None
+        if self._ai_commit_body_generator is not None:
+            ai_title, ai_body = self._ai_commit_body_generator.generate(
+                instruction=parent_job.request.instruction,
+                changed_files=parent_job.changed_files,
+                model_name=parent_job.request.model,
+            )
+        return CommitMessageFormatter.format(
+            job_id=parent_job.id,
+            instruction=parent_job.request.instruction,
+            changed_files=parent_job.changed_files,
+            ai_body=ai_body,
+            ai_title=ai_title,
+        )
+
+    @staticmethod
+    def compose_fix_source_prompt(parent_job: Job, fix_instruction: str) -> str:
+        original_files = (
+            "\n".join(f"- {path}" for path in parent_job.changed_files)
+            if parent_job.changed_files
+            else "(none)"
+        )
+        return (
+            "[원래 작업 요청]\n"
+            f"{parent_job.request.instruction.strip()}\n\n"
+            "[원래 변경 파일]\n"
+            f"{original_files}\n\n"
+            "[사용자 후속 수정 요청]\n"
+            f"{fix_instruction.strip()}\n\n"
+            "기존 작업 위에 수정 사항을 적용해 주세요. "
+            "새 파일이나 무관한 변경은 추가하지 마세요."
+        )
+
+    def execute_fix_job(
+        self,
+        request: JobRequest,
+        prepared_message: str | None = None,
+    ) -> Job:
+        if request.mode is not JobMode.AGENT_FIX:
+            raise ValueError("execute_fix_job requires JobMode.AGENT_FIX")
+        if request.fix_kind is None:
+            raise ValueError("execute_fix_job requires fix_kind")
+        if not request.parent_job_id:
+            raise ValueError("execute_fix_job requires parent_job_id")
+
+        job = Job(id=request.job_id or self._make_job_id(), request=request)
+        self._job_store.create(job)
+        _joblog.info(
+            "fix submitted kind=%s parent=%s",
+            request.fix_kind.value,
+            request.parent_job_id,
+            chat_id=request.chat_id,
+            user_id=request.requested_by,
+            project=request.project,
+            job_id=job.id,
+        )
+        accepted_message_id = self._message_id_or_none(
+            self._notifier_for(request.project).send_job_accepted(job)
+        )
+        if accepted_message_id is not None:
+            job.accepted_message_id = accepted_message_id
+            self._job_store.update(job)
+        return self._run_fix(job.id, prepared_message=prepared_message)
+
+    def _run_fix(self, job_id: str, prepared_message: str | None = None) -> Job:
+        job = self._job_store.get(job_id)
+        if job is None:
+            _joblog.warning("run_fix requested for missing job job_id=%s", job_id)
+            raise ValueError("job not found")
+
+        cancel_event = threading.Event()
+        self._cancel_events[job_id] = cancel_event
+
+        entry = self._project_registry.get(job.request.project)
+        if not entry or not entry.enabled:
+            job.mark_failed("unknown or disabled project")
+            job.error_stage = "project_resolve"
+            self._job_store.update(job)
+            result_message_ids = self._message_ids_or_empty(
+                self._notifier_for(job.request.project).send_job_result(job)
+            )
+            job.result_message_ids = result_message_ids
+            self._job_store.update(job)
+            self._cancel_events.pop(job_id, None)
+            return job
+
+        project_path = entry.root_path
+        worktree_base = entry.worktree_base_dir
+        remote = self._settings.git_remote_name
+        worktree_path: Path | None = None
+        created_worktree_for_job = False
+        failed_stage: str | None = None
+
+        try:
+            job.mark_running()
+            self._job_store.update(job)
+
+            failed_stage = "fix_resolve_target"
+            parent_job = self._job_store.get(job.request.parent_job_id or "")
+            if parent_job is None or not self.is_fix_candidate(
+                parent_job, job.request.project, job.request.chat_id
+            ):
+                raise RuntimeError("수정 대상 Job을 찾을 수 없거나 더 이상 수정할 수 없는 상태입니다.")
+            assert parent_job.branch is not None
+            assert parent_job.commit_hash is not None
+
+            failed_stage = "fix_worktree"
+            existing = self._git_service.find_linked_worktree_for_branch(
+                project_path, parent_job.branch
+            )
+            if existing is not None:
+                worktree_path = existing
+            else:
+                worktree_path = self._git_service.prepare_branch_worktree(
+                    project_path,
+                    parent_job.branch,
+                    job.id,
+                    worktree_base_dir=worktree_base,
+                )
+                created_worktree_for_job = True
+            self._git_service.ensure_worktree_writable(worktree_path)
+
+            if job.request.fix_kind is FixKind.SOURCE:
+                failed_stage = "fix_runner"
+                runner = self._runner_factory.create(job.request.model)
+                timeout_seconds = self._effective_job_timeout_seconds()
+                fix_prompt = self.compose_fix_source_prompt(parent_job, job.request.instruction)
+                runner_result = runner.run(
+                    RunnerInput(
+                        instruction=fix_prompt,
+                        cwd=worktree_path,
+                        timeout_seconds=timeout_seconds,
+                        env=None,
+                        cancel_event=cancel_event,
+                        mode=JobMode.AGENT,
+                    )
+                )
+                self._save_runner_log(job, runner_result, worktree_base)
+                if runner_result.exit_code != 0:
+                    raise RuntimeError(runner_result.stderr.strip() or "runner failed")
+
+                failed_stage = "fix_collect_changes"
+                new_changed = self._git_service.collect_changes(worktree_path)
+                merged = list(dict.fromkeys([*parent_job.changed_files, *new_changed]))
+                job.changed_files = merged
+
+                if not new_changed:
+                    job.branch = parent_job.branch
+                    job.commit_hash = parent_job.commit_hash
+                    job.mark_succeeded()
+                    self._job_store.update(job)
+                    _joblog.info(
+                        "fix source produced no changes parent=%s",
+                        parent_job.id,
+                        chat_id=job.request.chat_id,
+                        user_id=job.request.requested_by,
+                        project=job.request.project,
+                        job_id=job.id,
+                    )
+                else:
+                    failed_stage = "fix_message"
+                    ai_title = None
+                    ai_body = None
+                    if self._ai_commit_body_generator is not None:
+                        ai_title, ai_body = self._ai_commit_body_generator.generate(
+                            instruction=self.compose_fix_source_prompt(
+                                parent_job, job.request.instruction
+                            ),
+                            changed_files=merged,
+                            model_name=job.request.model,
+                        )
+                    commit_message = CommitMessageFormatter.format(
+                        job_id=parent_job.id,
+                        instruction=parent_job.request.instruction,
+                        changed_files=merged,
+                        ai_body=ai_body,
+                        ai_title=ai_title,
+                    )
+
+                    failed_stage = "fix_amend"
+                    job.commit_hash = self._git_service.amend_commit(worktree_path, commit_message)
+                    job.branch = parent_job.branch
+
+                    failed_stage = "fix_push"
+                    self._git_service.push_branch_force_with_lease(
+                        project_path, remote, parent_job.branch
+                    )
+
+                    job.mark_succeeded()
+                    self._job_store.update(job)
+            else:
+                failed_stage = "fix_amend"
+                if prepared_message is None:
+                    prepared_message = self.build_fix_commit_preview(parent_job)
+                job.changed_files = list(parent_job.changed_files)
+                job.commit_hash = self._git_service.amend_commit(worktree_path, prepared_message)
+                job.branch = parent_job.branch
+
+                failed_stage = "fix_push"
+                self._git_service.push_branch_force_with_lease(
+                    project_path, remote, parent_job.branch
+                )
+                job.mark_succeeded()
+                self._job_store.update(job)
+        except Exception as exc:  # pylint: disable=broad-except
+            _joblog.exception(
+                "fix failed stage=%s parent=%s: %s",
+                failed_stage or "unknown",
+                job.request.parent_job_id or "-",
+                exc,
+                chat_id=job.request.chat_id,
+                user_id=job.request.requested_by,
+                project=job.request.project,
+                job_id=job.id,
+            )
+            if job.status.value != "failed":
+                job.mark_failed(str(exc))
+            job.error_stage = failed_stage or "unknown"
+            self._job_store.update(job)
+        finally:
+            self._cancel_events.pop(job_id, None)
+            if (
+                worktree_path is not None
+                and created_worktree_for_job
+                and job.status.value == "succeeded"
+                and not self._settings.keep_worktree_on_success
+            ):
+                try:
+                    self._git_service.cleanup_worktree(project_path, worktree_path)
+                except RuntimeError as cleanup_exc:
+                    _joblog.warning(
+                        "fix worktree cleanup failed: %s",
+                        cleanup_exc,
+                        chat_id=job.request.chat_id,
+                        user_id=job.request.requested_by,
+                        project=job.request.project,
+                        job_id=job.id,
+                    )
             result_message_ids = self._message_ids_or_empty(
                 self._notifier_for(job.request.project).send_job_result(job)
             )

@@ -200,6 +200,10 @@ ngrok version
 - `/clear memory` : **이 봇 프로젝트 + 현재 채팅**의 대화 기억(SQLite)만 삭제
 - `/stop` : 진행 중인 Job 목록에서 인라인 버튼으로 선택해 중단
 - `/stop <job_id>` : 지정한 Job 강제 중단 (queued/running 상태만 가능)
+- `/fix` : 이전 Job의 커밋 메시지(`commit`)나 소스(`source`)를 재작업. 기존 커밋을 `git commit --amend`로 덮고 `git push --force-with-lease`로 원격에 반영합니다. 커밋 trailer의 `committed by remote-coder: <id>` 는 **원본 Job ID**를 유지합니다.
+- `/fix commit <job_id>` : AI 커밋 메시지만 재생성해서 미리보기 → `y`/`Y` 확인 시 amend
+- `/fix source <job_id>` : 후속 메시지를 수정 지시로 받아 같은 브랜치 worktree에서 다시 AI 실행 → `y`/`Y` 확인 시 amend + push
+- `fix: <지시>` (또는 `수정: <지시>`)로 봇이 보낸 이전 메시지에 답장하면 해당 Job에 대한 source 모드 fix 확인을 바로 보여줍니다. 대상 Job은 `SUCCEEDED + branch + commit` 상태여야 합니다.
 - `/monitor model` : 현재 채팅 기본 모델 기준 Claude(`claude auth status`) / Codex(`codex --version`) / Gemini(`gemini --version`) 등 CLI Probe + 로컬 CLI 로그에서 관측한 실제 사용량 요약. Codex 세션 로그에 `rate_limits`가 있으면 5시간/주간 잔여율과 리셋 시각도 표시하고, Claude/Gemini는 로컬 transcript/chat 로그의 세부 모델·토큰·요청 수를 표시합니다.
 - `/monitor memory` : 이 채팅·현재 **적용 프로젝트** 기준 SQLite 대화 기억 행 수·역할별 행 수·DB 파일 크기
 - `/monitor branch` : 적용 프로젝트 저장소의 브랜치 요약(로컬/원격 개수 및 목록)

@@ -146,6 +146,7 @@ def test_default_bot_commands_expose_telegram_menu_entries():
         "monitor",
         "clear",
         "stop",
+        "fix",
         "plan",
         "ask",
     ]
@@ -961,3 +962,232 @@ def test_dispatch_rich_returns_none_for_natural_language(project_registry: Proje
         _ctx(project_registry),
     )
     assert response is None
+
+
+# ---- /fix tests -----------------------------------------------------------
+
+
+def _make_succeeded_job(
+    job_id: str,
+    *,
+    chat_id: int = 1,
+    project: str = "remote-coder",
+    branch: str = "remote-fix-1",
+    commit_hash: str = "abc12345",
+    instruction: str = "do the thing",
+    changed_files: tuple[str, ...] = ("a.py",),
+) -> Job:
+    return Job(
+        id=job_id,
+        request=JobRequest(
+            project=project,
+            model=ModelName.CLAUDE,
+            instruction=instruction,
+            chat_id=chat_id,
+            requested_by=chat_id,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch=branch,
+        commit_hash=commit_hash,
+        changed_files=list(changed_files),
+    )
+
+
+def _ctx_with_job_manager(
+    project_registry: ProjectRegistry,
+    candidates: list[Job] | None = None,
+) -> CommandContext:
+    ctx = _ctx(project_registry)
+    job_manager = Mock()
+    job_manager.list_fix_candidates.return_value = candidates or []
+    job_manager.is_fix_candidate.side_effect = (
+        lambda job, project, chat_id: job.status == JobStatus.SUCCEEDED
+        and bool(job.branch)
+        and bool(job.commit_hash)
+        and job.request.project == project
+        and job.request.chat_id == chat_id
+    )
+    job_manager.build_fix_commit_preview.return_value = "feat: regenerated\n\n- bullet\n\ncommitted by remote-coder: parentX"
+    ctx.job_manager = job_manager
+    for job in candidates or []:
+        ctx.job_store.create(job)
+    return ctx
+
+
+def test_fix_command_no_args_shows_mode_buttons(project_registry: ProjectRegistry):
+    from app.telegram.commands import FixCommand
+
+    ctx = _ctx_with_job_manager(project_registry)
+    registry = CommandRegistry([FixCommand()])
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/fix"), ctx)
+    assert response is not None
+    assert response.text == "수정할 항목을 선택하세요."
+    assert response.inline_buttons == [
+        [
+            InlineButton("커밋 수정 (commit)", "/fix commit"),
+            InlineButton("소스 수정 (source)", "/fix source"),
+        ]
+    ]
+
+
+def test_fix_command_lists_candidates_only_succeeded_with_commit_and_branch(
+    project_registry: ProjectRegistry,
+):
+    from app.telegram.commands import FixCommand
+
+    succeeded = _make_succeeded_job("job_succ", chat_id=1)
+    ctx = _ctx_with_job_manager(project_registry, candidates=[succeeded])
+    registry = CommandRegistry([FixCommand()])
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="/fix commit"), ctx
+    )
+    assert response is not None
+    assert response.text == "수정 대상 Job을 선택하세요."
+    assert response.inline_buttons is not None
+    assert response.inline_buttons[0][0].callback_data == "/fix commit job_succ"
+    assert "remote-fix-1" in response.inline_buttons[0][0].label
+
+
+def test_fix_command_no_candidates_message(project_registry: ProjectRegistry):
+    from app.telegram.commands import FixCommand
+
+    ctx = _ctx_with_job_manager(project_registry, candidates=[])
+    registry = CommandRegistry([FixCommand()])
+    text = registry.dispatch(
+        TelegramMessage(chat_id=1, user_id=1, text="/fix source"), ctx
+    )
+    assert text == "수정 가능한 Job이 없습니다."
+
+
+def test_fix_commit_preview_stores_pending_with_prepared_payload(
+    project_registry: ProjectRegistry,
+):
+    from app.telegram.commands import FIX_COMMIT_PENDING_ACTION, FixCommand
+
+    succeeded = _make_succeeded_job("job_succ", chat_id=1)
+    ctx = _ctx_with_job_manager(project_registry, candidates=[succeeded])
+    registry = CommandRegistry([FixCommand()])
+    text = registry.dispatch(
+        TelegramMessage(chat_id=1, user_id=1, text="/fix commit job_succ"), ctx
+    )
+    assert text is not None
+    assert "커밋 메시지 재생성 미리보기" in text
+    assert "remote-fix-1" in text
+    assert "committed by remote-coder: parentX" in text  # trailer uses parent_job_id from preview
+    pending = ctx.confirmation_store.get(ctx.project_name, 1)
+    assert pending is not None
+    assert pending.command_name == "/fix"
+    assert pending.action == FIX_COMMIT_PENDING_ACTION
+    assert pending.target_job_id == "job_succ"
+    assert pending.prepared_payload is not None
+
+
+def test_fix_commit_confirmation_yes_executes_fix_job(project_registry: ProjectRegistry):
+    from app.telegram.commands import FIX_COMMIT_PENDING_ACTION, FixCommand
+
+    succeeded = _make_succeeded_job("job_succ", chat_id=1)
+    ctx = _ctx_with_job_manager(project_registry, candidates=[succeeded])
+
+    final = Job(
+        id="job_fix",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="ignored",
+            chat_id=1,
+            requested_by=1,
+            mode=__import__("app.jobs.schemas", fromlist=["JobMode"]).JobMode.AGENT_FIX,
+            fix_kind=__import__("app.jobs.schemas", fromlist=["FixKind"]).FixKind.COMMIT,
+            parent_job_id="job_succ",
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-fix-1",
+        commit_hash="def67890",
+    )
+    ctx.job_manager.execute_fix_job.return_value = final
+
+    ctx.confirmation_store.set(
+        ctx.project_name,
+        1,
+        PendingConfirmation(
+            command_name="/fix",
+            action=FIX_COMMIT_PENDING_ACTION,
+            target_job_id="job_succ",
+            prepared_payload="feat: new\n\n- b\n\ncommitted by remote-coder: job_succ",
+        ),
+    )
+    registry = CommandRegistry([FixCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="y"), ctx)
+    assert text is not None
+    assert "커밋 메시지를 수정했습니다." in text
+    assert "def67890" in text
+    ctx.job_manager.execute_fix_job.assert_called_once()
+    args, kwargs = ctx.job_manager.execute_fix_job.call_args
+    submitted_request = args[0]
+    assert submitted_request.mode.value == "agent_fix"
+    assert submitted_request.fix_kind.value == "commit"
+    assert submitted_request.parent_job_id == "job_succ"
+    assert kwargs["prepared_message"].endswith("committed by remote-coder: job_succ")
+
+
+def test_fix_commit_confirmation_no_cancels_pending(project_registry: ProjectRegistry):
+    from app.telegram.commands import FIX_COMMIT_PENDING_ACTION, FixCommand
+
+    succeeded = _make_succeeded_job("job_succ", chat_id=1)
+    ctx = _ctx_with_job_manager(project_registry, candidates=[succeeded])
+    ctx.confirmation_store.set(
+        ctx.project_name,
+        1,
+        PendingConfirmation(
+            command_name="/fix",
+            action=FIX_COMMIT_PENDING_ACTION,
+            target_job_id="job_succ",
+            prepared_payload="msg",
+        ),
+    )
+    registry = CommandRegistry([FixCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="n"), ctx)
+    assert text is not None
+    assert "취소" in text
+    ctx.job_manager.execute_fix_job.assert_not_called()
+
+
+def test_fix_source_first_step_stores_await_instruction(project_registry: ProjectRegistry):
+    from app.telegram.commands import FIX_SOURCE_AWAIT_ACTION, FixCommand
+
+    succeeded = _make_succeeded_job("job_succ", chat_id=1)
+    ctx = _ctx_with_job_manager(project_registry, candidates=[succeeded])
+    registry = CommandRegistry([FixCommand()])
+    text = registry.dispatch(
+        TelegramMessage(chat_id=1, user_id=1, text="/fix source job_succ"), ctx
+    )
+    assert text is not None
+    assert "수정 지시를 보내주세요" in text
+    pending = ctx.confirmation_store.get(ctx.project_name, 1)
+    assert pending is not None
+    assert pending.command_name == "/fix"
+    assert pending.action == FIX_SOURCE_AWAIT_ACTION
+    assert pending.target_job_id == "job_succ"
+
+
+def test_fix_command_rejects_non_candidate_job(project_registry: ProjectRegistry):
+    from app.telegram.commands import FixCommand
+
+    failed = Job(
+        id="job_failed",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+        status=JobStatus.FAILED,
+    )
+    ctx = _ctx_with_job_manager(project_registry, candidates=[])
+    ctx.job_store.create(failed)
+    registry = CommandRegistry([FixCommand()])
+    text = registry.dispatch(
+        TelegramMessage(chat_id=1, user_id=1, text="/fix commit job_failed"), ctx
+    )
+    assert "사용할 수 없는" in text

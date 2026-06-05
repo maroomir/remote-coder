@@ -244,6 +244,43 @@ class GitWorktreeService:
             raise RuntimeError(f"git push failed: {result.stderr.strip()}")
         _gitlog.info("push_branch ok remote=%s branch=%s", remote, branch)
 
+    def amend_commit(self, worktree_path: Path, message: str) -> str:
+        _gitlog.info("amend_commit start message_len=%d", len(message))
+        add_result = self._run_git(worktree_path, ["add", "."])
+        if add_result.returncode != 0:
+            _gitlog.warning("amend_commit stage failed stderr_len=%d", len(add_result.stderr))
+            raise RuntimeError(f"failed to stage changes: {add_result.stderr.strip()}")
+        commit_result = self._run_git(
+            worktree_path,
+            ["commit", "--amend", "--allow-empty", "-m", message],
+        )
+        if commit_result.returncode != 0:
+            _gitlog.warning("amend_commit failed stderr_len=%d", len(commit_result.stderr))
+            raise RuntimeError(f"failed to amend commit: {commit_result.stderr.strip()}")
+        hash_result = self._run_git(worktree_path, ["rev-parse", "--short", "HEAD"])
+        if hash_result.returncode != 0:
+            _gitlog.warning("amend_commit hash failed stderr_len=%d", len(hash_result.stderr))
+            raise RuntimeError(f"failed to resolve commit hash: {hash_result.stderr.strip()}")
+        short_hash = hash_result.stdout.strip()
+        _gitlog.info("amend_commit ok hash=%s", short_hash)
+        return short_hash
+
+    def push_branch_force_with_lease(self, project_path: Path, remote: str, branch: str) -> None:
+        _gitlog.info("push_branch_force_with_lease start remote=%s branch=%s", remote, branch)
+        result = self._run_git(
+            project_path,
+            ["push", "--force-with-lease", remote, branch],
+        )
+        if result.returncode != 0:
+            _gitlog.warning(
+                "push_branch_force_with_lease failed remote=%s branch=%s stderr_len=%d",
+                remote,
+                branch,
+                len(result.stderr),
+            )
+            raise RuntimeError(f"git push --force-with-lease failed: {result.stderr.strip()}")
+        _gitlog.info("push_branch_force_with_lease ok remote=%s branch=%s", remote, branch)
+
     def cleanup_worktree(self, project_path: Path, worktree_path: Path) -> None:
         _gitlog.info("cleanup_worktree start worktree=%s", worktree_path.name)
         result = self._run_git(project_path, ["worktree", "remove", "--force", str(worktree_path)])

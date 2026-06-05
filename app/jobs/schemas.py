@@ -21,6 +21,12 @@ class JobMode(StrEnum):
     AGENT = "agent"
     PLAN = "plan"
     ASK = "ask"
+    AGENT_FIX = "agent_fix"
+
+
+class FixKind(StrEnum):
+    COMMIT = "commit"
+    SOURCE = "source"
 
 
 class JobRequest(BaseModel):
@@ -35,6 +41,8 @@ class JobRequest(BaseModel):
     requested_by: int | None = None
     message_id: int | None = None
     reply_to_message_id: int | None = None
+    parent_job_id: str | None = None
+    fix_kind: FixKind | None = None
 
 
 class Job(BaseModel):

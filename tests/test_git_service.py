@@ -64,6 +64,54 @@ def test_push_branch(mock_run, tmp_path: Path):
 
 
 @patch("app.git.service.subprocess.run")
+def test_amend_commit_returns_new_short_hash(mock_run, tmp_path: Path):
+    mock_run.side_effect = [
+        Mock(returncode=0, stdout="", stderr=""),  # git add .
+        Mock(returncode=0, stdout="", stderr=""),  # git commit --amend
+        Mock(returncode=0, stdout="abc1234\n", stderr=""),  # rev-parse
+    ]
+    service = GitWorktreeService(base_dir=tmp_path)
+    result = service.amend_commit(tmp_path / "wt", "fix: refreshed message")
+    assert result == "abc1234"
+    amend_call = mock_run.call_args_list[1][0][0]
+    assert amend_call[:3] == ["git", "commit", "--amend"]
+    assert "--allow-empty" in amend_call
+    assert "-m" in amend_call
+    assert "fix: refreshed message" in amend_call
+
+
+@patch("app.git.service.subprocess.run")
+def test_push_branch_force_with_lease_uses_lease_flag(mock_run, tmp_path: Path):
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stdout = ""
+    mock_run.return_value.stderr = ""
+    service = GitWorktreeService(base_dir=tmp_path)
+    service.push_branch_force_with_lease(tmp_path, "origin", "remote-x")
+    assert mock_run.call_args[0][0] == [
+        "git",
+        "push",
+        "--force-with-lease",
+        "origin",
+        "remote-x",
+    ]
+
+
+@patch("app.git.service.subprocess.run")
+def test_push_branch_force_with_lease_raises_with_git_stderr(mock_run, tmp_path: Path):
+    mock_run.return_value.returncode = 1
+    mock_run.return_value.stdout = ""
+    mock_run.return_value.stderr = "stale info: remote ref has changed"
+    service = GitWorktreeService(base_dir=tmp_path)
+    try:
+        service.push_branch_force_with_lease(tmp_path, "origin", "remote-x")
+    except RuntimeError as exc:
+        assert "stale info" in str(exc)
+        assert "--force-with-lease" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+
+@patch("app.git.service.subprocess.run")
 def test_resolve_integrate_branch_prefers_main(mock_run, tmp_path: Path):
     mock_run.return_value.returncode = 0
     mock_run.return_value.stdout = ""

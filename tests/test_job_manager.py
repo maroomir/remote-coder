@@ -922,3 +922,318 @@ def test_job_manager_routes_notifications_by_project_name(test_settings, project
     notifier_primary.send_job_result.assert_called_once()
     notifier_other.send_job_accepted.assert_not_called()
     notifier_other.send_job_result.assert_not_called()
+
+
+# ---- /fix manager tests ---------------------------------------------------
+
+
+def _seed_parent_job(store, *, project="remote-coder", chat_id=1, branch="remote-fix-1", commit="abc1234"):
+    from app.jobs.schemas import Job, JobStatus
+
+    parent = Job(
+        id="parent_job",
+        request=JobRequest(
+            project=project,
+            model=ModelName.CLAUDE,
+            instruction="original work",
+            chat_id=chat_id,
+            requested_by=chat_id,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch=branch,
+        commit_hash=commit,
+        changed_files=["a.py"],
+    )
+    store.create(parent)
+    return parent
+
+
+def test_execute_fix_job_commit_uses_prepared_message_and_force_lease(
+    test_settings, project_registry
+):
+    from app.jobs.schemas import FixKind, JobMode
+
+    store = InMemoryJobStore()
+    parent = _seed_parent_job(store)
+    git_service = Mock()
+    git_service.find_linked_worktree_for_branch.return_value = None
+    git_service.prepare_branch_worktree.return_value = Path("/tmp/wt-fix")
+    git_service.amend_commit.return_value = "def5678"
+    factory = Mock()
+    branch_strategy = Mock()
+    notifier = Mock()
+    notifier.send_job_accepted.return_value = 99
+    notifier.send_job_result.return_value = [100]
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="ignored",
+        chat_id=1,
+        requested_by=1,
+        mode=JobMode.AGENT_FIX,
+        fix_kind=FixKind.COMMIT,
+        parent_job_id=parent.id,
+        branch=parent.branch,
+    )
+    prepared = (
+        f"feat: refreshed\n\n- bullet\n\ncommitted by remote-coder: {parent.id}"
+    )
+    final = manager.execute_fix_job(request, prepared_message=prepared)
+
+    assert final.status.value == "succeeded"
+    assert final.commit_hash == "def5678"
+    assert final.branch == parent.branch
+    git_service.amend_commit.assert_called_once_with(Path("/tmp/wt-fix"), prepared)
+    git_service.push_branch_force_with_lease.assert_called_once_with(
+        test_settings.project_root, test_settings.git_remote_name, parent.branch
+    )
+    # Runner should not be invoked for commit-only mode
+    factory.create.assert_not_called()
+    # Parent job is preserved unchanged
+    refreshed_parent = store.get(parent.id)
+    assert refreshed_parent.commit_hash == "abc1234"
+
+
+def test_execute_fix_job_source_runs_runner_and_amends(test_settings, project_registry):
+    from app.ai.base import RunnerResult
+    from app.jobs.schemas import FixKind, JobMode
+
+    store = InMemoryJobStore()
+    parent = _seed_parent_job(store)
+    git_service = Mock()
+    git_service.find_linked_worktree_for_branch.return_value = Path("/tmp/wt-existing")
+    git_service.collect_changes.return_value = ["b.py"]
+    git_service.amend_commit.return_value = "new1234"
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory = Mock()
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier = Mock()
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="rename foo to bar",
+        chat_id=1,
+        requested_by=1,
+        mode=JobMode.AGENT_FIX,
+        fix_kind=FixKind.SOURCE,
+        parent_job_id=parent.id,
+        branch=parent.branch,
+    )
+    final = manager.execute_fix_job(request)
+
+    assert final.status.value == "succeeded"
+    assert final.commit_hash == "new1234"
+    assert final.branch == parent.branch
+    # changed files merged
+    assert "a.py" in final.changed_files and "b.py" in final.changed_files
+    runner.run.assert_called_once()
+    runner_input = runner.run.call_args.args[0]
+    assert "사용자 후속 수정 요청" in runner_input.instruction
+    assert "rename foo to bar" in runner_input.instruction
+    assert "original work" in runner_input.instruction
+    # commit message trailer keeps parent id
+    amend_call = git_service.amend_commit.call_args
+    assert amend_call.args[0] == Path("/tmp/wt-existing")
+    assert amend_call.args[1].endswith(f"committed by remote-coder: {parent.id}")
+    git_service.push_branch_force_with_lease.assert_called_once()
+    # Existing linked worktree reused, no prepare
+    git_service.prepare_branch_worktree.assert_not_called()
+
+
+def test_execute_fix_job_source_no_diff_skips_push(test_settings, project_registry):
+    from app.ai.base import RunnerResult
+    from app.jobs.schemas import FixKind, JobMode
+
+    store = InMemoryJobStore()
+    parent = _seed_parent_job(store)
+    git_service = Mock()
+    git_service.find_linked_worktree_for_branch.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = []
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="no-op", stderr="", started_at=None, finished_at=None
+    )
+    factory = Mock()
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier = Mock()
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+    )
+    final = manager.execute_fix_job(
+        JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="nothing",
+            chat_id=1,
+            requested_by=1,
+            mode=JobMode.AGENT_FIX,
+            fix_kind=FixKind.SOURCE,
+            parent_job_id=parent.id,
+            branch=parent.branch,
+        )
+    )
+
+    assert final.status.value == "succeeded"
+    assert final.branch == parent.branch
+    assert final.commit_hash == parent.commit_hash
+    git_service.amend_commit.assert_not_called()
+    git_service.push_branch_force_with_lease.assert_not_called()
+
+
+def test_execute_fix_job_rejects_failed_parent(test_settings, project_registry):
+    from app.jobs.schemas import FixKind, Job, JobMode, JobStatus
+
+    store = InMemoryJobStore()
+    failed_parent = Job(
+        id="parent_failed",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+        status=JobStatus.FAILED,
+    )
+    store.create(failed_parent)
+
+    git_service = Mock()
+    factory = Mock()
+    branch_strategy = Mock()
+    notifier = Mock()
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+    )
+    final = manager.execute_fix_job(
+        JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="anything",
+            chat_id=1,
+            requested_by=1,
+            mode=JobMode.AGENT_FIX,
+            fix_kind=FixKind.COMMIT,
+            parent_job_id=failed_parent.id,
+        ),
+        prepared_message="msg",
+    )
+
+    assert final.status.value == "failed"
+    assert final.error_stage == "fix_resolve_target"
+
+
+def test_list_fix_candidates_only_includes_succeeded_with_branch_and_commit(
+    test_settings, project_registry
+):
+    from app.jobs.schemas import Job, JobStatus
+
+    store = InMemoryJobStore()
+    git_service = Mock()
+    factory = Mock()
+    branch_strategy = Mock()
+    notifier = Mock()
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+    )
+    succeeded = Job(
+        id="ok",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=7,
+            requested_by=7,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-a",
+        commit_hash="abc",
+    )
+    no_branch = Job(
+        id="no_branch",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=7,
+            requested_by=7,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch=None,
+        commit_hash="abc",
+    )
+    no_commit = Job(
+        id="no_commit",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=7,
+            requested_by=7,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-b",
+        commit_hash=None,
+    )
+    other_chat = Job(
+        id="other_chat",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=99,
+            requested_by=99,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-c",
+        commit_hash="abc",
+    )
+    for job in (succeeded, no_branch, no_commit, other_chat):
+        store.create(job)
+    candidates = manager.list_fix_candidates("remote-coder", 7, limit=10)
+    candidate_ids = {job.id for job in candidates}
+    assert candidate_ids == {"ok"}

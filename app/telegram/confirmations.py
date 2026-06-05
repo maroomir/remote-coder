@@ -14,6 +14,8 @@ class PendingConfirmation:
     action: str
     job_request: JobRequest | None = None
     original_text: str | None = None
+    target_job_id: str | None = None
+    prepared_payload: str | None = None
 
 
 class InMemoryConfirmationStore:
