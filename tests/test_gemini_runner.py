@@ -7,7 +7,7 @@ from app.ai.gemini import GeminiRunner
 from app.jobs.schemas import JobMode
 
 
-@patch("app.ai.gemini.subprocess.Popen")
+@patch("app.ai.base.subprocess.Popen")
 def test_gemini_runner_invokes_subprocess(mock_popen, caplog):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("done", "")
@@ -24,7 +24,7 @@ def test_gemini_runner_invokes_subprocess(mock_popen, caplog):
     assert command == ["gemini", "--approval-mode", "yolo", "--skip-trust", "-p", "test"]
 
 
-@patch("app.ai.gemini.subprocess.Popen")
+@patch("app.ai.base.subprocess.Popen")
 def test_gemini_runner_plan_mode_skips_yolo_flags(mock_popen, caplog):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("answer", "")
@@ -50,7 +50,7 @@ def test_gemini_runner_plan_mode_skips_yolo_flags(mock_popen, caplog):
     assert "--approval-mode" not in command
 
 
-@patch("app.ai.gemini.subprocess.Popen")
+@patch("app.ai.base.subprocess.Popen")
 def test_gemini_runner_passes_model_id(mock_popen):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("done", "")

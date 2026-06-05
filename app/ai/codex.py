@@ -1,95 +1,34 @@
 from __future__ import annotations
 
-import subprocess
-import threading
-from datetime import UTC, datetime
-
-from app.ai.base import AiRunner, RunnerInput, RunnerResult, instruction_for_runner_mode
+from app.ai.base import BaseCliRunner, RunnerInput, instruction_for_runner_mode
 from app.jobs.schemas import JobMode
-from app.monitoring.events import EventLogger
 from app.models import CodexSandboxMode
+from app.monitoring.events import EventLogger
 
-_log = EventLogger("app.ai.codex", "ai.runner")
 
-
-class CodexRunner(AiRunner):
+class CodexRunner(BaseCliRunner):
     name = "codex"
+    _log = EventLogger("app.ai.codex", "ai.runner")
 
     def __init__(self, sandbox: CodexSandboxMode = CodexSandboxMode.WORKSPACE_WRITE) -> None:
         self._sandbox = sandbox
 
-    def run(self, runner_input: RunnerInput) -> RunnerResult:
-        cwd_name = runner_input.cwd.name
-        _log.info(
-            "start cwd=%s timeout=%d sandbox=%s instruction_len=%d",
-            cwd_name,
-            runner_input.timeout_seconds,
-            (
-                CodexSandboxMode.READ_ONLY.value
-                if runner_input.mode in (JobMode.PLAN, JobMode.ASK)
-                else self._sandbox.value
-            ),
-            len(runner_input.instruction),
-        )
-        started_at = datetime.now(UTC)
+    def _resolve_sandbox(self, runner_input: RunnerInput) -> CodexSandboxMode:
         if runner_input.mode in (JobMode.PLAN, JobMode.ASK):
-            sandbox = CodexSandboxMode.READ_ONLY
+            return CodexSandboxMode.READ_ONLY
+        return self._sandbox
+
+    def _start_log_detail(self, runner_input: RunnerInput) -> str:
+        return f" sandbox={self._resolve_sandbox(runner_input).value}"
+
+    def build_argv(self, runner_input: RunnerInput) -> list[str]:
+        sandbox = self._resolve_sandbox(runner_input)
+        if runner_input.mode in (JobMode.PLAN, JobMode.ASK):
             instruction = instruction_for_runner_mode(runner_input.instruction, runner_input.mode)
         else:
-            sandbox = self._sandbox
             instruction = runner_input.instruction
         argv = ["codex", "exec"]
         if runner_input.model_id:
             argv.extend(["--model", runner_input.model_id])
         argv.extend(["--sandbox", sandbox.value, instruction])
-        proc = subprocess.Popen(
-            argv,
-            cwd=runner_input.cwd,
-            env=runner_input.env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        _log.info("process spawned pid=%s cwd=%s", proc.pid, cwd_name)
-        cancelled = threading.Event()
-        if runner_input.cancel_event is not None:
-            cancel_event = runner_input.cancel_event
-
-            def _watch() -> None:
-                cancel_event.wait()
-                if proc.poll() is None:
-                    _log.warning("cancel requested pid=%s", proc.pid)
-                    proc.terminate()
-                cancelled.set()
-
-            threading.Thread(target=_watch, daemon=True).start()
-        try:
-            stdout_data, stderr_data = proc.communicate(timeout=runner_input.timeout_seconds)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            stdout_data, stderr_data = proc.communicate()
-            _log.warning(
-                "timeout after %ds stdout_len=%d stderr_len=%d",
-                runner_input.timeout_seconds,
-                len(stdout_data),
-                len(stderr_data),
-            )
-            raise
-        finished_at = datetime.now(UTC)
-        if cancelled.is_set():
-            raise RuntimeError("작업이 취소되었습니다.")
-        dur_ms = int((finished_at - started_at).total_seconds() * 1000)
-        _log.info(
-            "done exit=%d dur_ms=%d stdout_len=%d stderr_len=%d",
-            proc.returncode,
-            dur_ms,
-            len(stdout_data),
-            len(stderr_data),
-        )
-        return RunnerResult(
-            exit_code=proc.returncode,
-            stdout=stdout_data,
-            stderr=stderr_data,
-            started_at=started_at,
-            finished_at=finished_at,
-        )
+        return argv

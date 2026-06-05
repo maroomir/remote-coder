@@ -7,7 +7,7 @@ from app.ai.claude import ClaudeRunner
 from app.jobs.schemas import JobMode
 
 
-@patch("app.ai.claude.subprocess.Popen")
+@patch("app.ai.base.subprocess.Popen")
 def test_claude_runner_invokes_subprocess(mock_popen, caplog):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("done", "")
@@ -24,7 +24,7 @@ def test_claude_runner_invokes_subprocess(mock_popen, caplog):
     assert cmd == ["claude", "-p", "test", "--dangerously-skip-permissions"]
 
 
-@patch("app.ai.claude.subprocess.Popen")
+@patch("app.ai.base.subprocess.Popen")
 def test_claude_runner_plan_uses_permission_mode_plan(mock_popen, caplog):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("plan out", "")
@@ -48,7 +48,7 @@ def test_claude_runner_plan_uses_permission_mode_plan(mock_popen, caplog):
     assert cmd[-2:] == ["--permission-mode", "plan"]
 
 
-@patch("app.ai.claude.subprocess.Popen")
+@patch("app.ai.base.subprocess.Popen")
 def test_claude_runner_passes_model_id(mock_popen):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("done", "")

@@ -8,7 +8,7 @@ from app.jobs.schemas import JobMode
 from app.models import CodexSandboxMode
 
 
-@patch("app.ai.codex.subprocess.Popen")
+@patch("app.ai.base.subprocess.Popen")
 def test_codex_runner_invokes_subprocess(mock_popen, caplog):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("done", "")
@@ -25,7 +25,7 @@ def test_codex_runner_invokes_subprocess(mock_popen, caplog):
     assert command == ["codex", "exec", "--sandbox", "workspace-write", "test"]
 
 
-@patch("app.ai.codex.subprocess.Popen")
+@patch("app.ai.base.subprocess.Popen")
 def test_codex_runner_respects_sandbox_mode(mock_popen, caplog):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("", "")
@@ -39,7 +39,7 @@ def test_codex_runner_respects_sandbox_mode(mock_popen, caplog):
     assert mock_popen.call_args.args[0][:4] == ["codex", "exec", "--sandbox", "read-only"]
 
 
-@patch("app.ai.codex.subprocess.Popen")
+@patch("app.ai.base.subprocess.Popen")
 def test_codex_runner_passes_model_id(mock_popen):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("", "")
@@ -67,7 +67,7 @@ def test_codex_runner_passes_model_id(mock_popen):
     ]
 
 
-@patch("app.ai.codex.subprocess.Popen")
+@patch("app.ai.base.subprocess.Popen")
 def test_codex_runner_plan_mode_forces_read_only_sandbox(mock_popen, caplog):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("", "")
