@@ -1849,7 +1849,7 @@ def test_webhook_logs_secret_mismatch(caplog, project_registry):
     assert any("secret mismatch" in r.getMessage() for r in caplog.records)
 
 
-def test_webhook_callback_query_executes_model_change(project_registry):
+def test_webhook_callback_query_shows_detail_model_buttons(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
@@ -1903,8 +1903,74 @@ def test_webhook_callback_query_executes_model_change(project_registry):
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert notifier.sent_with_buttons
-    assert "codex로 변경" in notifier.sent_with_buttons[0][1]
+    assert "세부 Model을 선택하세요" in notifier.sent_with_buttons[0][1]
+    buttons = notifier.sent_with_buttons[0][2]
+    assert buttons[0][0].callback_data == "/model codex gpt-5.3-codex"
     assert "cq_001" in notifier.answered_callbacks
+
+
+def test_webhook_callback_query_confirms_detail_model(project_registry):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    model_preferences = InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE)
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=model_preferences,
+        project_name=None,
+        git_service=Mock(),
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=CommandRegistry(
+                [
+                    HelpCommand(),
+                    ModelCommand(),
+                ]
+            ),
+            job_manager=DummyJobManager(),
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    client = TestClient(app)
+    payload = {
+        "update_id": 53,
+        "callback_query": {
+            "id": "cq_model_detail",
+            "from": {"id": 999},
+            "message": {"chat": {"id": 123}},
+            "data": "/model codex gpt-5.3-codex",
+        },
+    }
+
+    response = client.post(_webhook_url(project_registry), json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert notifier.sent_with_buttons
+    assert "codex / gpt-5.3-codex" in notifier.sent_with_buttons[0][1]
+    selection = model_preferences.get_explicit_selection("remote-coder", 123)
+    assert selection is not None
+    assert selection.provider == ModelName.CODEX
+    assert selection.model_id == "gpt-5.3-codex"
+    assert "cq_model_detail" in notifier.answered_callbacks
 
 
 def test_webhook_callback_query_answers_before_command_execution(project_registry):

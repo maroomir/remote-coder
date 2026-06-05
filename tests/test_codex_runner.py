@@ -40,6 +40,34 @@ def test_codex_runner_respects_sandbox_mode(mock_popen, caplog):
 
 
 @patch("app.ai.codex.subprocess.Popen")
+def test_codex_runner_passes_model_id(mock_popen):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
+
+    CodexRunner().run(
+        RunnerInput(
+            instruction="x",
+            cwd=Path("."),
+            timeout_seconds=10,
+            model_id="gpt-5.3-codex",
+        )
+    )
+
+    assert mock_popen.call_args.args[0] == [
+        "codex",
+        "exec",
+        "--model",
+        "gpt-5.3-codex",
+        "--sandbox",
+        "workspace-write",
+        "x",
+    ]
+
+
+@patch("app.ai.codex.subprocess.Popen")
 def test_codex_runner_plan_mode_forces_read_only_sandbox(mock_popen, caplog):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("", "")

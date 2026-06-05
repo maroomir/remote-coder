@@ -38,8 +38,12 @@ class CodexRunner(AiRunner):
         else:
             sandbox = self._sandbox
             instruction = runner_input.instruction
+        argv = ["codex", "exec"]
+        if runner_input.model_id:
+            argv.extend(["--model", runner_input.model_id])
+        argv.extend(["--sandbox", sandbox.value, instruction])
         proc = subprocess.Popen(
-            ["codex", "exec", "--sandbox", sandbox.value, instruction],
+            argv,
             cwd=runner_input.cwd,
             env=runner_input.env,
             stdout=subprocess.PIPE,

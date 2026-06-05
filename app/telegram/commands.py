@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import TYPE_CHECKING
 
+from app.ai.model_catalog import format_model_selection, get_model_options, is_valid_model_id
 from app.ai.usage import format_token_usage
 from app.jobs.schemas import FixKind, Job, JobMode, JobRequest, JobStatus
 from app.jobs.store import JobStore
@@ -27,7 +28,7 @@ from app.telegram.i18n import (
     language_from_settings_store,
     translate_text,
 )
-from app.telegram.model_preferences import InMemoryModelPreferenceStore
+from app.telegram.model_preferences import InMemoryModelPreferenceStore, ModelPreference
 
 if TYPE_CHECKING:
     from app.admin.advanced_settings import FileAdvancedSettingsStore
@@ -196,6 +197,21 @@ def effective_model_for_chat(ctx: CommandContext, chat_id: int, project_name: st
         if entry is not None:
             return entry.default_model
     return ctx.default_model
+
+
+def effective_model_selection_for_chat(
+    ctx: CommandContext,
+    chat_id: int,
+    project_name: str | None,
+) -> ModelPreference:
+    explicit = ctx.model_preferences.get_explicit_selection(project_name, chat_id)
+    if explicit is not None:
+        return explicit
+    if project_name:
+        entry = ctx.project_registry.get(project_name)
+        if entry is not None:
+            return ModelPreference(entry.default_model)
+    return ModelPreference(ctx.default_model)
 
 
 class TelegramCommand(ABC):
@@ -376,21 +392,58 @@ class ModelCommand(TelegramCommand):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
-        current = effective_model_for_chat(ctx, message.chat_id, project_name)
+        current = effective_model_selection_for_chat(ctx, message.chat_id, project_name)
         if len(tokens) == 1:
-            return f"모델 설정\n\n- 현재 기본 모델: {current.value}"
+            return (
+                "모델 설정\n\n"
+                f"- 현재 기본 모델: {format_model_selection(current.provider, current.model_id)}"
+            )
         if len(tokens) == 2 and tokens[1] in {model.value for model in ModelName}:
             selected = ModelName(tokens[1])
             ctx.model_preferences.set(project_name, message.chat_id, selected)
-            return f"모델 설정이 변경되었습니다.\n\n- 기본 모델을 {selected.value}로 변경했습니다."
-        return format_usage("/model", f"/model {MODEL_USAGE}")
+            return "\n".join(
+                [
+                    "모델 Provider가 선택되었습니다.",
+                    "",
+                    f"- 기본 모델: {selected.value}",
+                    "- 세부 Model을 선택하세요.",
+                ]
+            )
+        if len(tokens) == 3 and tokens[1] in {model.value for model in ModelName}:
+            selected = ModelName(tokens[1])
+            model_id = tokens[2]
+            if not is_valid_model_id(selected, model_id):
+                return f"알 수 없는 세부 Model입니다: {model_id}\n\n" + format_usage(
+                    "/model",
+                    f"/model {MODEL_USAGE}",
+                    f"/model {MODEL_USAGE} <model_id>",
+                )
+            ctx.model_preferences.set_selection(
+                project_name,
+                message.chat_id,
+                ModelPreference(selected, model_id),
+            )
+            return (
+                "모델 설정이 변경되었습니다.\n\n"
+                f"- 기본 모델: {format_model_selection(selected, model_id)}"
+            )
+        return format_usage("/model", f"/model {MODEL_USAGE}", f"/model {MODEL_USAGE} <model_id>")
 
     def get_inline_buttons(
         self,
         message: TelegramMessage | None = None,
         ctx: CommandContext | None = None,
     ) -> list[list[InlineButton]] | None:
-        _ = ctx
+        tokens = message.text.strip().split() if message is not None else []
+        if len(tokens) == 2 and tokens[1] in {model.value for model in ModelName}:
+            provider = ModelName(tokens[1])
+            return _button_rows(
+                [
+                    InlineButton(option.label, f"/model {provider.value} {option.value}")
+                    for option in get_model_options(provider)
+                ],
+                per_row=1,
+            )
         return [
             [
                 InlineButton("claude", "/model claude"),
@@ -458,8 +511,9 @@ class StatusCommand(TelegramCommand):
         lines.append("")
         lines.append(f"- 상태: {job.status.value} {emoji}")
         lines.append(f"- 프로젝트: {job.request.project}")
-        lines.append(f"- 요청 모델: {job.request.model.value}")
-        lines.append(f"- 사용 모델: {job.runner_actual_model or job.request.model.value}")
+        requested_model = format_model_selection(job.request.model, job.request.model_id)
+        lines.append(f"- 요청 모델: {requested_model}")
+        lines.append(f"- 사용 모델: {job.runner_actual_model or requested_model}")
         lines.append(f"- 토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}")
 
         instr = job.request.instruction.strip().replace("\n", " ")
@@ -1478,6 +1532,7 @@ class FixCommand(ConfirmableCommand):
         request = JobRequest(
             project=project_name,
             model=target_job.request.model,
+            model_id=target_job.request.model_id,
             instruction=target_job.request.instruction,
             mode=JobMode.AGENT_FIX,
             fix_kind=FixKind.COMMIT,

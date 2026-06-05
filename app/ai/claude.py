@@ -28,6 +28,8 @@ class ClaudeRunner(AiRunner):
             argv = ["claude", "-p", prompt, "--permission-mode", "plan"]
         else:
             argv = ["claude", "-p", runner_input.instruction, "--dangerously-skip-permissions"]
+        if runner_input.model_id:
+            argv.extend(["--model", runner_input.model_id])
         proc = subprocess.Popen(
             argv,
             cwd=runner_input.cwd,

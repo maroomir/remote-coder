@@ -32,6 +32,7 @@ class FixKind(StrEnum):
 class JobRequest(BaseModel):
     project: str
     model: ModelName
+    model_id: str | None = None
     instruction: str
     mode: JobMode = JobMode.AGENT
     job_id: str | None = None

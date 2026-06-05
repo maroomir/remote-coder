@@ -191,6 +191,44 @@ def test_job_manager_uses_advanced_job_timeout(test_settings, project_registry):
     assert runner_input.timeout_seconds == 3600
 
 
+def test_job_manager_passes_model_id_to_runner(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = []
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier = Mock()
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CODEX,
+        model_id="gpt-5.3-codex",
+        instruction="use detail model",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    manager.run(job.id)
+
+    runner_input = runner.run.call_args.args[0]
+    assert runner_input.model_id == "gpt-5.3-codex"
+
+
 def test_job_manager_plan_mode_skips_git_commit_push_and_branch(test_settings, project_registry):
     store = InMemoryJobStore()
     git_service = Mock()

@@ -7,7 +7,7 @@ from app.jobs.schemas import JobMode
 from app.models import ModelName, UiLanguage
 from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.conversation import SQLiteConversationStore
-from app.telegram.model_preferences import InMemoryModelPreferenceStore
+from app.telegram.model_preferences import InMemoryModelPreferenceStore, ModelPreference
 from app.telegram.parser import CommandParseError, CommandParser
 
 
@@ -53,6 +53,44 @@ def test_parse_natural_uses_model_preference(project_registry: ProjectRegistry):
     )
     req = parser.parse_natural("fix login bug", "remote-coder", chat_id=1, user_id=2)
     assert req.model == ModelName.CODEX
+
+
+def test_parse_natural_uses_detailed_model_preference(project_registry: ProjectRegistry):
+    pref = InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE)
+    pref.set_selection(
+        "remote-coder",
+        1,
+        ModelPreference(ModelName.CODEX, "gpt-5.3-codex"),
+    )
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        model_preferences=pref,
+    )
+
+    req = parser.parse_natural("fix login bug", "remote-coder", chat_id=1, user_id=2)
+
+    assert req.model == ModelName.CODEX
+    assert req.model_id == "gpt-5.3-codex"
+
+
+def test_parse_natural_explicit_provider_drops_detailed_preference(project_registry: ProjectRegistry):
+    pref = InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE)
+    pref.set_selection(
+        "remote-coder",
+        1,
+        ModelPreference(ModelName.CODEX, "gpt-5.3-codex"),
+    )
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        model_preferences=pref,
+    )
+
+    req = parser.parse_natural("model: codex fix login bug", "remote-coder", chat_id=1, user_id=2)
+
+    assert req.model == ModelName.CODEX
+    assert req.model_id is None
 
 
 def test_parse_natural_model_preference_scoped_by_project_same_chat_id(project_registry: ProjectRegistry):

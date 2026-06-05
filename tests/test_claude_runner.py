@@ -46,3 +46,30 @@ def test_claude_runner_plan_uses_permission_mode_plan(mock_popen, caplog):
     assert "PLAN mode" in cmd[2]
     assert "refactor auth" in cmd[2]
     assert cmd[-2:] == ["--permission-mode", "plan"]
+
+
+@patch("app.ai.claude.subprocess.Popen")
+def test_claude_runner_passes_model_id(mock_popen):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("done", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
+
+    ClaudeRunner().run(
+        RunnerInput(
+            instruction="test",
+            cwd=Path("."),
+            timeout_seconds=10,
+            model_id="sonnet",
+        )
+    )
+
+    assert mock_popen.call_args.args[0] == [
+        "claude",
+        "-p",
+        "test",
+        "--dangerously-skip-permissions",
+        "--model",
+        "sonnet",
+    ]

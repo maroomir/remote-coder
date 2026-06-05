@@ -9,6 +9,7 @@ from threading import Lock
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from app.ai.model_catalog import format_model_selection
 from app.ai.usage import format_token_usage
 from app.jobs.manager import JobManager
 from app.jobs.schemas import FixKind, Job, JobMode, JobRequest
@@ -53,7 +54,8 @@ def format_job_result_memory_summary(final_job: Job) -> str:
         summary += f" stage={final_job.error_stage}"
     if final_job.error:
         summary += f" err={str(final_job.error)[:300]}"
-    summary += f" model={final_job.runner_actual_model or final_job.request.model.value}"
+    requested_model = format_model_selection(final_job.request.model, final_job.request.model_id)
+    summary += f" model={final_job.runner_actual_model or requested_model}"
     token_usage = format_token_usage(final_job.runner_token_usage)
     if token_usage:
         summary += f" tokens={token_usage}"
@@ -100,7 +102,7 @@ def _format_natural_job_confirmation(
         "",
         f"- Project: {request.project}",
         f"- Work branch: {current_branch}",
-        f"- Model: {request.model.value}",
+        f"- Model: {format_model_selection(request.model, request.model_id)}",
     ]
     if request.mode is JobMode.PLAN:
         lines.append("- Mode: plan (read-only, no commit/push)")
@@ -146,7 +148,7 @@ def _format_fix_source_confirmation(
         f"- 대상 Job: {target_job.id}",
         f"- 브랜치: {target_job.branch}",
         f"- 원본 커밋: {target_job.commit_hash}",
-        f"- Model: {request.model.value}",
+        f"- Model: {format_model_selection(request.model, request.model_id)}",
         "- Mode: agent_fix (source) — 기존 커밋을 amend 후 --force-with-lease push",
     ]
     if use_buttons:
@@ -174,7 +176,10 @@ def _natural_job_confirmation_buttons_enabled(command_context: CommandContext) -
 def _format_natural_job_cancelled(request: JobRequest | None) -> str:
     if request is None:
         return "Cancelled the work request."
-    return f"Cancelled the work request. (project: {request.project}, model: {request.model.value})"
+    return (
+        "Cancelled the work request. "
+        f"(project: {request.project}, model: {format_model_selection(request.model, request.model_id)})"
+    )
 
 
 def _format_mode_input_prompt(mode: JobMode) -> str:
@@ -602,6 +607,7 @@ def create_webhook_router(
             fix_request = JobRequest(
                 project=project_name,
                 model=target_job.request.model,
+                model_id=target_job.request.model_id,
                 instruction=message.text.strip(),
                 mode=JobMode.AGENT_FIX,
                 fix_kind=FixKind.SOURCE,
@@ -736,6 +742,7 @@ def create_webhook_router(
                 fix_request = JobRequest(
                     project=project_name_for_fix,
                     model=target_job.request.model,
+                    model_id=target_job.request.model_id,
                     instruction=fix_instruction,
                     mode=JobMode.AGENT_FIX,
                     fix_kind=FixKind.SOURCE,

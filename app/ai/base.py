@@ -30,6 +30,7 @@ class RunnerInput:
     instruction: str
     cwd: Path
     timeout_seconds: int
+    model_id: str | None = None
     env: dict[str, str] | None = None
     cancel_event: threading.Event | None = field(default=None, compare=False)
     mode: JobMode = JobMode.AGENT

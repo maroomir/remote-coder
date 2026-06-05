@@ -28,6 +28,8 @@ class GeminiRunner(AiRunner):
             argv = ["gemini", "--skip-trust", "-p", prompt]
         else:
             argv = ["gemini", "--approval-mode", "yolo", "--skip-trust", "-p", runner_input.instruction]
+        if runner_input.model_id:
+            argv.extend(["--model", runner_input.model_id])
         proc = subprocess.Popen(
             argv,
             cwd=runner_input.cwd,

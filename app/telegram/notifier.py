@@ -4,6 +4,7 @@ import time
 
 import httpx
 
+from app.ai.model_catalog import format_model_selection
 from app.ai.usage import format_token_usage
 from app.jobs.schemas import Job, JobMode
 from app.monitoring.events import EventLogger
@@ -187,7 +188,7 @@ class TelegramNotifier:
             "",
             f"- Job ID: {job.id}",
             f"- 프로젝트: {job.request.project}",
-            f"- 모델: {job.request.model.value}",
+            f"- 모델: {format_model_selection(job.request.model, job.request.model_id)}",
         ]
         if job.request.mode is JobMode.PLAN:
             lines.append("- 모드: plan")
@@ -224,11 +225,15 @@ class TelegramNotifier:
         if job.status.value == "succeeded":
             if job.request.mode in (JobMode.PLAN, JobMode.ASK):
                 label = "plan" if job.request.mode is JobMode.PLAN else "ask"
+                model_label = job.runner_actual_model or format_model_selection(
+                    job.request.model,
+                    job.request.model_id,
+                )
                 text = (
                     f"[{label}] 응답 완료\n\n"
                     f"- Job ID: {job.id}\n"
                     f"- 프로젝트: {job.request.project}\n"
-                    f"- 사용 모델: {job.runner_actual_model or job.request.model.value}\n"
+                    f"- 사용 모델: {model_label}\n"
                     f"- 토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}"
                 )
                 if job.runner_stdout_summary:
@@ -241,6 +246,10 @@ class TelegramNotifier:
                     commit_line = "(no commit 옵션 — 커밋·push 생략)"
                 elif job.changed_files and job.request.commit and not job.commit_hash:
                     commit_line = "(스테이징된 변경 없음 — push 생략)"
+                model_label = job.runner_actual_model or format_model_selection(
+                    job.request.model,
+                    job.request.model_id,
+                )
                 text = (
                     f"✅ 작업 완료\n\n"
                     f"- Job ID: {job.id}\n"
@@ -248,7 +257,7 @@ class TelegramNotifier:
                     f"- 브랜치: {branch_line}\n"
                     f"- 커밋: {commit_line}\n"
                     f"- 변경 파일: {changed}\n"
-                    f"- 사용 모델: {job.runner_actual_model or job.request.model.value}\n"
+                    f"- 사용 모델: {model_label}\n"
                     f"- 토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}"
                 )
                 if job.runner_stdout_summary:

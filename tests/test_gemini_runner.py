@@ -48,3 +48,32 @@ def test_gemini_runner_plan_mode_skips_yolo_flags(mock_popen, caplog):
     assert "ASK mode" in prompt_arg
     assert "what is X" in prompt_arg
     assert "--approval-mode" not in command
+
+
+@patch("app.ai.gemini.subprocess.Popen")
+def test_gemini_runner_passes_model_id(mock_popen):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("done", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
+
+    GeminiRunner().run(
+        RunnerInput(
+            instruction="test",
+            cwd=Path("."),
+            timeout_seconds=10,
+            model_id="gemini-3.1-pro-preview",
+        )
+    )
+
+    assert mock_popen.call_args.args[0] == [
+        "gemini",
+        "--approval-mode",
+        "yolo",
+        "--skip-trust",
+        "-p",
+        "test",
+        "--model",
+        "gemini-3.1-pro-preview",
+    ]

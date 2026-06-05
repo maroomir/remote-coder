@@ -21,7 +21,7 @@ from app.telegram.i18n import (
     language_from_settings_store,
     localize_git_branch_validation_message,
 )
-from app.telegram.model_preferences import InMemoryModelPreferenceStore
+from app.telegram.model_preferences import InMemoryModelPreferenceStore, ModelPreference
 
 
 class CommandParseError(ValueError):
@@ -151,10 +151,15 @@ class CommandParser:
             raise CommandParseError(command_parse_error_disabled_project(project_name, lang))
 
         selected_model: ModelName
+        selected_model_id: str | None = None
         if model is not None:
             selected_model = model
         elif self._model_preferences is not None:
-            selected_model = self._model_preferences.get_explicit(project_name, chat_id) or entry.default_model
+            selection = self._model_preferences.get_explicit_selection(project_name, chat_id)
+            if selection is None:
+                selection = ModelPreference(entry.default_model)
+            selected_model = selection.provider
+            selected_model_id = selection.model_id
         else:
             selected_model = entry.default_model
 
@@ -249,6 +254,7 @@ class CommandParser:
         return JobRequest(
             project=project_name,
             model=selected_model,
+            model_id=selected_model_id,
             instruction=instruction,
             mode=mode,
             branch=branch,

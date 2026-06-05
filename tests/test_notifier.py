@@ -38,6 +38,31 @@ def test_notifier_send_job_accepted_includes_mode_for_plan_ask():
 
 
 @respx.mock
+def test_notifier_send_job_accepted_includes_detail_model():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    store = type("Store", (), {"get": lambda self: AdvancedSettings(ui_language=UiLanguage.KOREAN)})()
+    notifier = TelegramNotifier("token", store)
+    job = Job(
+        id="j-detail",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CODEX,
+            model_id="gpt-5.3-codex",
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+    )
+
+    notifier.send_job_accepted(job)
+
+    payload = json.loads(route.calls[0].request.content.decode())
+    assert "모델: codex / gpt-5.3-codex" in payload["text"]
+
+
+@respx.mock
 def test_notifier_uses_english_when_advanced_language_default():
     route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
         return_value=Response(200, json={"ok": True})
@@ -221,6 +246,34 @@ def test_notifier_send_job_result_success_includes_runner_usage():
     payload = route.calls[0].request.content.decode()
     assert "Model used: ChatGPT 5.5" in payload
     assert "Token usage: 1,500" in payload
+
+
+@respx.mock
+def test_notifier_send_job_result_uses_requested_detail_model_when_actual_missing():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    job = Job(
+        id="j-detail-result",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CODEX,
+            model_id="gpt-5.3-codex",
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="b",
+        commit_hash="abc",
+        changed_files=["a.py"],
+    )
+
+    notifier.send_job_result(job)
+
+    payload = route.calls[0].request.content.decode()
+    assert "Model used: codex / gpt-5.3-codex" in payload
 
 
 @respx.mock

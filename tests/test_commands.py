@@ -27,7 +27,7 @@ from app.telegram.commands import (
 )
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
-from app.telegram.model_preferences import InMemoryModelPreferenceStore
+from app.telegram.model_preferences import InMemoryModelPreferenceStore, ModelPreference
 
 
 def _advanced_settings_ko() -> Mock:
@@ -285,7 +285,7 @@ def test_model_command_updates_preference(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     ctx = _ctx(project_registry)
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model codex"), ctx)
-    assert text == "모델 설정이 변경되었습니다.\n\n- 기본 모델을 codex로 변경했습니다."
+    assert text == "모델 Provider가 선택되었습니다.\n\n- 기본 모델: codex\n- 세부 Model을 선택하세요."
     current = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model"), ctx)
     assert current == "모델 설정\n\n- 현재 기본 모델: codex"
 
@@ -305,7 +305,7 @@ def test_model_command_shows_model_buttons(project_registry: ProjectRegistry):
     ]
 
 
-def test_model_command_keeps_model_buttons_after_selection(project_registry: ProjectRegistry):
+def test_model_command_shows_detail_buttons_after_provider_selection(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     response = registry.dispatch_rich(
         TelegramMessage(chat_id=77, user_id=1, text="/model codex"),
@@ -313,28 +313,56 @@ def test_model_command_keeps_model_buttons_after_selection(project_registry: Pro
     )
 
     assert response is not None
-    assert response.text == "모델 설정이 변경되었습니다.\n\n- 기본 모델을 codex로 변경했습니다."
-    assert response.inline_buttons == [
-        [
-            InlineButton("claude", "/model claude"),
-            InlineButton("codex", "/model codex"),
-            InlineButton("gemini", "/model gemini"),
-        ]
-    ]
+    assert response.text == "모델 Provider가 선택되었습니다.\n\n- 기본 모델: codex\n- 세부 Model을 선택하세요."
+    assert response.inline_buttons is not None
+    assert response.inline_buttons[0] == [InlineButton("gpt-5.3-codex", "/model codex gpt-5.3-codex")]
+
+
+def test_model_command_confirms_detail_model(project_registry: ProjectRegistry):
+    registry = CommandRegistry([ModelCommand()])
+    ctx = _ctx(project_registry)
+
+    text = registry.dispatch(
+        TelegramMessage(chat_id=77, user_id=1, text="/model codex gpt-5.3-codex"),
+        ctx,
+    )
+
+    assert text == "모델 설정이 변경되었습니다.\n\n- 기본 모델: codex / gpt-5.3-codex"
+    assert ctx.model_preferences.get_explicit_selection(ctx.project_name, 77) == ModelPreference(
+        ModelName.CODEX,
+        "gpt-5.3-codex",
+    )
+    current = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model"), ctx)
+    assert current == "모델 설정\n\n- 현재 기본 모델: codex / gpt-5.3-codex"
 
 
 def test_model_command_updates_preference_to_gemini(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     ctx = _ctx(project_registry)
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model gemini"), ctx)
-    assert text == "모델 설정이 변경되었습니다.\n\n- 기본 모델을 gemini로 변경했습니다."
+    assert text == "모델 Provider가 선택되었습니다.\n\n- 기본 모델: gemini\n- 세부 Model을 선택하세요."
     assert ctx.model_preferences.get(ctx.project_name, 77) == ModelName.GEMINI
 
 
 def test_model_command_returns_consistent_usage(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model nope"), _ctx(project_registry))
-    assert text == "사용법\n\n- /model\n- /model <claude|codex|gemini>"
+    assert text == (
+        "사용법\n\n"
+        "- /model\n"
+        "- /model <claude|codex|gemini>\n"
+        "- /model <claude|codex|gemini> <model_id>"
+    )
+
+
+def test_model_command_rejects_invalid_detail_model(project_registry: ProjectRegistry):
+    registry = CommandRegistry([ModelCommand()])
+    text = registry.dispatch(
+        TelegramMessage(chat_id=77, user_id=1, text="/model codex nope"),
+        _ctx(project_registry),
+    )
+    assert text is not None
+    assert "알 수 없는 세부 Model입니다: nope" in text
 
 
 def test_monitor_project_lists_registry(project_registry: ProjectRegistry):

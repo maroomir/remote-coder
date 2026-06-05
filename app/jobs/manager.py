@@ -74,8 +74,9 @@ class JobManager:
         job = Job(id=request.job_id or self._make_job_id(), request=request)
         self._job_store.create(job)
         _joblog.info(
-            "submitted model=%s",
+            "submitted model=%s model_id=%s",
             request.model.value,
+            request.model_id or "-",
             chat_id=request.chat_id,
             user_id=request.requested_by,
             project=request.project,
@@ -311,8 +312,9 @@ class JobManager:
 
             failed_stage = "runner"
             _joblog.info(
-                "stage=runner model=%s",
+                "stage=runner model=%s model_id=%s",
                 job.request.model.value,
+                job.request.model_id or "-",
                 chat_id=job.request.chat_id,
                 user_id=job.request.requested_by,
                 project=job.request.project,
@@ -335,6 +337,7 @@ class JobManager:
                     instruction=job.request.instruction,
                     cwd=worktree_path,
                     timeout_seconds=timeout_seconds,
+                    model_id=job.request.model_id,
                     env=None,
                     cancel_event=cancel_event,
                     mode=job.request.mode,
@@ -746,6 +749,7 @@ class JobManager:
                         instruction=fix_prompt,
                         cwd=worktree_path,
                         timeout_seconds=timeout_seconds,
+                        model_id=job.request.model_id,
                         env=None,
                         cancel_event=cancel_event,
                         mode=JobMode.AGENT,
