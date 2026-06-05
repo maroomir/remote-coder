@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from app.ai.usage import format_token_usage
 from app.jobs.manager import JobManager
 from app.jobs.schemas import FixKind, Job, JobMode, JobRequest
-from app.jobs.store import InMemoryJobStore
+from app.jobs.store import JobStore
 from app.monitoring.events import EventLogger
 from app.telegram.commands import (
     CommandContext,
@@ -244,7 +244,7 @@ def create_webhook_router(
     parser: CommandParser,
     command_registry: CommandRegistry,
     job_manager: JobManager,
-    job_store: InMemoryJobStore,
+    job_store: JobStore,
     conversation_store: SQLiteConversationStore | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/telegram", tags=["telegram"])

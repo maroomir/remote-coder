@@ -17,6 +17,7 @@ def test_parse_allowed_chat_ids_from_string(tmp_path):
     assert settings.default_model == ModelName.CLAUDE
     assert settings.git_remote_name == "origin"
     assert settings.codex_sandbox == CodexSandboxMode.WORKSPACE_WRITE
+    assert settings.job_db_path == tmp_path / ".remote-coder" / "jobs.sqlite3"
 
 
 def test_empty_telegram_seed_strings_normalize_to_none(tmp_path):

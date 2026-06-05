@@ -17,7 +17,7 @@ from app.git.branch_naming import BranchNamingStrategy
 from app.git.commit_message import CommitMessageFormatter
 from app.git.service import GitWorktreeService
 from app.jobs.schemas import FixKind, Job, JobMode, JobRequest, JobStatus
-from app.jobs.store import InMemoryJobStore
+from app.jobs.store import JobStore
 from app.monitoring.events import EventLogger
 from app.projects.registry import ProjectRegistry
 from app.telegram.notifier import TelegramNotifier
@@ -36,7 +36,7 @@ class JobManager:
     def __init__(
         self,
         settings: Settings,
-        job_store: InMemoryJobStore,
+        job_store: JobStore,
         git_service: GitWorktreeService,
         runner_factory: AiRunnerFactory,
         branch_strategy: BranchNamingStrategy,

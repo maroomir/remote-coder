@@ -14,7 +14,7 @@ from app.git.ai_commit import AiCommitBodyGenerator
 from app.git.branch_naming import TimestampSlugStrategy
 from app.git.service import GitWorktreeService
 from app.jobs.manager import JobManager
-from app.jobs.store import InMemoryJobStore
+from app.jobs.store import SQLiteJobStore
 from app.monitoring.log_buffer import InMemoryLogBuffer, attach_app_memory_log_handler
 from app.monitoring.events import EventLogger
 from app.projects.registry import (
@@ -55,7 +55,7 @@ logging.getLogger("app").info(
 _systemlog = EventLogger("app.system", "system.lifecycle")
 _httplog = EventLogger("app.http", "http.request")
 
-job_store = InMemoryJobStore()
+job_store = SQLiteJobStore(settings.job_db_path)
 model_preferences = InMemoryModelPreferenceStore(default_model=settings.default_model)
 confirmation_store = InMemoryConfirmationStore()
 conversation_store = SQLiteConversationStore(

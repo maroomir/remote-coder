@@ -354,6 +354,7 @@ TELEGRAM_WEBHOOK_SECRET=optional-secret
 DEFAULT_MODEL=claude
 WORKTREE_BASE_DIR=/path/to/remote-coder-worktrees
 JOB_TIMEOUT_SECONDS=1800
+JOB_DB_PATH=/path/to/project/.remote-coder/jobs.sqlite3
 ```
 
 ### 9.2 프로젝트 설정 예시

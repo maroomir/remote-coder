@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from app.ai.usage import format_token_usage
 from app.jobs.schemas import FixKind, Job, JobMode, JobRequest, JobStatus
-from app.jobs.store import InMemoryJobStore
+from app.jobs.store import JobStore
 from app.models import ModelName, UiLanguage
 from app.monitoring.code import count_project_code, format_code_monitor
 from app.monitoring.events import EventLogger
@@ -46,7 +46,7 @@ class TelegramMessage:
 
 @dataclass
 class CommandContext:
-    job_store: InMemoryJobStore
+    job_store: JobStore
     default_model: ModelName
     project_registry: ProjectRegistry
     model_preferences: InMemoryModelPreferenceStore
