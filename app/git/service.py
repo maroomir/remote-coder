@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import subprocess
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from app.monitoring.events import EventLogger
@@ -27,6 +28,14 @@ class GitWorktreeService:
             shell=False,
         )
 
+    def _run_git_checked(
+        self, cwd: Path, args: list[str], error_prefix: str
+    ) -> subprocess.CompletedProcess[str]:
+        result = self._run_git(cwd, args)
+        if result.returncode != 0:
+            raise RuntimeError(f"{error_prefix}: {result.stderr.strip()}")
+        return result
+
     @staticmethod
     def _remote_branch_ref(remote: str, branch: str) -> str:
         return f"{remote}/{branch}"
@@ -40,6 +49,34 @@ class GitWorktreeService:
             "통합 브랜치(main 또는 master)를 찾을 수 없습니다. 저장소에 main 또는 master가 있어야 합니다."
         )
 
+    def _add_worktree(
+        self,
+        project_path: Path,
+        job_id: str,
+        build_args: Callable[[Path], list[str]],
+        *,
+        log_label: str,
+        log_detail: str,
+        error_label: str,
+        worktree_base_dir: Path | None,
+    ) -> Path:
+        base = worktree_base_dir if worktree_base_dir is not None else self._base_dir
+        base.mkdir(parents=True, exist_ok=True)
+        worktree_path = base / job_id
+        _gitlog.info("%s start %s", log_label, log_detail, job_id=job_id)
+        result = self._run_git(project_path, build_args(worktree_path))
+        if result.returncode != 0:
+            _gitlog.warning(
+                "%s failed %s stderr_len=%d",
+                log_label,
+                log_detail,
+                len(result.stderr),
+                job_id=job_id,
+            )
+            raise RuntimeError(f"{error_label}: {result.stderr.strip()}")
+        _gitlog.info("%s ok %s", log_label, log_detail, job_id=job_id)
+        return worktree_path
+
     def prepare_worktree(
         self,
         project_path: Path,
@@ -47,21 +84,15 @@ class GitWorktreeService:
         job_id: str,
         worktree_base_dir: Path | None = None,
     ) -> Path:
-        base = worktree_base_dir if worktree_base_dir is not None else self._base_dir
-        base.mkdir(parents=True, exist_ok=True)
-        worktree_path = base / job_id
-        _gitlog.info("prepare_worktree start branch=%s", branch_name, job_id=job_id)
-        result = self._run_git(project_path, ["worktree", "add", "-b", branch_name, str(worktree_path)])
-        if result.returncode != 0:
-            _gitlog.warning(
-                "prepare_worktree failed branch=%s stderr_len=%d",
-                branch_name,
-                len(result.stderr),
-                job_id=job_id,
-            )
-            raise RuntimeError(f"failed to create worktree: {result.stderr.strip()}")
-        _gitlog.info("prepare_worktree ok branch=%s", branch_name, job_id=job_id)
-        return worktree_path
+        return self._add_worktree(
+            project_path,
+            job_id,
+            lambda worktree_path: ["worktree", "add", "-b", branch_name, str(worktree_path)],
+            log_label="prepare_worktree",
+            log_detail=f"branch={branch_name}",
+            error_label="failed to create worktree",
+            worktree_base_dir=worktree_base_dir,
+        )
 
     def prepare_detached_worktree(
         self,
@@ -71,24 +102,15 @@ class GitWorktreeService:
         base_branch: str | None = None,
     ) -> Path:
         ref = base_branch if base_branch is not None else "HEAD"
-        base = worktree_base_dir if worktree_base_dir is not None else self._base_dir
-        base.mkdir(parents=True, exist_ok=True)
-        worktree_path = base / job_id
-        _gitlog.info("prepare_detached_worktree start ref=%s", ref, job_id=job_id)
-        result = self._run_git(
+        return self._add_worktree(
             project_path,
-            ["worktree", "add", "--detach", str(worktree_path), ref],
+            job_id,
+            lambda worktree_path: ["worktree", "add", "--detach", str(worktree_path), ref],
+            log_label="prepare_detached_worktree",
+            log_detail=f"ref={ref}",
+            error_label="failed to create detached worktree",
+            worktree_base_dir=worktree_base_dir,
         )
-        if result.returncode != 0:
-            _gitlog.warning(
-                "prepare_detached_worktree failed ref=%s stderr_len=%d",
-                ref,
-                len(result.stderr),
-                job_id=job_id,
-            )
-            raise RuntimeError(f"failed to create detached worktree: {result.stderr.strip()}")
-        _gitlog.info("prepare_detached_worktree ok ref=%s", ref, job_id=job_id)
-        return worktree_path
 
     def prepare_branch_worktree(
         self,
@@ -97,21 +119,15 @@ class GitWorktreeService:
         job_id: str,
         worktree_base_dir: Path | None = None,
     ) -> Path:
-        base = worktree_base_dir if worktree_base_dir is not None else self._base_dir
-        base.mkdir(parents=True, exist_ok=True)
-        worktree_path = base / job_id
-        _gitlog.info("prepare_branch_worktree start branch=%s", branch_name, job_id=job_id)
-        result = self._run_git(project_path, ["worktree", "add", str(worktree_path), branch_name])
-        if result.returncode != 0:
-            _gitlog.warning(
-                "prepare_branch_worktree failed branch=%s stderr_len=%d",
-                branch_name,
-                len(result.stderr),
-                job_id=job_id,
-            )
-            raise RuntimeError(f"failed to create branch worktree: {result.stderr.strip()}")
-        _gitlog.info("prepare_branch_worktree ok branch=%s", branch_name, job_id=job_id)
-        return worktree_path
+        return self._add_worktree(
+            project_path,
+            job_id,
+            lambda worktree_path: ["worktree", "add", str(worktree_path), branch_name],
+            log_label="prepare_branch_worktree",
+            log_detail=f"branch={branch_name}",
+            error_label="failed to create branch worktree",
+            worktree_base_dir=worktree_base_dir,
+        )
 
     @staticmethod
     def ensure_worktree_writable(worktree_path: Path) -> None:
@@ -541,7 +557,6 @@ class GitWorktreeService:
         return summary
 
     def rebase_branch_onto_main_and_merge(
-
         self,
         project_path: Path,
         branch: str,
@@ -550,13 +565,12 @@ class GitWorktreeService:
     ) -> str:
         _gitlog.info("rebase_branch_onto_main_and_merge start branch=%s", branch)
         main_branch = self.resolve_integrate_branch(project_path)
-        fetch_main = self._run_git(project_path, ["fetch", remote, main_branch])
-        if fetch_main.returncode != 0:
-            raise RuntimeError(f"git fetch {remote} {main_branch} failed: {fetch_main.stderr.strip()}")
-
-        fetch_branch = self._run_git(project_path, ["fetch", remote, branch])
-        if fetch_branch.returncode != 0:
-            raise RuntimeError(f"git fetch {remote} {branch} failed: {fetch_branch.stderr.strip()}")
+        self._run_git_checked(
+            project_path, ["fetch", remote, main_branch], f"git fetch {remote} {main_branch} failed"
+        )
+        self._run_git_checked(
+            project_path, ["fetch", remote, branch], f"git fetch {remote} {branch} failed"
+        )
 
         # 같은 브랜치가 Job worktree 등에 checkout되어 있으면 `worktree add -B`가 실패합니다.
         self.remove_linked_worktrees_for_branches(project_path, [branch])
@@ -565,7 +579,7 @@ class GitWorktreeService:
         op_id = f"_rebase_{uuid.uuid4().hex[:8]}"
         op_path = worktree_ops_base / op_id
 
-        add = self._run_git(
+        self._run_git_checked(
             project_path,
             [
                 "worktree",
@@ -577,42 +591,42 @@ class GitWorktreeService:
                 self._remote_branch_ref(remote, branch),
                 "--track",
             ],
+            "worktree add for rebase failed",
         )
-        if add.returncode != 0:
-            raise RuntimeError(f"worktree add for rebase failed: {add.stderr.strip()}")
 
         try:
             rb = self._run_git(op_path, ["rebase", self._remote_branch_ref(remote, main_branch)])
             if rb.returncode != 0:
-                abort = self._run_git(op_path, ["rebase", "--abort"])
-                _ = abort
+                self._run_git(op_path, ["rebase", "--abort"])
                 raise RuntimeError(f"git rebase failed: {rb.stderr.strip()}")
 
-            push_feat = self._run_git(op_path, ["push", "--force-with-lease", remote, branch])
-            if push_feat.returncode != 0:
-                raise RuntimeError(f"git push feature after rebase failed: {push_feat.stderr.strip()}")
-
-            checkout_main = self._run_git(project_path, ["checkout", main_branch])
-            if checkout_main.returncode != 0:
-                raise RuntimeError(f"checkout {main_branch} failed: {checkout_main.stderr.strip()}")
-
-            pull_main = self._run_git(project_path, ["pull", "--ff-only", remote, main_branch])
-            if pull_main.returncode != 0:
-                raise RuntimeError(f"git pull --ff-only {remote} {main_branch} failed: {pull_main.stderr.strip()}")
-
-            merge_ff = self._run_git(project_path, ["merge", "--ff-only", branch])
-            if merge_ff.returncode != 0:
-                raise RuntimeError(
-                    f"fast-forward merge into {main_branch} failed (non-ff?): {merge_ff.stderr.strip()}"
-                )
-
-            push_main = self._run_git(project_path, ["push", remote, main_branch])
-            if push_main.returncode != 0:
-                raise RuntimeError(f"git push {remote} {main_branch} failed: {push_main.stderr.strip()}")
+            self._run_git_checked(
+                op_path,
+                ["push", "--force-with-lease", remote, branch],
+                "git push feature after rebase failed",
+            )
+            self._run_git_checked(
+                project_path, ["checkout", main_branch], f"checkout {main_branch} failed"
+            )
+            self._run_git_checked(
+                project_path,
+                ["pull", "--ff-only", remote, main_branch],
+                f"git pull --ff-only {remote} {main_branch} failed",
+            )
+            self._run_git_checked(
+                project_path,
+                ["merge", "--ff-only", branch],
+                f"fast-forward merge into {main_branch} failed (non-ff?)",
+            )
+            self._run_git_checked(
+                project_path, ["push", remote, main_branch], f"git push {remote} {main_branch} failed"
+            )
         finally:
-            rm = self._run_git(project_path, ["worktree", "remove", "--force", str(op_path)])
-            if rm.returncode != 0:
-                raise RuntimeError(f"failed to remove rebase worktree: {rm.stderr.strip()}")
+            self._run_git_checked(
+                project_path,
+                ["worktree", "remove", "--force", str(op_path)],
+                "failed to remove rebase worktree",
+            )
 
         summary = (
             f"rebase 완료: 브랜치 `{branch}`를 `{remote}/{main_branch}` 기준으로 rebase 후 "
