@@ -1037,9 +1037,9 @@ def test_execute_fix_job_commit_uses_prepared_message_and_force_lease(
     )
     # Runner should not be invoked for commit-only mode
     factory.create.assert_not_called()
-    # Parent job is preserved unchanged
+    # Parent job now points at the amended commit for later status/fix flows.
     refreshed_parent = store.get(parent.id)
-    assert refreshed_parent.commit_hash == "abc1234"
+    assert refreshed_parent.commit_hash == "def5678"
 
 
 def test_execute_fix_job_source_runs_runner_and_amends(test_settings, project_registry):
@@ -1088,6 +1088,9 @@ def test_execute_fix_job_source_runs_runner_and_amends(test_settings, project_re
     assert final.branch == parent.branch
     # changed files merged
     assert "a.py" in final.changed_files and "b.py" in final.changed_files
+    refreshed_parent = store.get(parent.id)
+    assert refreshed_parent.commit_hash == "new1234"
+    assert refreshed_parent.changed_files == final.changed_files
     runner.run.assert_called_once()
     runner_input = runner.run.call_args.args[0]
     assert "사용자 후속 수정 요청" in runner_input.instruction

@@ -806,6 +806,10 @@ class JobManager:
                         project_path, remote, parent_job.branch
                     )
 
+                    parent_job.commit_hash = job.commit_hash
+                    parent_job.changed_files = merged
+                    self._job_store.update(parent_job)
+
                     job.mark_succeeded()
                     self._job_store.update(job)
             else:
@@ -820,6 +824,8 @@ class JobManager:
                 self._git_service.push_branch_force_with_lease(
                     project_path, remote, parent_job.branch
                 )
+                parent_job.commit_hash = job.commit_hash
+                self._job_store.update(parent_job)
                 job.mark_succeeded()
                 self._job_store.update(job)
         except Exception as exc:  # pylint: disable=broad-except
