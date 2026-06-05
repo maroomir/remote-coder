@@ -1964,8 +1964,8 @@ def test_webhook_callback_query_confirms_detail_model(project_registry):
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert notifier.sent_with_buttons
-    assert "codex / gpt-5.3-codex" in notifier.sent_with_buttons[0][1]
+    assert notifier.sent == [(123, "모델 설정이 변경되었습니다.\n\n- 기본 모델: codex / gpt-5.3-codex")]
+    assert notifier.sent_with_buttons == []
     selection = model_preferences.get_explicit_selection("remote-coder", 123)
     assert selection is not None
     assert selection.provider == ModelName.CODEX

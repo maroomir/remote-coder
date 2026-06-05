@@ -435,6 +435,14 @@ class ModelCommand(TelegramCommand):
         ctx: CommandContext | None = None,
     ) -> list[list[InlineButton]] | None:
         tokens = message.text.strip().split() if message is not None else []
+        if len(tokens) <= 1:
+            return [
+                [
+                    InlineButton("claude", "/model claude"),
+                    InlineButton("codex", "/model codex"),
+                    InlineButton("gemini", "/model gemini"),
+                ]
+            ]
         if len(tokens) == 2 and tokens[1] in {model.value for model in ModelName}:
             provider = ModelName(tokens[1])
             return _button_rows(
@@ -444,13 +452,7 @@ class ModelCommand(TelegramCommand):
                 ],
                 per_row=1,
             )
-        return [
-            [
-                InlineButton("claude", "/model claude"),
-                InlineButton("codex", "/model codex"),
-                InlineButton("gemini", "/model gemini"),
-            ]
-        ]
+        return None
 
 
 _STATUS_EMOJI: dict[str, str] = {

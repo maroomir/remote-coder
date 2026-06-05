@@ -322,12 +322,14 @@ def test_model_command_confirms_detail_model(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     ctx = _ctx(project_registry)
 
-    text = registry.dispatch(
+    response = registry.dispatch_rich(
         TelegramMessage(chat_id=77, user_id=1, text="/model codex gpt-5.3-codex"),
         ctx,
     )
 
-    assert text == "모델 설정이 변경되었습니다.\n\n- 기본 모델: codex / gpt-5.3-codex"
+    assert response is not None
+    assert response.text == "모델 설정이 변경되었습니다.\n\n- 기본 모델: codex / gpt-5.3-codex"
+    assert response.inline_buttons is None
     assert ctx.model_preferences.get_explicit_selection(ctx.project_name, 77) == ModelPreference(
         ModelName.CODEX,
         "gpt-5.3-codex",
