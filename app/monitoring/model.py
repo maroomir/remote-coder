@@ -58,12 +58,12 @@ def format_model_monitor(
     chat_id: int | None = None,
     project: str | None = None,
 ) -> str:
-    if model == ModelName.CLAUDE:
-        body = _format_claude_monitor(timeout_seconds)
-    elif model == ModelName.CODEX:
-        body = _format_codex_monitor(timeout_seconds)
-    else:
-        body = _format_gemini_monitor(timeout_seconds)
+    monitor_formatters = {
+        ModelName.CLAUDE: _format_claude_monitor,
+        ModelName.CODEX: _format_codex_monitor,
+        ModelName.GEMINI: _format_gemini_monitor,
+    }
+    body = monitor_formatters[model](timeout_seconds)
 
     local_usage = _format_local_usage_section(_read_local_usage_snapshot(model))
     usage = _format_recent_usage_section(
@@ -168,11 +168,12 @@ def _format_recent_usage_section(summary: RecentUsageSummary | None) -> str | No
 
 
 def _read_local_usage_snapshot(model: ModelName) -> LocalUsageSnapshot | None:
-    if model == ModelName.CLAUDE:
-        return _read_claude_local_usage()
-    if model == ModelName.CODEX:
-        return _read_codex_local_usage()
-    return _read_gemini_local_usage()
+    usage_readers = {
+        ModelName.CLAUDE: _read_claude_local_usage,
+        ModelName.CODEX: _read_codex_local_usage,
+        ModelName.GEMINI: _read_gemini_local_usage,
+    }
+    return usage_readers[model]()
 
 
 def _format_local_usage_section(snapshot: LocalUsageSnapshot | None) -> str | None:

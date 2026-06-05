@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from app.ai.base import AiRunner
 from app.ai.claude import ClaudeRunner
 from app.ai.codex import CodexRunner
@@ -14,10 +16,12 @@ class AiRunnerFactory:
         self._codex_sandbox = codex_sandbox
 
     def create(self, model_name: ModelName) -> AiRunner:
-        if model_name == ModelName.CLAUDE:
-            return ClaudeRunner()
-        if model_name == ModelName.CODEX:
-            return CodexRunner(sandbox=self._codex_sandbox)
-        if model_name == ModelName.GEMINI:
-            return GeminiRunner()
-        raise UnknownModelError(f"Unsupported model: {model_name}")
+        builders: dict[ModelName, Callable[[], AiRunner]] = {
+            ModelName.CLAUDE: ClaudeRunner,
+            ModelName.CODEX: lambda: CodexRunner(sandbox=self._codex_sandbox),
+            ModelName.GEMINI: GeminiRunner,
+        }
+        builder = builders.get(model_name)
+        if builder is None:
+            raise UnknownModelError(f"Unsupported model: {model_name}")
+        return builder()

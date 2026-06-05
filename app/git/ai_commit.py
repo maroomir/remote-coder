@@ -63,13 +63,15 @@ class AiCommitBodyGenerator:
 
     @staticmethod
     def _build_argv(model_name: ModelName, prompt: str) -> list[str]:
-        if model_name == ModelName.CLAUDE:
-            return ["claude", "-p", prompt, "--dangerously-skip-permissions"]
-        if model_name == ModelName.CODEX:
-            return ["codex", "exec", "--sandbox", "read-only", prompt]
-        if model_name == ModelName.GEMINI:
-            return ["gemini", "-p", prompt]
-        raise ValueError(f"Unsupported model for commit body generation: {model_name}")
+        argv_by_model: dict[ModelName, list[str]] = {
+            ModelName.CLAUDE: ["claude", "-p", prompt, "--dangerously-skip-permissions"],
+            ModelName.CODEX: ["codex", "exec", "--sandbox", "read-only", prompt],
+            ModelName.GEMINI: ["gemini", "-p", prompt],
+        }
+        argv = argv_by_model.get(model_name)
+        if argv is None:
+            raise ValueError(f"Unsupported model for commit body generation: {model_name}")
+        return argv
 
     @staticmethod
     def _parse_output(stdout: str) -> tuple[str | None, str | None]:
