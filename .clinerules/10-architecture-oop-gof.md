@@ -55,7 +55,7 @@ app/
   telegram/
     webhook.py                # Webhook router
     notifier.py               # Telegram message delivery
-    commands.py               # /help, /model, /status, etc.
+    commands/                 # /help, /model, /status, etc. (base, registry, one module per command group)
     parser.py                 # Message parsing
     conversation.py           # SQLite conversation context
     confirmations.py          # User confirmation flow
@@ -71,7 +71,7 @@ app/
     commit_message.py         # Commit message format
     ai_commit.py              # AI run + commit orchestration
   ai/
-    base.py                   # AiRunner interface
+    base.py                   # AiRunner interface + BaseCliRunner shared run() skeleton
     claude.py                 # Claude Code runner
     codex.py                  # Codex runner
     gemini.py                 # Gemini runner
