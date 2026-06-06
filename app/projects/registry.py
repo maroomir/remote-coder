@@ -243,10 +243,6 @@ class ProjectRegistry:
         with self._lock:
             return self._payload.default_project
 
-    def project_names(self) -> list[str]:
-        with self._lock:
-            return [p.name for p in self._payload.projects if p.enabled]
-
     def set_default_project(self, name: str) -> None:
         with self._lock:
             if not any(p.name == name for p in self._payload.projects):

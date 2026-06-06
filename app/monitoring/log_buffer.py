@@ -142,12 +142,6 @@ class InMemoryLogBuffer:
         with self._lock:
             return list(self._lines)
 
-    def max_id(self) -> int:
-        with self._lock:
-            if not self._lines:
-                return 0
-            return self._lines[-1].id
-
     def query(
         self,
         *,

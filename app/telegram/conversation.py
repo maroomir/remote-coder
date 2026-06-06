@@ -160,12 +160,6 @@ class SQLiteConversationStore:
             finally:
                 conn.close()
 
-    def reset(self) -> None:
-        with self._lock:
-            if self._db_path.exists():
-                self._db_path.unlink()
-        self.ensure_schema()
-
     def delete_chat_memory(self, *, project: str, chat_id: int) -> tuple[int, int]:
         with self._lock:
             conn = sqlite3.connect(self._db_path)

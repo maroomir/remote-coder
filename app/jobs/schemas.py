@@ -114,12 +114,3 @@ class Job(BaseModel):
             raise ValueError(f"Cannot move {self.status} to cancelled")
         self.status = JobStatus.CANCELLED
         self.finished_at = datetime.now(UTC)
-
-
-class JobResult(BaseModel):
-    success: bool
-    project: str
-    branch: str | None = None
-    commit_hash: str | None = None
-    changed_files: list[str] = Field(default_factory=list)
-    error_summary: str | None = None

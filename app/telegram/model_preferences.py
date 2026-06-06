@@ -31,13 +31,6 @@ class InMemoryModelPreferenceStore:
     def set(self, project_name: str | None, chat_id: int, model: ModelName) -> None:
         self.set_selection(project_name, chat_id, ModelPreference(model))
 
-    def get_selection(self, project_name: str | None, chat_id: int) -> ModelPreference:
-        with self._lock:
-            return self._values.get(
-                (project_name, chat_id),
-                ModelPreference(self._default_model),
-            )
-
     def get_explicit_selection(
         self,
         project_name: str | None,

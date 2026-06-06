@@ -20,7 +20,6 @@ from app.telegram.commands import (
     CommandContext,
     CommandRegistry,
     CommandResponse,
-    FIX_COMMIT_PENDING_ACTION,
     FIX_SOURCE_AWAIT_ACTION,
     FIX_SOURCE_PENDING_ACTION,
     InlineButton,
