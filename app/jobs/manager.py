@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -23,6 +24,14 @@ from app.projects.registry import ProjectRegistry
 from app.telegram.notifier import TelegramNotifier
 
 _joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
+
+
+@dataclass
+class _WorktreePlan:
+    path: Path
+    created_for_job: bool
+    on_branch: bool
+    commit_to_requested_branch: bool
 
 
 class JobManager:
@@ -61,6 +70,15 @@ class JobManager:
         return self._notifier_resolver(project)
 
     @staticmethod
+    def _job_ctx(job: Job) -> dict[str, object]:
+        return {
+            "chat_id": job.request.chat_id,
+            "user_id": job.request.requested_by,
+            "project": job.request.project,
+            "job_id": job.id,
+        }
+
+    @staticmethod
     def _message_id_or_none(value: object) -> int | None:
         return value if isinstance(value, int) else None
 
@@ -70,6 +88,12 @@ class JobManager:
             return []
         return [item for item in value if isinstance(item, int)]
 
+    def _send_result(self, job: Job) -> None:
+        job.result_message_ids = self._message_ids_or_empty(
+            self._notifier_for(job.request.project).send_job_result(job)
+        )
+        self._job_store.update(job)
+
     def submit(self, request: JobRequest) -> Job:
         job = Job(id=request.job_id or self._make_job_id(), request=request)
         self._job_store.create(job)
@@ -77,10 +101,7 @@ class JobManager:
             "submitted model=%s model_id=%s",
             request.model.value,
             request.model_id or "-",
-            chat_id=request.chat_id,
-            user_id=request.requested_by,
-            project=request.project,
-            job_id=job.id,
+            **self._job_ctx(job),
         )
         accepted_message_id = self._message_id_or_none(
             self._notifier_for(request.project).send_job_accepted(job)
@@ -96,29 +117,87 @@ class JobManager:
             _joblog.warning("cancel requested for missing job job_id=%s", job_id)
             return False
         if job.status.value not in ("queued", "running"):
-            _joblog.info(
-                "cancel skipped status=%s",
-                job.status.value,
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job_id,
-            )
+            _joblog.info("cancel skipped status=%s", job.status.value, **self._job_ctx(job))
             return False
         self._cancelled_job_ids.add(job_id)
         job.mark_cancelled()
         self._job_store.update(job)
-        _joblog.info(
-            "cancelled",
-            chat_id=job.request.chat_id,
-            user_id=job.request.requested_by,
-            project=job.request.project,
-            job_id=job_id,
-        )
+        _joblog.info("cancelled", **self._job_ctx(job))
         event = self._cancel_events.get(job_id)
         if event is not None:
             event.set()
         return True
+
+    def _prepare_worktree_plan(
+        self, job: Job, project_path: Path, worktree_base: Path
+    ) -> _WorktreePlan:
+        requested_branch = job.request.branch
+        if job.request.mode in (JobMode.PLAN, JobMode.ASK):
+            path = self._git_service.prepare_detached_worktree(
+                project_path, job.id, worktree_base_dir=worktree_base
+            )
+            _joblog.info(
+                "created detached worktree mode=%s worktree=%s",
+                job.request.mode.value,
+                path.name,
+                **self._job_ctx(job),
+            )
+            return _WorktreePlan(path, created_for_job=True, on_branch=False, commit_to_requested_branch=False)
+
+        if requested_branch and self._git_service.local_branch_exists(project_path, requested_branch):
+            _joblog.info("requested branch exists branch=%s", requested_branch, **self._job_ctx(job))
+            existing_worktree = self._git_service.find_linked_worktree_for_branch(
+                project_path, requested_branch
+            )
+            if existing_worktree is not None:
+                _joblog.info(
+                    "reuse linked worktree branch=%s worktree=%s",
+                    requested_branch,
+                    existing_worktree.name,
+                    **self._job_ctx(job),
+                )
+                return _WorktreePlan(
+                    existing_worktree, created_for_job=False, on_branch=True, commit_to_requested_branch=True
+                )
+            if self._git_service.branch_is_checked_out(project_path, requested_branch):
+                path = self._git_service.prepare_detached_worktree(
+                    project_path, job.id, worktree_base_dir=worktree_base, base_branch=requested_branch
+                )
+                _joblog.info(
+                    "created detached worktree from checked-out branch branch=%s worktree=%s",
+                    requested_branch,
+                    path.name,
+                    **self._job_ctx(job),
+                )
+                return _WorktreePlan(
+                    path, created_for_job=True, on_branch=False, commit_to_requested_branch=False
+                )
+            path = self._git_service.prepare_branch_worktree(
+                project_path, requested_branch, job.id, worktree_base_dir=worktree_base
+            )
+            _joblog.info(
+                "created branch worktree branch=%s worktree=%s",
+                requested_branch,
+                path.name,
+                **self._job_ctx(job),
+            )
+            return _WorktreePlan(path, created_for_job=True, on_branch=True, commit_to_requested_branch=True)
+
+        path = self._git_service.prepare_detached_worktree(
+            project_path, job.id, worktree_base_dir=worktree_base
+        )
+        _joblog.info(
+            "created detached worktree requested_branch=%s worktree=%s",
+            requested_branch or "-",
+            path.name,
+            **self._job_ctx(job),
+        )
+        return _WorktreePlan(
+            path,
+            created_for_job=True,
+            on_branch=False,
+            commit_to_requested_branch=requested_branch is not None,
+        )
 
     def run(self, job_id: str) -> Job:
         job = self._job_store.get(job_id)
@@ -127,43 +206,23 @@ class JobManager:
             raise ValueError("job not found")
 
         if job_id in self._cancelled_job_ids:
-            if job.status.value not in ("cancelled",):
+            if job.status.value != "cancelled":
                 job.mark_cancelled()
                 self._job_store.update(job)
-            result_message_ids = self._message_ids_or_empty(
-                self._notifier_for(job.request.project).send_job_result(job)
-            )
-            job.result_message_ids = result_message_ids
-            self._job_store.update(job)
+            self._send_result(job)
             return job
 
         cancel_event = threading.Event()
         self._cancel_events[job_id] = cancel_event
-        _joblog.info(
-            "cancel event registered",
-            chat_id=job.request.chat_id,
-            user_id=job.request.requested_by,
-            project=job.request.project,
-            job_id=job.id,
-        )
+        _joblog.info("cancel event registered", **self._job_ctx(job))
 
         entry = self._project_registry.get(job.request.project)
         if not entry or not entry.enabled:
-            _joblog.warning(
-                "unknown/disabled project",
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job.id,
-            )
+            _joblog.warning("unknown/disabled project", **self._job_ctx(job))
             job.mark_failed("unknown or disabled project")
             job.error_stage = "project_resolve"
             self._job_store.update(job)
-            result_message_ids = self._message_ids_or_empty(
-                self._notifier_for(job.request.project).send_job_result(job)
-            )
-            job.result_message_ids = result_message_ids
-            self._job_store.update(job)
+            self._send_result(job)
             return job
 
         project_path = entry.root_path
@@ -172,153 +231,34 @@ class JobManager:
             "project resolved default_model=%s worktree_base=%s",
             entry.default_model.value,
             worktree_base.name,
-            chat_id=job.request.chat_id,
-            user_id=job.request.requested_by,
-            project=job.request.project,
-            job_id=job.id,
+            **self._job_ctx(job),
         )
         worktree_path: Path | None = None
         created_worktree_for_job = False
         failed_stage: str | None = None
         remote = self._settings.git_remote_name
+        read_only_job = job.request.mode in (JobMode.PLAN, JobMode.ASK)
         try:
             job.mark_running()
             self._job_store.update(job)
-            _joblog.info(
-                "running",
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job.id,
-            )
+            _joblog.info("running", **self._job_ctx(job))
 
             failed_stage = "git_worktree"
-            _joblog.info(
-                "stage=git_worktree",
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job.id,
-            )
-            read_only_job = job.request.mode in (JobMode.PLAN, JobMode.ASK)
-            worktree_on_branch = False
-            commit_to_requested_branch = False
-            requested_branch = job.request.branch
-            if read_only_job:
-                worktree_path = self._git_service.prepare_detached_worktree(
-                    project_path,
-                    job.id,
-                    worktree_base_dir=worktree_base,
-                )
-                created_worktree_for_job = True
-                _joblog.info(
-                    "created detached worktree mode=%s worktree=%s",
-                    job.request.mode.value,
-                    worktree_path.name,
-                    chat_id=job.request.chat_id,
-                    user_id=job.request.requested_by,
-                    project=job.request.project,
-                    job_id=job.id,
-                )
-            elif requested_branch and self._git_service.local_branch_exists(project_path, requested_branch):
-                _joblog.info(
-                    "requested branch exists branch=%s",
-                    requested_branch,
-                    chat_id=job.request.chat_id,
-                    user_id=job.request.requested_by,
-                    project=job.request.project,
-                    job_id=job.id,
-                )
-                existing_worktree = self._git_service.find_linked_worktree_for_branch(
-                    project_path,
-                    requested_branch,
-                )
-                if existing_worktree is not None:
-                    worktree_path = existing_worktree
-                    _joblog.info(
-                        "reuse linked worktree branch=%s worktree=%s",
-                        requested_branch,
-                        existing_worktree.name,
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
-                    )
-                else:
-                    if self._git_service.branch_is_checked_out(project_path, requested_branch):
-                        worktree_path = self._git_service.prepare_detached_worktree(
-                            project_path,
-                            job.id,
-                            worktree_base_dir=worktree_base,
-                            base_branch=requested_branch,
-                        )
-                        created_worktree_for_job = True
-                        _joblog.info(
-                            "created detached worktree from checked-out branch branch=%s worktree=%s",
-                            requested_branch,
-                            worktree_path.name,
-                            chat_id=job.request.chat_id,
-                            user_id=job.request.requested_by,
-                            project=job.request.project,
-                            job_id=job.id,
-                        )
-                    else:
-                        worktree_path = self._git_service.prepare_branch_worktree(
-                            project_path,
-                            requested_branch,
-                            job.id,
-                            worktree_base_dir=worktree_base,
-                        )
-                        created_worktree_for_job = True
-                        worktree_on_branch = True
-                        commit_to_requested_branch = True
-                        _joblog.info(
-                            "created branch worktree branch=%s worktree=%s",
-                            requested_branch,
-                            worktree_path.name,
-                            chat_id=job.request.chat_id,
-                            user_id=job.request.requested_by,
-                            project=job.request.project,
-                            job_id=job.id,
-                        )
-                if existing_worktree is not None:
-                    worktree_on_branch = True
-                    commit_to_requested_branch = True
-            else:
-                worktree_path = self._git_service.prepare_detached_worktree(
-                    project_path,
-                    job.id,
-                    worktree_base_dir=worktree_base,
-                )
-                created_worktree_for_job = True
-                commit_to_requested_branch = requested_branch is not None
-                _joblog.info(
-                    "created detached worktree requested_branch=%s worktree=%s",
-                    requested_branch or "-",
-                    worktree_path.name,
-                    chat_id=job.request.chat_id,
-                    user_id=job.request.requested_by,
-                    project=job.request.project,
-                    job_id=job.id,
-                )
+            _joblog.info("stage=git_worktree", **self._job_ctx(job))
+            plan = self._prepare_worktree_plan(job, project_path, worktree_base)
+            worktree_path = plan.path
+            created_worktree_for_job = plan.created_for_job
+            worktree_on_branch = plan.on_branch
+            commit_to_requested_branch = plan.commit_to_requested_branch
             self._git_service.ensure_worktree_writable(worktree_path)
-            _joblog.info(
-                "worktree writable",
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job.id,
-            )
+            _joblog.info("worktree writable", **self._job_ctx(job))
 
             failed_stage = "runner"
             _joblog.info(
                 "stage=runner model=%s model_id=%s",
                 job.request.model.value,
                 job.request.model_id or "-",
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job.id,
+                **self._job_ctx(job),
             )
             runner = self._runner_factory.create(job.request.model)
             timeout_seconds = self._effective_job_timeout_seconds()
@@ -327,10 +267,7 @@ class JobManager:
                 getattr(runner, "name", job.request.model.value),
                 timeout_seconds,
                 len(job.request.instruction),
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job.id,
+                **self._job_ctx(job),
             )
             runner_result = runner.run(
                 RunnerInput(
@@ -349,10 +286,7 @@ class JobManager:
                 runner_result.exit_code,
                 len(runner_result.stdout),
                 len(runner_result.stderr),
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job.id,
+                **self._job_ctx(job),
             )
 
             if runner_result.exit_code != 0:
@@ -365,46 +299,20 @@ class JobManager:
                 job.mark_succeeded()
                 self._job_store.update(job)
                 _joblog.info(
-                    "succeeded read_only mode=%s",
-                    job.request.mode.value,
-                    chat_id=job.request.chat_id,
-                    user_id=job.request.requested_by,
-                    project=job.request.project,
-                    job_id=job.id,
+                    "succeeded read_only mode=%s", job.request.mode.value, **self._job_ctx(job)
                 )
             else:
                 failed_stage = "git_commit"
-                _joblog.info(
-                    "stage=git_commit",
-                    chat_id=job.request.chat_id,
-                    user_id=job.request.requested_by,
-                    project=job.request.project,
-                    job_id=job.id,
-                )
+                _joblog.info("stage=git_commit", **self._job_ctx(job))
                 job.changed_files = self._git_service.collect_changes(worktree_path)
-                _joblog.info(
-                    "changes=%d",
-                    len(job.changed_files),
-                    chat_id=job.request.chat_id,
-                    user_id=job.request.requested_by,
-                    project=job.request.project,
-                    job_id=job.id,
-                )
+                _joblog.info("changes=%d", len(job.changed_files), **self._job_ctx(job))
 
                 if not job.changed_files:
                     job.branch = None
                     job.commit_hash = None
                     job.mark_succeeded()
                     self._job_store.update(job)
-                    _joblog.info(
-                        "succeeded branch=%s commit=%s",
-                        "-",
-                        "-",
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
-                    )
+                    _joblog.info("succeeded branch=%s commit=%s", "-", "-", **self._job_ctx(job))
                 else:
                     job.branch = (
                         job.request.branch
@@ -416,21 +324,13 @@ class JobManager:
                         "branch selected branch=%s requested=%s",
                         job.branch,
                         commit_to_requested_branch,
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
+                        **self._job_ctx(job),
                     )
                     if not worktree_on_branch:
                         self._git_service.create_branch_in_worktree(worktree_path, job.branch)
                         worktree_on_branch = True
                         _joblog.info(
-                            "branch created in worktree branch=%s",
-                            job.branch,
-                            chat_id=job.request.chat_id,
-                            user_id=job.request.requested_by,
-                            project=job.request.project,
-                            job_id=job.id,
+                            "branch created in worktree branch=%s", job.branch, **self._job_ctx(job)
                         )
                     job.changed_files = self._git_service.collect_changes(worktree_path)
 
@@ -455,39 +355,19 @@ class JobManager:
                             len(job.changed_files),
                             ai_title is not None,
                             ai_body is not None,
-                            chat_id=job.request.chat_id,
-                            user_id=job.request.requested_by,
-                            project=job.request.project,
-                            job_id=job.id,
+                            **self._job_ctx(job),
                         )
                         job.commit_hash = self._git_service.commit_all(worktree_path, commit_message)
                         _joblog.info(
-                            "commit result hash=%s",
-                            job.commit_hash or "-",
-                            chat_id=job.request.chat_id,
-                            user_id=job.request.requested_by,
-                            project=job.request.project,
-                            job_id=job.id,
+                            "commit result hash=%s", job.commit_hash or "-", **self._job_ctx(job)
                         )
                     else:
                         job.commit_hash = None
-                        _joblog.info(
-                            "commit skipped by request",
-                            chat_id=job.request.chat_id,
-                            user_id=job.request.requested_by,
-                            project=job.request.project,
-                            job_id=job.id,
-                        )
+                        _joblog.info("commit skipped by request", **self._job_ctx(job))
 
                     if job.request.commit and job.commit_hash:
                         failed_stage = "git_push"
-                        _joblog.info(
-                            "stage=git_push",
-                            chat_id=job.request.chat_id,
-                            user_id=job.request.requested_by,
-                            project=job.request.project,
-                            job_id=job.id,
-                        )
+                        _joblog.info("stage=git_push", **self._job_ctx(job))
                         self._git_service.push_branch(project_path, remote, job.branch)
 
                     if (
@@ -498,13 +378,7 @@ class JobManager:
                         and job.branch
                     ):
                         failed_stage = "git_integrate_main"
-                        _joblog.info(
-                            "stage=git_integrate_main",
-                            chat_id=job.request.chat_id,
-                            user_id=job.request.requested_by,
-                            project=job.request.project,
-                            job_id=job.id,
-                        )
+                        _joblog.info("stage=git_integrate_main", **self._job_ctx(job))
                         ops_base = worktree_base / "_rebase_ops"
                         self._git_service.rebase_branch_onto_main_and_merge(
                             project_path,
@@ -519,20 +393,11 @@ class JobManager:
                         "succeeded branch=%s commit=%s",
                         job.branch or "-",
                         job.commit_hash or "-",
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
+                        **self._job_ctx(job),
                     )
         except Exception as exc:  # pylint: disable=broad-except
             if job_id in self._cancelled_job_ids:
-                _joblog.info(
-                    "runner stopped by cancellation",
-                    chat_id=job.request.chat_id,
-                    user_id=job.request.requested_by,
-                    project=job.request.project,
-                    job_id=job.id,
-                )
+                _joblog.info("runner stopped by cancellation", **self._job_ctx(job))
                 if job.status.value != "cancelled":
                     job.mark_cancelled()
                     self._job_store.update(job)
@@ -541,10 +406,7 @@ class JobManager:
                     "failed stage=%s: %s",
                     failed_stage or "unknown",
                     exc,
-                    chat_id=job.request.chat_id,
-                    user_id=job.request.requested_by,
-                    project=job.request.project,
-                    job_id=job.id,
+                    **self._job_ctx(job),
                 )
                 job.mark_failed(str(exc))
                 job.error_stage = failed_stage or "unknown"
@@ -561,10 +423,7 @@ class JobManager:
                 job.status.value,
                 created_worktree_for_job,
                 cleanup_on_success,
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job.id,
+                **self._job_ctx(job),
             )
             if (
                 worktree_path
@@ -574,29 +433,15 @@ class JobManager:
             ):
                 try:
                     self._git_service.cleanup_worktree(project_path, worktree_path)
-                    _joblog.info(
-                        "worktree cleanup done",
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
-                    )
+                    _joblog.info("worktree cleanup done", **self._job_ctx(job))
                 except RuntimeError as exc:
                     # cleanup 실패로 성공 Job 알림이 누락되지 않도록 삼킵니다.
                     _joblog.warning(
                         "worktree cleanup failed but result notification continues: %s",
                         exc,
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
+                        **self._job_ctx(job),
                     )
-                    pass
-            result_message_ids = self._message_ids_or_empty(
-                self._notifier_for(job.request.project).send_job_result(job)
-            )
-            job.result_message_ids = result_message_ids
-            self._job_store.update(job)
+            self._send_result(job)
         return job
 
     def is_fix_candidate(self, job: Job, project: str, chat_id: int) -> bool:
@@ -668,10 +513,7 @@ class JobManager:
             "fix submitted kind=%s parent=%s",
             request.fix_kind.value,
             request.parent_job_id,
-            chat_id=request.chat_id,
-            user_id=request.requested_by,
-            project=request.project,
-            job_id=job.id,
+            **self._job_ctx(job),
         )
         accepted_message_id = self._message_id_or_none(
             self._notifier_for(request.project).send_job_accepted(job)
@@ -695,11 +537,7 @@ class JobManager:
             job.mark_failed("unknown or disabled project")
             job.error_stage = "project_resolve"
             self._job_store.update(job)
-            result_message_ids = self._message_ids_or_empty(
-                self._notifier_for(job.request.project).send_job_result(job)
-            )
-            job.result_message_ids = result_message_ids
-            self._job_store.update(job)
+            self._send_result(job)
             self._cancel_events.pop(job_id, None)
             return job
 
@@ -772,10 +610,7 @@ class JobManager:
                     _joblog.info(
                         "fix source produced no changes parent=%s",
                         parent_job.id,
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
+                        **self._job_ctx(job),
                     )
                 else:
                     failed_stage = "fix_message"
@@ -834,10 +669,7 @@ class JobManager:
                 failed_stage or "unknown",
                 job.request.parent_job_id or "-",
                 exc,
-                chat_id=job.request.chat_id,
-                user_id=job.request.requested_by,
-                project=job.request.project,
-                job_id=job.id,
+                **self._job_ctx(job),
             )
             if job.status.value != "failed":
                 job.mark_failed(str(exc))
@@ -857,16 +689,9 @@ class JobManager:
                     _joblog.warning(
                         "fix worktree cleanup failed: %s",
                         cleanup_exc,
-                        chat_id=job.request.chat_id,
-                        user_id=job.request.requested_by,
-                        project=job.request.project,
-                        job_id=job.id,
+                        **self._job_ctx(job),
                     )
-            result_message_ids = self._message_ids_or_empty(
-                self._notifier_for(job.request.project).send_job_result(job)
-            )
-            job.result_message_ids = result_message_ids
-            self._job_store.update(job)
+            self._send_result(job)
         return job
 
     @staticmethod
@@ -913,10 +738,7 @@ class JobManager:
             job.runner_stderr_summary is not None,
             job.runner_actual_model or "-",
             bool(job.runner_token_usage),
-            chat_id=job.request.chat_id,
-            user_id=job.request.requested_by,
-            project=job.request.project,
-            job_id=job.id,
+            **self._job_ctx(job),
         )
 
     @classmethod
