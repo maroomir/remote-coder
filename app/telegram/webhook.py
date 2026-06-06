@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections import deque
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from functools import partial
 from threading import Lock
 
@@ -15,6 +15,7 @@ from app.jobs.manager import JobManager
 from app.jobs.schemas import FixKind, Job, JobMode, JobRequest
 from app.jobs.store import JobStore
 from app.monitoring.events import EventLogger
+from app.security.auth import AllowlistAuthService
 from app.telegram.commands import (
     CommandContext,
     CommandRegistry,
@@ -30,6 +31,7 @@ from app.projects.registry import normalize_webhook_token_hash_path_segment
 from app.telegram.bot_instances import BotInstanceManager
 from app.telegram.confirmations import PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
+from app.telegram.notifier import TelegramNotifier
 from app.telegram.parser import CommandParseError, CommandParser
 
 _inbound = EventLogger("app.telegram.inbound", "telegram.inbound")
@@ -244,6 +246,21 @@ class TelegramUpdate(BaseModel):
     callback_query: TelegramCallbackQuery | None = None
 
 
+@dataclass
+class _Req:
+    update: TelegramUpdate
+    background_tasks: BackgroundTasks
+    notifier: TelegramNotifier
+    command_context: CommandContext
+    scope_project: str | None
+    chat_id: int
+    user_id: int | None
+    message: TelegramMessage
+    message_head_lower: str
+    reply_mid: int | None
+    reply_txt: str | None
+
+
 def create_webhook_router(
     bot_instance_manager: BotInstanceManager,
     parser: CommandParser,
@@ -254,6 +271,461 @@ def create_webhook_router(
 ) -> APIRouter:
     router = APIRouter(prefix="/telegram", tags=["telegram"])
     recent_updates = _RecentUpdateTracker()
+
+    def _handle_callback_query(
+        update: TelegramUpdate,
+        cq: TelegramCallbackQuery,
+        notifier: TelegramNotifier,
+        auth_service: AllowlistAuthService,
+        command_context: CommandContext,
+        scope_project: str | None,
+        background_tasks: BackgroundTasks,
+    ) -> dict[str, str]:
+        if cq.message is None or not cq.data:
+            _inbound.info(
+                "callback_query skipped missing message/data update_id=%s has_message=%s has_data=%s",
+                update.update_id,
+                cq.message is not None,
+                bool(cq.data),
+            )
+            background_tasks.add_task(notifier.answer_callback_query, cq.id)
+            return {"status": "ignored"}
+        cq_chat_id = cq.message.chat.id
+        cq_user_id = cq.from_user.id
+        cq_preview = _telegram_text_preview(cq.data)
+        _inbound.info(
+            "callback_query received update_id=%s data=%s",
+            update.update_id,
+            cq_preview or "(empty)",
+            chat_id=cq_chat_id,
+            user_id=cq_user_id,
+        )
+        if not auth_service.is_allowed(chat_id=cq_chat_id, user_id=cq_user_id):
+            _authlog.warning(
+                "unauthorized callback_query update_id=%s",
+                update.update_id,
+                chat_id=cq_chat_id,
+                user_id=cq_user_id,
+            )
+            background_tasks.add_task(notifier.answer_callback_query, cq.id)
+            return {"status": "ignored"}
+        notifier.answer_callback_query(cq.id)
+        if cq.data in {_NATURAL_JOB_CONFIRM_YES, _NATURAL_JOB_CONFIRM_NO}:
+            pending = command_context.confirmation_store.get(scope_project, cq_chat_id)
+            if pending is None or pending.command_name != _NATURAL_JOB_CONFIRMATION:
+                background_tasks.add_task(notifier.send_text, cq_chat_id, "확인 대기 작업이 없습니다.")
+                return {"status": "ignored"}
+            confirmed = command_context.confirmation_store.pop(scope_project, cq_chat_id)
+            if cq.data == _NATURAL_JOB_CONFIRM_NO:
+                background_tasks.add_task(
+                    notifier.send_text,
+                    cq_chat_id,
+                    _format_natural_job_cancelled(confirmed.job_request if confirmed else None),
+                )
+                return {"status": "ok"}
+            if confirmed is None or confirmed.job_request is None or confirmed.original_text is None:
+                background_tasks.add_task(notifier.send_text, cq_chat_id, "확인 대기 작업을 처리할 수 없습니다.")
+                return {"status": "ignored"}
+            job = _submit_confirmed_natural_request(
+                request=confirmed.job_request,
+                original_text=confirmed.original_text,
+                background_tasks=background_tasks,
+            )
+            return {"status": "accepted", "job_id": job.id}
+        cq_message = TelegramMessage(chat_id=cq_chat_id, user_id=cq_user_id, text=cq.data)
+        cq_response = command_registry.dispatch_rich(cq_message, command_context)
+        if cq_response:
+            button_rows = len(cq_response.inline_buttons or [])
+            _cmdlog.info(
+                "callback_query handled cmd=%s response_len=%d button_rows=%d",
+                cq_preview or "(empty)",
+                len(cq_response.text),
+                button_rows,
+                chat_id=cq_chat_id,
+                user_id=cq_user_id,
+            )
+            if cq_response.inline_buttons:
+                background_tasks.add_task(
+                    partial(
+                        notifier.send_with_buttons,
+                        cq_chat_id,
+                        cq_response.text,
+                        cq_response.inline_buttons,
+                        skip_body_i18n=cq_response.skip_notifier_body_i18n,
+                    )
+                )
+            else:
+                background_tasks.add_task(
+                    partial(
+                        notifier.send_text,
+                        cq_chat_id,
+                        cq_response.text,
+                        skip_body_i18n=cq_response.skip_notifier_body_i18n,
+                    )
+                )
+        else:
+            _cmdlog.info(
+                "callback_query no command response cmd=%s",
+                cq_preview or "(empty)",
+                chat_id=cq_chat_id,
+                user_id=cq_user_id,
+            )
+        return {"status": "ok"}
+
+    def _queue_natural_confirmation(req: _Req, request: JobRequest, original_text_stripped: str) -> bool:
+        cc = req.command_context
+        ent = cc.project_registry.get(req.scope_project)
+        if ent is None:
+            req.background_tasks.add_task(
+                req.notifier.send_text,
+                req.chat_id,
+                f"Unknown project: {req.scope_project}",
+            )
+            return False
+        try:
+            current_branch = str(cc.git_service.get_current_branch(ent.root_path))
+        except RuntimeError as exc:
+            req.background_tasks.add_task(
+                req.notifier.send_text, req.chat_id, f"Could not resolve work branch: {exc}"
+            )
+            return False
+        cc.confirmation_store.set(
+            req.scope_project,
+            req.chat_id,
+            PendingConfirmation(
+                command_name=_NATURAL_JOB_CONFIRMATION,
+                action="submit",
+                job_request=request,
+                original_text=original_text_stripped,
+            ),
+        )
+        use_confirmation_buttons = _natural_job_confirmation_buttons_enabled(cc)
+        confirmation_text = _format_natural_job_confirmation(
+            request,
+            current_branch,
+            use_buttons=use_confirmation_buttons,
+        )
+        if use_confirmation_buttons:
+            req.background_tasks.add_task(
+                req.notifier.send_with_buttons,
+                req.chat_id,
+                confirmation_text,
+                _natural_job_confirmation_buttons(),
+            )
+        else:
+            req.background_tasks.add_task(req.notifier.send_text, req.chat_id, confirmation_text)
+        return True
+
+    def _handle_pending(req: _Req, pending: PendingConfirmation | None) -> dict[str, str] | None:
+        if pending is None:
+            return None
+        cc = req.command_context
+        scope_project = req.scope_project
+        chat_id = req.chat_id
+        notifier = req.notifier
+        bt = req.background_tasks
+
+        if pending.command_name == _NATURAL_JOB_CONFIRMATION and req.message_head_lower != "/init":
+            if req.message.text.strip() in {"y", "Y"}:
+                confirmed = cc.confirmation_store.pop(scope_project, chat_id)
+                if confirmed is None or confirmed.job_request is None or confirmed.original_text is None:
+                    bt.add_task(notifier.send_text, chat_id, "확인 대기 작업을 처리할 수 없습니다.")
+                    return {"status": "ignored"}
+                job = _submit_confirmed_natural_request(
+                    request=confirmed.job_request,
+                    original_text=confirmed.original_text,
+                    background_tasks=bt,
+                )
+                return {"status": "accepted", "job_id": job.id}
+            try:
+                parsed_request = parser.parse_natural(
+                    req.message.text,
+                    scope_project,
+                    chat_id=chat_id,
+                    user_id=req.user_id,
+                    message_id=req.update.message.message_id,
+                    reply_to_message_id=req.reply_mid,
+                    reply_to_text=req.reply_txt,
+                )
+            except CommandParseError as exc:
+                cc.confirmation_store.pop(scope_project, chat_id)
+                _cmdlog.warning(
+                    "parse error replacing pending message_id=%s err=%s",
+                    req.update.message.message_id,
+                    str(exc)[:120],
+                    chat_id=chat_id,
+                    user_id=req.user_id,
+                )
+                bt.add_task(notifier.send_text, chat_id, _format_natural_job_cancelled(pending.job_request))
+                bt.add_task(notifier.send_text, chat_id, str(exc))
+                return {"status": "ignored"}
+            cc.confirmation_store.pop(scope_project, chat_id)
+            _cmdlog.info(
+                "natural pending replaced mode=%s model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
+                parsed_request.mode.value,
+                parsed_request.model.value,
+                parsed_request.branch or "-",
+                parsed_request.commit,
+                len(parsed_request.instruction),
+                parsed_request.reply_to_message_id or "-",
+                chat_id=chat_id,
+                user_id=req.user_id,
+                project=parsed_request.project,
+            )
+            if _queue_natural_confirmation(req, parsed_request, req.message.text.strip()):
+                return {"status": "ok"}
+            return {"status": "ignored"}
+
+        if pending.command_name == _NATURAL_JOB_MODE_INPUT and req.message_head_lower != "/init":
+            cc.confirmation_store.pop(scope_project, chat_id)
+            mode_prefix = "/plan" if pending.action == JobMode.PLAN.value else "/ask"
+            try:
+                parsed_request = parser.parse_natural(
+                    f"{mode_prefix} {req.message.text}",
+                    scope_project,
+                    chat_id=chat_id,
+                    user_id=req.user_id,
+                    message_id=req.update.message.message_id,
+                    reply_to_message_id=req.reply_mid,
+                    reply_to_text=req.reply_txt,
+                )
+            except CommandParseError as exc:
+                _cmdlog.warning(
+                    "parse error for pending mode input message_id=%s mode=%s err=%s",
+                    req.update.message.message_id,
+                    pending.action,
+                    str(exc)[:120],
+                    chat_id=chat_id,
+                    user_id=req.user_id,
+                )
+                bt.add_task(notifier.send_text, chat_id, str(exc))
+                return {"status": "ignored"}
+            _cmdlog.info(
+                "pending mode input parsed mode=%s model=%s instruction_len=%d reply_to=%s",
+                parsed_request.mode.value,
+                parsed_request.model.value,
+                len(parsed_request.instruction),
+                parsed_request.reply_to_message_id or "-",
+                chat_id=chat_id,
+                user_id=req.user_id,
+                project=parsed_request.project,
+            )
+            if _queue_natural_confirmation(req, parsed_request, req.message.text.strip()):
+                return {"status": "ok"}
+            return {"status": "ignored"}
+
+        if (
+            pending.command_name == "/fix"
+            and pending.action == FIX_SOURCE_AWAIT_ACTION
+            and req.message_head_lower != "/init"
+            and not req.message.text.strip().startswith("/")
+        ):
+            cc.confirmation_store.pop(scope_project, chat_id)
+            target_job = (
+                job_store.get(pending.target_job_id) if pending.target_job_id is not None else None
+            )
+            project_name = effective_project_name_for_chat(cc, chat_id)
+            if (
+                target_job is None
+                or project_name is None
+                or not job_manager.is_fix_candidate(target_job, project_name, chat_id)
+            ):
+                bt.add_task(notifier.send_text, chat_id, "수정 대상 Job을 더 이상 사용할 수 없습니다.")
+                return {"status": "ignored"}
+            fix_request = JobRequest(
+                project=project_name,
+                model=target_job.request.model,
+                model_id=target_job.request.model_id,
+                instruction=req.message.text.strip(),
+                mode=JobMode.AGENT_FIX,
+                fix_kind=FixKind.SOURCE,
+                parent_job_id=target_job.id,
+                branch=target_job.branch,
+                chat_id=chat_id,
+                requested_by=req.user_id,
+                message_id=req.update.message.message_id,
+                reply_to_message_id=req.reply_mid,
+            )
+            cc.confirmation_store.set(
+                scope_project,
+                chat_id,
+                PendingConfirmation(
+                    command_name="/fix",
+                    action=FIX_SOURCE_PENDING_ACTION,
+                    job_request=fix_request,
+                    original_text=req.message.text.strip(),
+                    target_job_id=target_job.id,
+                ),
+            )
+            use_buttons = _natural_job_confirmation_buttons_enabled(cc)
+            confirmation_text = _format_fix_source_confirmation(
+                fix_request, target_job, use_buttons=use_buttons
+            )
+            if use_buttons:
+                bt.add_task(
+                    notifier.send_with_buttons,
+                    chat_id,
+                    confirmation_text,
+                    _natural_job_confirmation_buttons(),
+                )
+            else:
+                bt.add_task(notifier.send_text, chat_id, confirmation_text)
+            return {"status": "ok"}
+
+        if (
+            pending.command_name == "/fix"
+            and pending.action == FIX_SOURCE_PENDING_ACTION
+            and req.message_head_lower != "/init"
+        ):
+            if req.message.text.strip() in {"y", "Y"}:
+                confirmed = cc.confirmation_store.pop(scope_project, chat_id)
+                if (
+                    confirmed is None
+                    or confirmed.job_request is None
+                    or confirmed.job_request.parent_job_id is None
+                ):
+                    bt.add_task(notifier.send_text, chat_id, "확인 대기 작업을 처리할 수 없습니다.")
+                    return {"status": "ignored"}
+                bt.add_task(job_manager.execute_fix_job, confirmed.job_request, None)
+                return {"status": "accepted"}
+            cc.confirmation_store.pop(scope_project, chat_id)
+            bt.add_task(notifier.send_text, chat_id, "수정 작업을 취소했습니다.")
+            return {"status": "ignored"}
+
+        return None
+
+    def _handle_command(req: _Req) -> dict[str, str] | None:
+        command_response: CommandResponse | None = command_registry.dispatch_rich(
+            req.message, req.command_context
+        )
+        if not command_response:
+            return None
+        raw_cmd = req.message.text.strip()
+        cmd_token = raw_cmd.split(maxsplit=1)[0] if raw_cmd else ""
+        _cmdlog.info(
+            "command handled cmd=%s response_len=%d button_rows=%d",
+            cmd_token,
+            len(command_response.text),
+            len(command_response.inline_buttons or []),
+            chat_id=req.chat_id,
+            user_id=req.user_id,
+        )
+        if command_response.inline_buttons:
+            req.background_tasks.add_task(
+                partial(
+                    req.notifier.send_with_buttons,
+                    req.chat_id,
+                    command_response.text,
+                    command_response.inline_buttons,
+                    skip_body_i18n=command_response.skip_notifier_body_i18n,
+                )
+            )
+        else:
+            req.background_tasks.add_task(
+                partial(
+                    req.notifier.send_text,
+                    req.chat_id,
+                    command_response.text,
+                    skip_body_i18n=command_response.skip_notifier_body_i18n,
+                )
+            )
+        return {"status": "ok"}
+
+    def _handle_fix_reply(req: _Req) -> dict[str, str] | None:
+        fix_reply_match = _match_fix_reply_prefix(req.message.text)
+        if fix_reply_match is None or req.reply_mid is None or conversation_store is None:
+            return None
+        fix_instruction = fix_reply_match.strip()
+        project_name_for_fix = effective_project_name_for_chat(req.command_context, req.chat_id)
+        linked_job_id = conversation_store.get_job_id_for_message_id(
+            req.scope_project, req.chat_id, req.reply_mid
+        )
+        target_job = job_store.get(linked_job_id) if linked_job_id else None
+        if not (
+            fix_instruction
+            and project_name_for_fix is not None
+            and target_job is not None
+            and job_manager.is_fix_candidate(target_job, project_name_for_fix, req.chat_id)
+        ):
+            return None
+        fix_request = JobRequest(
+            project=project_name_for_fix,
+            model=target_job.request.model,
+            model_id=target_job.request.model_id,
+            instruction=fix_instruction,
+            mode=JobMode.AGENT_FIX,
+            fix_kind=FixKind.SOURCE,
+            parent_job_id=target_job.id,
+            branch=target_job.branch,
+            chat_id=req.chat_id,
+            requested_by=req.user_id,
+            message_id=req.update.message.message_id,
+            reply_to_message_id=req.reply_mid,
+        )
+        req.command_context.confirmation_store.set(
+            req.scope_project,
+            req.chat_id,
+            PendingConfirmation(
+                command_name="/fix",
+                action=FIX_SOURCE_PENDING_ACTION,
+                job_request=fix_request,
+                original_text=req.message.text.strip(),
+                target_job_id=target_job.id,
+            ),
+        )
+        use_buttons = _natural_job_confirmation_buttons_enabled(req.command_context)
+        confirmation_text = _format_fix_source_confirmation(
+            fix_request, target_job, use_buttons=use_buttons
+        )
+        if use_buttons:
+            req.background_tasks.add_task(
+                req.notifier.send_with_buttons,
+                req.chat_id,
+                confirmation_text,
+                _natural_job_confirmation_buttons(),
+            )
+        else:
+            req.background_tasks.add_task(req.notifier.send_text, req.chat_id, confirmation_text)
+        return {"status": "ok"}
+
+    def _handle_natural(req: _Req) -> dict[str, str]:
+        try:
+            request = parser.parse_natural(
+                req.message.text,
+                req.scope_project,
+                chat_id=req.chat_id,
+                user_id=req.user_id,
+                message_id=req.update.message.message_id,
+                reply_to_message_id=req.reply_mid,
+                reply_to_text=req.reply_txt,
+            )
+        except CommandParseError as exc:
+            _cmdlog.warning(
+                "parse error message_id=%s err=%s",
+                req.update.message.message_id,
+                str(exc)[:120],
+                chat_id=req.chat_id,
+                user_id=req.user_id,
+            )
+            req.background_tasks.add_task(req.notifier.send_text, req.chat_id, str(exc))
+            return {"status": "ignored"}
+
+        _cmdlog.info(
+            "natural request parsed mode=%s model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
+            request.mode.value,
+            request.model.value,
+            request.branch or "-",
+            request.commit,
+            len(request.instruction),
+            request.reply_to_message_id or "-",
+            chat_id=req.chat_id,
+            user_id=req.user_id,
+            project=request.project,
+        )
+
+        if _queue_natural_confirmation(req, request, req.message.text.strip()):
+            return {"status": "ok"}
+        return {"status": "ignored"}
 
     @router.post("/webhook/{token_hash}")
     def telegram_webhook(
@@ -286,97 +758,15 @@ def create_webhook_router(
             return {"status": "ignored"}
 
         if update.callback_query:
-            cq = update.callback_query
-            if cq.message is None or not cq.data:
-                _inbound.info(
-                    "callback_query skipped missing message/data update_id=%s has_message=%s has_data=%s",
-                    update.update_id,
-                    cq.message is not None,
-                    bool(cq.data),
-                )
-                background_tasks.add_task(notifier.answer_callback_query, cq.id)
-                return {"status": "ignored"}
-            cq_chat_id = cq.message.chat.id
-            cq_user_id = cq.from_user.id
-            cq_preview = _telegram_text_preview(cq.data)
-            _inbound.info(
-                "callback_query received update_id=%s data=%s",
-                update.update_id,
-                cq_preview or "(empty)",
-                chat_id=cq_chat_id,
-                user_id=cq_user_id,
+            return _handle_callback_query(
+                update,
+                update.callback_query,
+                notifier,
+                auth_service,
+                command_context,
+                scope_project,
+                background_tasks,
             )
-            if not auth_service.is_allowed(chat_id=cq_chat_id, user_id=cq_user_id):
-                _authlog.warning(
-                    "unauthorized callback_query update_id=%s",
-                    update.update_id,
-                    chat_id=cq_chat_id,
-                    user_id=cq_user_id,
-                )
-                background_tasks.add_task(notifier.answer_callback_query, cq.id)
-                return {"status": "ignored"}
-            notifier.answer_callback_query(cq.id)
-            if cq.data in {_NATURAL_JOB_CONFIRM_YES, _NATURAL_JOB_CONFIRM_NO}:
-                pending = command_context.confirmation_store.get(scope_project, cq_chat_id)
-                if pending is None or pending.command_name != _NATURAL_JOB_CONFIRMATION:
-                    background_tasks.add_task(notifier.send_text, cq_chat_id, "확인 대기 작업이 없습니다.")
-                    return {"status": "ignored"}
-                confirmed = command_context.confirmation_store.pop(scope_project, cq_chat_id)
-                if cq.data == _NATURAL_JOB_CONFIRM_NO:
-                    background_tasks.add_task(
-                        notifier.send_text,
-                        cq_chat_id,
-                        _format_natural_job_cancelled(confirmed.job_request if confirmed else None),
-                    )
-                    return {"status": "ok"}
-                if confirmed is None or confirmed.job_request is None or confirmed.original_text is None:
-                    background_tasks.add_task(notifier.send_text, cq_chat_id, "확인 대기 작업을 처리할 수 없습니다.")
-                    return {"status": "ignored"}
-                job = _submit_confirmed_natural_request(
-                    request=confirmed.job_request,
-                    original_text=confirmed.original_text,
-                    background_tasks=background_tasks,
-                )
-                return {"status": "accepted", "job_id": job.id}
-            cq_message = TelegramMessage(chat_id=cq_chat_id, user_id=cq_user_id, text=cq.data)
-            cq_response = command_registry.dispatch_rich(cq_message, command_context)
-            if cq_response:
-                button_rows = len(cq_response.inline_buttons or [])
-                _cmdlog.info(
-                    "callback_query handled cmd=%s response_len=%d button_rows=%d",
-                    cq_preview or "(empty)",
-                    len(cq_response.text),
-                    button_rows,
-                    chat_id=cq_chat_id,
-                    user_id=cq_user_id,
-                )
-                if cq_response.inline_buttons:
-                    background_tasks.add_task(
-                        partial(
-                            notifier.send_with_buttons,
-                            cq_chat_id,
-                            cq_response.text,
-                            cq_response.inline_buttons,
-                            skip_body_i18n=cq_response.skip_notifier_body_i18n,
-                        )
-                    )
-                else:
-                    background_tasks.add_task(
-                        partial(
-                            notifier.send_text,
-                            cq_chat_id,
-                            cq_response.text,
-                            skip_body_i18n=cq_response.skip_notifier_body_i18n,
-                        )
-                    )
-            else:
-                _cmdlog.info(
-                    "callback_query no command response cmd=%s",
-                    cq_preview or "(empty)",
-                    chat_id=cq_chat_id,
-                    user_id=cq_user_id,
-                )
-            return {"status": "ok"}
 
         if not update.message:
             _inbound.info("update without message skipped update_id=%s", update.update_id)
@@ -421,52 +811,8 @@ def create_webhook_router(
             return {"status": "ignored"}
 
         message = TelegramMessage(chat_id=chat_id, user_id=user_id, text=update.message.text)
-        pending = command_context.confirmation_store.get(scope_project, chat_id)
         message_tokens = message.text.strip().split(maxsplit=1)
-        message_head = message_tokens[0] if message_tokens else ""
-        message_head_lower = message_head.lower()
-
-        def _queue_natural_confirmation(req: JobRequest, original_text_stripped: str) -> bool:
-            ent = command_context.project_registry.get(bot_instance.project_name)
-            if ent is None:
-                background_tasks.add_task(
-                    notifier.send_text,
-                    chat_id,
-                    f"Unknown project: {bot_instance.project_name}",
-                )
-                return False
-            try:
-                current_branch = str(command_context.git_service.get_current_branch(ent.root_path))
-            except RuntimeError as exc:
-                background_tasks.add_task(notifier.send_text, chat_id, f"Could not resolve work branch: {exc}")
-                return False
-            command_context.confirmation_store.set(
-                scope_project,
-                chat_id,
-                PendingConfirmation(
-                    command_name=_NATURAL_JOB_CONFIRMATION,
-                    action="submit",
-                    job_request=req,
-                    original_text=original_text_stripped,
-                ),
-            )
-            use_confirmation_buttons = _natural_job_confirmation_buttons_enabled(command_context)
-            confirmation_text = _format_natural_job_confirmation(
-                req,
-                current_branch,
-                use_buttons=use_confirmation_buttons,
-            )
-            if use_confirmation_buttons:
-                background_tasks.add_task(
-                    notifier.send_with_buttons,
-                    chat_id,
-                    confirmation_text,
-                    _natural_job_confirmation_buttons(),
-                )
-            else:
-                background_tasks.add_task(notifier.send_text, chat_id, confirmation_text)
-            return True
-
+        message_head_lower = (message_tokens[0] if message_tokens else "").lower()
         reply_mid = (
             update.message.reply_to_message.message_id
             if update.message.reply_to_message is not None
@@ -477,203 +823,24 @@ def create_webhook_router(
             if update.message.reply_to_message is not None
             else None
         )
+        req = _Req(
+            update=update,
+            background_tasks=background_tasks,
+            notifier=notifier,
+            command_context=command_context,
+            scope_project=scope_project,
+            chat_id=chat_id,
+            user_id=user_id,
+            message=message,
+            message_head_lower=message_head_lower,
+            reply_mid=reply_mid,
+            reply_txt=reply_txt,
+        )
 
-        if (
-            pending is not None
-            and pending.command_name == _NATURAL_JOB_CONFIRMATION
-            and message_head_lower != "/init"
-        ):
-            if message.text.strip() in {"y", "Y"}:
-                confirmed = command_context.confirmation_store.pop(scope_project, chat_id)
-                if confirmed is None or confirmed.job_request is None or confirmed.original_text is None:
-                    background_tasks.add_task(notifier.send_text, chat_id, "확인 대기 작업을 처리할 수 없습니다.")
-                    return {"status": "ignored"}
-                job = _submit_confirmed_natural_request(
-                    request=confirmed.job_request,
-                    original_text=confirmed.original_text,
-                    background_tasks=background_tasks,
-                )
-                return {"status": "accepted", "job_id": job.id}
-            try:
-                parsed_request = parser.parse_natural(
-                    message.text,
-                    bot_instance.project_name,
-                    chat_id=chat_id,
-                    user_id=user_id,
-                    message_id=update.message.message_id,
-                    reply_to_message_id=reply_mid,
-                    reply_to_text=reply_txt,
-                )
-            except CommandParseError as exc:
-                command_context.confirmation_store.pop(scope_project, chat_id)
-                _cmdlog.warning(
-                    "parse error replacing pending message_id=%s err=%s",
-                    update.message.message_id,
-                    str(exc)[:120],
-                    chat_id=chat_id,
-                    user_id=user_id,
-                )
-                background_tasks.add_task(
-                    notifier.send_text,
-                    chat_id,
-                    _format_natural_job_cancelled(pending.job_request),
-                )
-                background_tasks.add_task(notifier.send_text, chat_id, str(exc))
-                return {"status": "ignored"}
-            command_context.confirmation_store.pop(scope_project, chat_id)
-            _cmdlog.info(
-                "natural pending replaced mode=%s model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
-                parsed_request.mode.value,
-                parsed_request.model.value,
-                parsed_request.branch or "-",
-                parsed_request.commit,
-                len(parsed_request.instruction),
-                parsed_request.reply_to_message_id or "-",
-                chat_id=chat_id,
-                user_id=user_id,
-                project=parsed_request.project,
-            )
-            if _queue_natural_confirmation(parsed_request, message.text.strip()):
-                return {"status": "ok"}
-            return {"status": "ignored"}
-
-        if (
-            pending is not None
-            and pending.command_name == _NATURAL_JOB_MODE_INPUT
-            and message_head_lower != "/init"
-        ):
-            command_context.confirmation_store.pop(scope_project, chat_id)
-            mode_prefix = "/plan" if pending.action == JobMode.PLAN.value else "/ask"
-            try:
-                parsed_request = parser.parse_natural(
-                    f"{mode_prefix} {message.text}",
-                    bot_instance.project_name,
-                    chat_id=chat_id,
-                    user_id=user_id,
-                    message_id=update.message.message_id,
-                    reply_to_message_id=reply_mid,
-                    reply_to_text=reply_txt,
-                )
-            except CommandParseError as exc:
-                _cmdlog.warning(
-                    "parse error for pending mode input message_id=%s mode=%s err=%s",
-                    update.message.message_id,
-                    pending.action,
-                    str(exc)[:120],
-                    chat_id=chat_id,
-                    user_id=user_id,
-                )
-                background_tasks.add_task(notifier.send_text, chat_id, str(exc))
-                return {"status": "ignored"}
-            _cmdlog.info(
-                "pending mode input parsed mode=%s model=%s instruction_len=%d reply_to=%s",
-                parsed_request.mode.value,
-                parsed_request.model.value,
-                len(parsed_request.instruction),
-                parsed_request.reply_to_message_id or "-",
-                chat_id=chat_id,
-                user_id=user_id,
-                project=parsed_request.project,
-            )
-            if _queue_natural_confirmation(parsed_request, message.text.strip()):
-                return {"status": "ok"}
-            return {"status": "ignored"}
-
-        if (
-            pending is not None
-            and pending.command_name == "/fix"
-            and pending.action == FIX_SOURCE_AWAIT_ACTION
-            and message_head_lower != "/init"
-            and not message.text.strip().startswith("/")
-        ):
-            command_context.confirmation_store.pop(scope_project, chat_id)
-            target_job = (
-                job_store.get(pending.target_job_id)
-                if pending.target_job_id is not None
-                else None
-            )
-            project_name = effective_project_name_for_chat(command_context, chat_id)
-            if (
-                target_job is None
-                or project_name is None
-                or not job_manager.is_fix_candidate(target_job, project_name, chat_id)
-            ):
-                background_tasks.add_task(
-                    notifier.send_text,
-                    chat_id,
-                    "수정 대상 Job을 더 이상 사용할 수 없습니다.",
-                )
-                return {"status": "ignored"}
-            fix_request = JobRequest(
-                project=project_name,
-                model=target_job.request.model,
-                model_id=target_job.request.model_id,
-                instruction=message.text.strip(),
-                mode=JobMode.AGENT_FIX,
-                fix_kind=FixKind.SOURCE,
-                parent_job_id=target_job.id,
-                branch=target_job.branch,
-                chat_id=chat_id,
-                requested_by=user_id,
-                message_id=update.message.message_id,
-                reply_to_message_id=reply_mid,
-            )
-            command_context.confirmation_store.set(
-                scope_project,
-                chat_id,
-                PendingConfirmation(
-                    command_name="/fix",
-                    action=FIX_SOURCE_PENDING_ACTION,
-                    job_request=fix_request,
-                    original_text=message.text.strip(),
-                    target_job_id=target_job.id,
-                ),
-            )
-            use_buttons = _natural_job_confirmation_buttons_enabled(command_context)
-            confirmation_text = _format_fix_source_confirmation(
-                fix_request, target_job, use_buttons=use_buttons
-            )
-            if use_buttons:
-                background_tasks.add_task(
-                    notifier.send_with_buttons,
-                    chat_id,
-                    confirmation_text,
-                    _natural_job_confirmation_buttons(),
-                )
-            else:
-                background_tasks.add_task(notifier.send_text, chat_id, confirmation_text)
-            return {"status": "ok"}
-
-        if (
-            pending is not None
-            and pending.command_name == "/fix"
-            and pending.action == FIX_SOURCE_PENDING_ACTION
-            and message_head_lower != "/init"
-        ):
-            if message.text.strip() in {"y", "Y"}:
-                confirmed = command_context.confirmation_store.pop(scope_project, chat_id)
-                if (
-                    confirmed is None
-                    or confirmed.job_request is None
-                    or confirmed.job_request.parent_job_id is None
-                ):
-                    background_tasks.add_task(
-                        notifier.send_text,
-                        chat_id,
-                        "확인 대기 작업을 처리할 수 없습니다.",
-                    )
-                    return {"status": "ignored"}
-                background_tasks.add_task(
-                    job_manager.execute_fix_job, confirmed.job_request, None
-                )
-                return {"status": "accepted"}
-            command_context.confirmation_store.pop(scope_project, chat_id)
-            background_tasks.add_task(
-                notifier.send_text,
-                chat_id,
-                "수정 작업을 취소했습니다.",
-            )
-            return {"status": "ignored"}
+        pending = command_context.confirmation_store.get(scope_project, chat_id)
+        pending_result = _handle_pending(req, pending)
+        if pending_result is not None:
+            return pending_result
 
         if message_head_lower in {"/plan", "/ask"} and len(message_tokens) == 1:
             mode = JobMode.PLAN if message_head_lower == "/plan" else JobMode.ASK
@@ -688,143 +855,15 @@ def create_webhook_router(
             background_tasks.add_task(notifier.send_text, chat_id, _format_mode_input_prompt(mode))
             return {"status": "ok"}
 
-        command_response: CommandResponse | None = command_registry.dispatch_rich(message, command_context)
-        if command_response:
-            raw_cmd = message.text.strip()
-            cmd_token = raw_cmd.split(maxsplit=1)[0] if raw_cmd else ""
-            _cmdlog.info(
-                "command handled cmd=%s response_len=%d button_rows=%d",
-                cmd_token,
-                len(command_response.text),
-                len(command_response.inline_buttons or []),
-                chat_id=chat_id,
-                user_id=user_id,
-            )
-            if command_response.inline_buttons:
-                background_tasks.add_task(
-                    partial(
-                        notifier.send_with_buttons,
-                        chat_id,
-                        command_response.text,
-                        command_response.inline_buttons,
-                        skip_body_i18n=command_response.skip_notifier_body_i18n,
-                    )
-                )
-            else:
-                background_tasks.add_task(
-                    partial(
-                        notifier.send_text,
-                        chat_id,
-                        command_response.text,
-                        skip_body_i18n=command_response.skip_notifier_body_i18n,
-                    )
-                )
-            return {"status": "ok"}
+        command_result = _handle_command(req)
+        if command_result is not None:
+            return command_result
 
-        fix_reply_match = _match_fix_reply_prefix(message.text)
-        if (
-            fix_reply_match is not None
-            and reply_mid is not None
-            and conversation_store is not None
-        ):
-            fix_instruction = fix_reply_match.strip()
-            project_name_for_fix = effective_project_name_for_chat(command_context, chat_id)
-            linked_job_id = conversation_store.get_job_id_for_message_id(
-                bot_instance.project_name, chat_id, reply_mid
-            )
-            target_job = job_store.get(linked_job_id) if linked_job_id else None
-            if (
-                fix_instruction
-                and project_name_for_fix is not None
-                and target_job is not None
-                and job_manager.is_fix_candidate(target_job, project_name_for_fix, chat_id)
-            ):
-                fix_request = JobRequest(
-                    project=project_name_for_fix,
-                    model=target_job.request.model,
-                    model_id=target_job.request.model_id,
-                    instruction=fix_instruction,
-                    mode=JobMode.AGENT_FIX,
-                    fix_kind=FixKind.SOURCE,
-                    parent_job_id=target_job.id,
-                    branch=target_job.branch,
-                    chat_id=chat_id,
-                    requested_by=user_id,
-                    message_id=update.message.message_id,
-                    reply_to_message_id=reply_mid,
-                )
-                command_context.confirmation_store.set(
-                    scope_project,
-                    chat_id,
-                    PendingConfirmation(
-                        command_name="/fix",
-                        action=FIX_SOURCE_PENDING_ACTION,
-                        job_request=fix_request,
-                        original_text=message.text.strip(),
-                        target_job_id=target_job.id,
-                    ),
-                )
-                use_buttons = _natural_job_confirmation_buttons_enabled(command_context)
-                confirmation_text = _format_fix_source_confirmation(
-                    fix_request, target_job, use_buttons=use_buttons
-                )
-                if use_buttons:
-                    background_tasks.add_task(
-                        notifier.send_with_buttons,
-                        chat_id,
-                        confirmation_text,
-                        _natural_job_confirmation_buttons(),
-                    )
-                else:
-                    background_tasks.add_task(notifier.send_text, chat_id, confirmation_text)
-                return {"status": "ok"}
+        fix_reply_result = _handle_fix_reply(req)
+        if fix_reply_result is not None:
+            return fix_reply_result
 
-        try:
-            parsed_request = parser.parse_natural(
-                message.text,
-                bot_instance.project_name,
-                chat_id=chat_id,
-                user_id=user_id,
-                message_id=update.message.message_id,
-                reply_to_message_id=(
-                    update.message.reply_to_message.message_id
-                    if update.message.reply_to_message is not None
-                    else None
-                ),
-                reply_to_text=(
-                    update.message.reply_to_message.text
-                    if update.message.reply_to_message is not None
-                    else None
-                ),
-            )
-        except CommandParseError as exc:
-            _cmdlog.warning(
-                "parse error message_id=%s err=%s",
-                update.message.message_id,
-                str(exc)[:120],
-                chat_id=chat_id,
-                user_id=user_id,
-            )
-            background_tasks.add_task(notifier.send_text, chat_id, str(exc))
-            return {"status": "ignored"}
-        request = parsed_request
-
-        _cmdlog.info(
-            "natural request parsed mode=%s model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
-            request.mode.value,
-            request.model.value,
-            request.branch or "-",
-            request.commit,
-            len(request.instruction),
-            request.reply_to_message_id or "-",
-            chat_id=chat_id,
-            user_id=user_id,
-            project=request.project,
-        )
-
-        if _queue_natural_confirmation(request, message.text.strip()):
-            return {"status": "ok"}
-        return {"status": "ignored"}
+        return _handle_natural(req)
 
     def _submit_confirmed_natural_request(
         request: JobRequest,
