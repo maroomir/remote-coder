@@ -35,3 +35,9 @@ def test_translate_text_translates_confirmation_mode_label():
     raw = "- 모드: agent (코드 수정·커밋·push 가능)"
     out = translate_text(raw, UiLanguage.ENGLISH)
     assert out == "- Mode: agent (allows edit, commit, and push)"
+
+
+def test_translate_text_translates_model_provider_detail_prompt():
+    raw = "모델 Provider가 선택되었습니다.\n\n- 기본 모델: codex\n- 세부 Model을 선택하세요."
+    out = translate_text(raw, UiLanguage.ENGLISH)
+    assert out == "Model provider selected.\n\n- Default model: codex\n- Choose a specific model."
