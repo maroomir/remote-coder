@@ -119,7 +119,7 @@ def test_status_lists_only_jobs_for_bot_project(project_registry: ProjectRegistr
         TelegramMessage(chat_id=999, user_id=1, text="/status job-b"),
         ctx,
     )
-    assert hidden == "해당 Job ID를 찾을 수 없습니다."
+    assert hidden == "Job ID not found."
 
 
 def test_stop_does_not_cancel_job_from_other_project(project_registry: ProjectRegistry):
@@ -155,7 +155,7 @@ def test_stop_does_not_cancel_job_from_other_project(project_registry: ProjectRe
         TelegramMessage(chat_id=1, user_id=1, text="/stop job-b"),
         ctx,
     )
-    assert text == "Job을 찾을 수 없습니다: job-b"
+    assert text == "Job not found: job-b"
     job_manager.cancel.assert_not_called()
 
 

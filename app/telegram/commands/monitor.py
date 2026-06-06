@@ -20,7 +20,7 @@ _VALID_SUBCOMMANDS = {"model", "memory", "branch", "worktrees", "code", "project
 
 class MonitorCommand(TelegramCommand):
     name = "/monitor"
-    description = "모델, 메모리, 브랜치, worktree 상태를 점검합니다"
+    description = "Check model, memory, branch, and worktree status"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()

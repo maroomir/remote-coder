@@ -44,7 +44,7 @@ class CommandContext:
 
 
 def format_usage(*lines: str) -> str:
-    return "사용법\n\n" + "\n".join(f"- {line}" for line in lines)
+    return "Usage\n\n" + "\n".join(f"- {line}" for line in lines)
 
 
 MODEL_USAGE = "<claude|codex|gemini>"
@@ -64,90 +64,86 @@ class CommandResponse:
 
 
 def _help_response_skips_notifier_body_i18n(message_text: str) -> bool:
-    tokens = message_text.strip().split()
-    if not tokens or tokens[0] != "/help":
-        return False
-    if len(tokens) == 1:
-        return True
-    raw = tokens[1]
-    topic_aliases = {"에이전트": "agent", "계획": "plan", "질문": "ask"}
-    topic = topic_aliases.get(raw, raw.lower())
-    return topic in ("agent", "agents", "plan", "ask")
+    _ = message_text
+    return False
 
 
 HELP_TEXT = "\n".join(
     [
-        "도움말",
+        "Help",
         "",
-        "작업 지시는 일반 메시지로 보내세요.",
+        "Send work requests as regular messages.",
         "",
-        "옵션",
+        "Options",
         "- model:",
         "- branch:",
         "- no commit",
-        "- plan: <자연어> 또는 /plan <자연어> - 계획 모드 (코드 수정 없이 변경 계획만 응답)",
-        "- ask: <자연어> 또는 /ask <자연어> - 질문 모드 (코드 분석 후 응답)",
-        "- 계획: 또는 질문: (한글 접두, 콜론 `:` 또는 `：` 가능)",
+        "- plan: <natural language> or /plan <natural language> - plan mode (plan only; no code changes)",
+        "- ask: <natural language> or /ask <natural language> - ask mode (analysis and answers; no code edits)",
+        "- Korean aliases 계획: and 질문: instead of plan:/ask: (colons `:` or full-width `：` allowed)",
         "",
-        "명령어 목록:",
-        "- /model <claude|codex|gemini>: 기본 모델 변경",
-        "- /status <job_id>: 작업 상태 확인",
-        "- /branch [이름]: 브랜치 조회 또는 전환",
-        "- /pull: 원격 저장소의 모든 브랜치 pull",
-        "- /rebase [브랜치]: 브랜치 리베이스",
-        "- /pr [브랜치]: 브랜치를 GitHub PR로 올리기",
-        "- /monitor <model|memory|branch|worktrees|code|project>: 모니터링",
-        "- /clear <branch|worktrees|memory>: 정리 (확인 필요)",
-        "- /reports [개수]: 대화 기억 리포트",
-        "- /init: 이 채팅 설정 초기화",
-        "- /stop <job_id>: 진행 중인 작업 중단",
-        "- /fix <commit|source> [job_id]: 기존 Job의 커밋/소스 재작업 (amend + force-with-lease push)",
-        "- /start: 인라인 메뉴",
+        "Commands:",
+        "- /model <claude|codex|gemini>: Change the default model",
+        "- /status <job_id>: Check job status",
+        "- /branch [name]: Show or switch branches",
+        "- /pull: Pull all remote branch updates",
+        "- /rebase [branch]: Rebase a branch",
+        "- /pr [branch]: Open a GitHub PR for a branch",
+        "- /monitor <model|memory|branch|worktrees|code|project>: Monitoring",
+        "- /clear <branch|worktrees|memory>: Cleanup (confirmation required)",
+        "- /reports [count]: Conversation memory report",
+        "- /init: Reset this chat's settings",
+        "- /stop <job_id>: Stop a running job",
+        "- /fix <commit|source> [job_id]: Re-do a job's commit/source (amend + force-with-lease push)",
+        "- /start: Inline menu",
     ]
 )
 
 HELP_AGENT_TOPIC = "\n".join(
     [
-        "AGENTS 모드 (agent)",
+        "AGENTS mode (agent)",
         "",
-        "일반 자연어 작업 요청입니다. 현재 프로젝트에서 코드를 수정할 수 있으며, 변경 사항이 있으면 브랜치·커밋·push까지 진행할 수 있습니다.",
+        "Natural-language coding tasks. The agent can modify code in the current project; when there are "
+        "changes it can create or update a branch, commit, and push.",
         "",
-        "입력 예",
-        "- 로그인 검증 버그 수정해줘",
-        "- model: codex branch: remote-auth 테스트 보강해줘",
-        "- no commit 문서 문구만 확인해줘",
+        "Examples",
+        "- fix the login validation bug",
+        "- model: codex branch: remote-auth strengthen tests",
+        "- no commit just verify the doc wording",
         "",
-        "작업은 프로젝트·브랜치·모델을 확인한 뒤 `y`/`Y` 또는 인라인 버튼으로 접수됩니다.",
+        "A job is accepted after project/branch/model checks via `y`/`Y` or inline buttons.",
     ]
 )
 
 HELP_PLAN_TOPIC = "\n".join(
     [
-        "계획 모드 (plan)",
+        "Plan mode (plan)",
         "",
-        "코드를 수정하지 않고 변경 계획만 받습니다. 일반 자연어(agent)와 같이 확인(`y`/`Y` 또는 인라인 버튼) 후 Job이 접수됩니다.",
+        "Receive change plans only; no code edits. Like agent mode, a job is accepted after confirmation "
+        "(`y`/`Y` or inline buttons).",
         "",
-        "입력 예",
-        "- plan: 로그인 검증 흐름 정리해줘",
-        "- /plan model: codex API 경계 리스크만 나열해줘",
-        "- 계획：리팩터링 단계 (전각 콜론)",
+        "Examples",
+        "- plan: summarize the login validation flow",
+        "- /plan model: codex list only API boundary risks",
+        "- 계획：refactor steps (full-width colon)",
         "",
-        "자세한 옵션은 /help 를 참고하세요.",
+        "See /help for more options.",
     ]
 )
 
 HELP_ASK_TOPIC = "\n".join(
     [
-        "질문 모드 (ask)",
+        "Ask mode (ask)",
         "",
-        "저장소를 읽고 질문에 답합니다. 코드 수정·커밋·push는 하지 않으며, Job 접수는 agent와 같이 확인(`y`/`Y` 또는 인라인 버튼) 후입니다.",
+        "Answer questions using the repository; no code edits, commits, or pushes. Jobs are accepted like "
+        "agent mode after confirmation (`y`/`Y` or inline buttons).",
         "",
-        "입력 예",
-        "- ask: 이 프로젝트에서 pytest 어떻게 돌려?",
-        "- /ask JobManager.run 단계 설명해줘",
-        "- 질문：에러 로그 이 줄 의미",
+        "Examples",
+        "- ask: how do I run pytest in this project?",
+        "- /ask explain JobManager.run stages",
+        "- 질문：what this error line means",
         "",
-        "자세한 옵션은 /help 를 참고하세요.",
+        "See /help for more options.",
     ]
 )
 

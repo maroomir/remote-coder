@@ -143,14 +143,14 @@ def _format_fix_source_confirmation(
     use_buttons: bool,
 ) -> str:
     lines = [
-        "수정 작업을 확인하세요.",
+        "Confirm the fix job.",
         "",
         f"- Project: {request.project}",
-        f"- 대상 Job: {target_job.id}",
-        f"- 브랜치: {target_job.branch}",
-        f"- 원본 커밋: {target_job.commit_hash}",
+        f"- Target Job: {target_job.id}",
+        f"- Branch: {target_job.branch}",
+        f"- Original commit: {target_job.commit_hash}",
         f"- Model: {format_model_selection(request.model, request.model_id)}",
-        "- Mode: agent_fix (source) — 기존 커밋을 amend 후 --force-with-lease push",
+        "- Mode: agent_fix (source) - amends the existing commit and pushes with --force-with-lease",
     ]
     if use_buttons:
         lines.extend(["", "Choose whether to run it."])
@@ -312,7 +312,7 @@ def create_webhook_router(
         if cq.data in {_NATURAL_JOB_CONFIRM_YES, _NATURAL_JOB_CONFIRM_NO}:
             pending = command_context.confirmation_store.get(scope_project, cq_chat_id)
             if pending is None or pending.command_name != _NATURAL_JOB_CONFIRMATION:
-                background_tasks.add_task(notifier.send_text, cq_chat_id, "확인 대기 작업이 없습니다.")
+                background_tasks.add_task(notifier.send_text, cq_chat_id, "There is no pending confirmation.")
                 return {"status": "ignored"}
             confirmed = command_context.confirmation_store.pop(scope_project, cq_chat_id)
             if cq.data == _NATURAL_JOB_CONFIRM_NO:
@@ -323,7 +323,7 @@ def create_webhook_router(
                 )
                 return {"status": "ok"}
             if confirmed is None or confirmed.job_request is None or confirmed.original_text is None:
-                background_tasks.add_task(notifier.send_text, cq_chat_id, "확인 대기 작업을 처리할 수 없습니다.")
+                background_tasks.add_task(notifier.send_text, cq_chat_id, "Could not process the pending confirmation.")
                 return {"status": "ignored"}
             job = _submit_confirmed_natural_request(
                 request=confirmed.job_request,
@@ -428,7 +428,7 @@ def create_webhook_router(
             if req.message.text.strip() in {"y", "Y"}:
                 confirmed = cc.confirmation_store.pop(scope_project, chat_id)
                 if confirmed is None or confirmed.job_request is None or confirmed.original_text is None:
-                    bt.add_task(notifier.send_text, chat_id, "확인 대기 작업을 처리할 수 없습니다.")
+                    bt.add_task(notifier.send_text, chat_id, "Could not process the pending confirmation.")
                     return {"status": "ignored"}
                 job = _submit_confirmed_natural_request(
                     request=confirmed.job_request,
@@ -529,7 +529,7 @@ def create_webhook_router(
                 or project_name is None
                 or not job_manager.is_fix_candidate(target_job, project_name, chat_id)
             ):
-                bt.add_task(notifier.send_text, chat_id, "수정 대상 Job을 더 이상 사용할 수 없습니다.")
+                bt.add_task(notifier.send_text, chat_id, "Fix target job is no longer available.")
                 return {"status": "ignored"}
             fix_request = JobRequest(
                 project=project_name,
@@ -583,12 +583,12 @@ def create_webhook_router(
                     or confirmed.job_request is None
                     or confirmed.job_request.parent_job_id is None
                 ):
-                    bt.add_task(notifier.send_text, chat_id, "확인 대기 작업을 처리할 수 없습니다.")
+                    bt.add_task(notifier.send_text, chat_id, "Could not process the pending confirmation.")
                     return {"status": "ignored"}
                 bt.add_task(job_manager.execute_fix_job, confirmed.job_request, None)
                 return {"status": "accepted"}
             cc.confirmation_store.pop(scope_project, chat_id)
-            bt.add_task(notifier.send_text, chat_id, "수정 작업을 취소했습니다.")
+            bt.add_task(notifier.send_text, chat_id, "Cancelled the fix job.")
             return {"status": "ignored"}
 
         return None
@@ -921,7 +921,7 @@ def create_webhook_router(
                 project=request.project,
                 chat_id=request.chat_id,
                 role="job_accepted",
-                text=f"Job 접수: {job.id}",
+                text=f"Job accepted: {job.id}",
                 job_id=job.id,
                 message_id=getattr(job, "accepted_message_id", None),
             )

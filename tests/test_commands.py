@@ -90,11 +90,11 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
         _ctx(project_registry, advanced_settings_store=_advanced_settings_ko()),
     )
     assert text is not None
-    assert text.startswith("도움말")
-    assert "작업 지시는 일반 메시지로 보내세요." in text
-    assert "옵션\n- model:\n- branch:\n- no commit" in text
+    assert text.startswith("Help")
+    assert "Send work requests as regular messages." in text
+    assert "Options\n- model:\n- branch:\n- no commit" in text
     assert "/plan" in text and "/ask" in text
-    assert "명령어 목록:" in text
+    assert "Commands:" in text
     assert "/clear branch:" not in text
 
 
@@ -120,9 +120,9 @@ def test_dispatch_rich_help_body_skips_notifier_i18n_flag(project_registry: Proj
     registry = CommandRegistry(build_default_commands())
     ctx = _ctx(project_registry)
     main = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/help"), ctx)
-    assert main is not None and main.skip_notifier_body_i18n
+    assert main is not None and not main.skip_notifier_body_i18n
     agent = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/help agent"), ctx)
-    assert agent is not None and agent.skip_notifier_body_i18n
+    assert agent is not None and not agent.skip_notifier_body_i18n
     sub = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/help model"), ctx)
     assert sub is not None and not sub.skip_notifier_body_i18n
 
@@ -163,7 +163,7 @@ def test_help_command_returns_text_with_no_buttons(project_registry: ProjectRegi
         _ctx(project_registry, advanced_settings_store=_advanced_settings_ko()),
     )
     assert response is not None
-    assert response.text.startswith("도움말")
+    assert response.text.startswith("Help")
     assert response.inline_buttons is None
 
 
@@ -176,17 +176,17 @@ def test_start_menu_places_model_under_manage(project_registry: ProjectRegistry)
 
     assert start_response is not None
     assert start_response.inline_buttons == [
-        [InlineButton("도움말", "/help"), InlineButton("모드별 안내", "/start modes")],
-        [InlineButton("모니터링", "/monitor"), InlineButton("정리", "/clear")],
-        [InlineButton("관리", "/start manage"), InlineButton("리포트", "/reports")],
+        [InlineButton("Help", "/help"), InlineButton("Modes", "/start modes")],
+        [InlineButton("Monitor", "/monitor"), InlineButton("Clean", "/clear")],
+        [InlineButton("Manage", "/start manage"), InlineButton("Reports", "/reports")],
     ]
     assert manage_response is not None
     assert manage_response.inline_buttons == [
-        [InlineButton("브랜치 확인", "/branch"), InlineButton("Pull", "/pull")],
-        [InlineButton("리베이스", "/rebase"), InlineButton("PR 올리기", "/pr")],
-        [InlineButton("중단", "/stop"), InlineButton("상태", "/status")],
-        [InlineButton("모델", "/model"), InlineButton("초기화", "/init")],
-        [InlineButton("뒤로", "/start")],
+        [InlineButton("Branch", "/branch"), InlineButton("Pull", "/pull")],
+        [InlineButton("Rebase", "/rebase"), InlineButton("Open PR", "/pr")],
+        [InlineButton("Stop", "/stop"), InlineButton("Status", "/status")],
+        [InlineButton("Model", "/model"), InlineButton("Reset", "/init")],
+        [InlineButton("Back", "/start")],
     ]
 
 
@@ -195,14 +195,14 @@ def test_start_modes_shows_mode_help_buttons(project_registry: ProjectRegistry):
     response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/start modes"), _ctx(project_registry))
 
     assert response is not None
-    assert response.text == "확인할 모드 안내를 선택하세요."
+    assert response.text == "Choose a mode guide."
     assert response.inline_buttons == [
         [
-            InlineButton("AGENTS 모드", "/help agent"),
-            InlineButton("PLAN 모드", "/help plan"),
-            InlineButton("ASK 모드", "/help ask"),
+            InlineButton("AGENTS mode", "/help agent"),
+            InlineButton("PLAN mode", "/help plan"),
+            InlineButton("ASK mode", "/help ask"),
         ],
-        [InlineButton("뒤로", "/start")],
+        [InlineButton("Back", "/start")],
     ]
 
 
@@ -211,11 +211,11 @@ def test_start_model_topic_falls_back_to_main_menu(project_registry: ProjectRegi
     response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/start model"), _ctx(project_registry))
 
     assert response is not None
-    assert response.text.startswith("✅ Remote AI Coder가 준비되었습니다.")
+    assert response.text.startswith("✅ Remote AI Coder is ready.")
     assert response.inline_buttons == [
-        [InlineButton("도움말", "/help"), InlineButton("모드별 안내", "/start modes")],
-        [InlineButton("모니터링", "/monitor"), InlineButton("정리", "/clear")],
-        [InlineButton("관리", "/start manage"), InlineButton("리포트", "/reports")],
+        [InlineButton("Help", "/help"), InlineButton("Modes", "/start modes")],
+        [InlineButton("Monitor", "/monitor"), InlineButton("Clean", "/clear")],
+        [InlineButton("Manage", "/start manage"), InlineButton("Reports", "/reports")],
     ]
 
 
@@ -231,16 +231,16 @@ def test_help_agent_plan_and_ask_topics(project_registry: ProjectRegistry):
     ctx = _ctx(project_registry, advanced_settings_store=_advanced_settings_ko())
     agent_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help agent"), ctx)
     assert agent_text is not None
-    assert "AGENTS 모드" in agent_text
-    assert "브랜치·커밋·push" in agent_text
+    assert "AGENTS mode" in agent_text
+    assert "branch, commit, and push" in agent_text
     plan_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help plan"), ctx)
     assert plan_text is not None
-    assert "계획 모드" in plan_text
+    assert "Plan mode" in plan_text
     assert "plan:" in plan_text
     assert "y" in plan_text or "Y" in plan_text
     ask_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help ask"), ctx)
     assert ask_text is not None
-    assert "질문 모드" in ask_text
+    assert "Ask mode" in ask_text
     assert "/ask" in ask_text
     assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help 에이전트"), ctx) == agent_text
     assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help 계획"), ctx) == plan_text
@@ -254,7 +254,7 @@ def test_help_plan_topic_shows_back_button(project_registry: ProjectRegistry):
         _ctx(project_registry),
     )
     assert response is not None
-    assert response.inline_buttons == [[InlineButton("← 뒤로", "/help")]]
+    assert response.inline_buttons == [[InlineButton("← Back", "/help")]]
 
 
 def test_status_command_dispatch(project_registry: ProjectRegistry):
@@ -266,8 +266,8 @@ def test_status_command_dispatch(project_registry: ProjectRegistry):
     assert text is not None
     assert "job1" in text
     assert "queued" in text
-    assert "프로젝트:" in text
-    assert "모델:" in text
+    assert "Project:" in text
+    assert "Model used:" in text
 
 
 def test_status_command_lists_recent_jobs_as_buttons(project_registry: ProjectRegistry):
@@ -278,7 +278,7 @@ def test_status_command_lists_recent_jobs_as_buttons(project_registry: ProjectRe
     )
 
     assert response is not None
-    assert response.text == "조회할 Job을 선택하세요."
+    assert response.text == "Choose a job to inspect."
     assert response.inline_buttons == [[InlineButton("job1 (queued)", "/status job1")]]
 
 
@@ -286,9 +286,9 @@ def test_model_command_updates_preference(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     ctx = _ctx(project_registry)
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model codex"), ctx)
-    assert text == "모델 Provider가 선택되었습니다.\n\n- 기본 모델: codex\n- 세부 Model을 선택하세요."
+    assert text == "Model provider selected.\n\n- Default model: codex\n- Choose a specific model."
     current = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model"), ctx)
-    assert current == "모델 설정\n\n- 현재 기본 모델: codex"
+    assert current == "Model settings\n\n- Current default model: codex"
 
 
 def test_model_command_shows_model_buttons(project_registry: ProjectRegistry):
@@ -296,7 +296,7 @@ def test_model_command_shows_model_buttons(project_registry: ProjectRegistry):
     response = registry.dispatch_rich(TelegramMessage(chat_id=77, user_id=1, text="/model"), _ctx(project_registry))
 
     assert response is not None
-    assert response.text == "모델 설정\n\n- 현재 기본 모델: claude"
+    assert response.text == "Model settings\n\n- Current default model: claude"
     assert response.inline_buttons == [
         [
             InlineButton("claude", "/model claude"),
@@ -314,7 +314,7 @@ def test_model_command_shows_detail_buttons_after_provider_selection(project_reg
     )
 
     assert response is not None
-    assert response.text == "모델 Provider가 선택되었습니다.\n\n- 기본 모델: codex\n- 세부 Model을 선택하세요."
+    assert response.text == "Model provider selected.\n\n- Default model: codex\n- Choose a specific model."
     assert response.inline_buttons is not None
     assert response.inline_buttons[0] == [InlineButton("gpt-5.3-codex", "/model codex gpt-5.3-codex")]
 
@@ -329,21 +329,21 @@ def test_model_command_confirms_detail_model(project_registry: ProjectRegistry):
     )
 
     assert response is not None
-    assert response.text == "모델 설정이 변경되었습니다.\n\n- 기본 모델: codex / gpt-5.3-codex"
+    assert response.text == "Model setting updated.\n\n- Default model: codex / gpt-5.3-codex"
     assert response.inline_buttons is None
     assert ctx.model_preferences.get_explicit_selection(ctx.project_name, 77) == ModelPreference(
         ModelName.CODEX,
         "gpt-5.3-codex",
     )
     current = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model"), ctx)
-    assert current == "모델 설정\n\n- 현재 기본 모델: codex / gpt-5.3-codex"
+    assert current == "Model settings\n\n- Current default model: codex / gpt-5.3-codex"
 
 
 def test_model_command_updates_preference_to_gemini(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     ctx = _ctx(project_registry)
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model gemini"), ctx)
-    assert text == "모델 Provider가 선택되었습니다.\n\n- 기본 모델: gemini\n- 세부 Model을 선택하세요."
+    assert text == "Model provider selected.\n\n- Default model: gemini\n- Choose a specific model."
     assert ctx.model_preferences.get(ctx.project_name, 77) == ModelName.GEMINI
 
 
@@ -351,7 +351,7 @@ def test_model_command_returns_consistent_usage(project_registry: ProjectRegistr
     registry = CommandRegistry([ModelCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model nope"), _ctx(project_registry))
     assert text == (
-        "사용법\n\n"
+        "Usage\n\n"
         "- /model\n"
         "- /model <claude|codex|gemini>\n"
         "- /model <claude|codex|gemini> <model_id>"
@@ -365,7 +365,7 @@ def test_model_command_rejects_invalid_detail_model(project_registry: ProjectReg
         _ctx(project_registry),
     )
     assert text is not None
-    assert "알 수 없는 세부 Model입니다: nope" in text
+    assert "Unknown specific model: nope" in text
 
 
 def test_monitor_project_lists_registry(project_registry: ProjectRegistry):
@@ -405,9 +405,9 @@ def test_init_command_resets_project_model_and_pending(project_registry: Project
 
     text = registry.dispatch(TelegramMessage(chat_id=chat_id, user_id=1, text="/init"), ctx)
     assert text is not None
-    assert "초기화했습니다" in text
-    assert "적용 프로젝트: other" in text
-    assert "기본 모델: codex" in text
+    assert "were reset" in text
+    assert "Project: other" in text
+    assert "Default model: codex" in text
     assert ctx.model_preferences.get("other", chat_id) == ModelName.CLAUDE
     assert ctx.confirmation_store.get("other", chat_id) is None
 
@@ -424,7 +424,7 @@ def test_init_command_runs_when_clear_confirmation_pending(project_registry: Pro
     )
 
     text = registry.dispatch(TelegramMessage(chat_id=chat_id, user_id=1, text="/init"), ctx)
-    assert text is not None and "초기화했습니다" in text
+    assert text is not None and "were reset" in text
     assert ctx.confirmation_store.get(pname, chat_id) is None
 
 
@@ -434,7 +434,7 @@ def test_init_command_rejects_extra_args(project_registry: ProjectRegistry):
         TelegramMessage(chat_id=1, user_id=1, text="/init extra"),
         _ctx(project_registry),
     )
-    assert text == "사용법\n\n- /init"
+    assert text == "Usage\n\n- /init"
 
 
 def test_branch_command_shows_current_branch(project_registry: ProjectRegistry):
@@ -442,7 +442,7 @@ def test_branch_command_shows_current_branch(project_registry: ProjectRegistry):
     ctx.git_service.get_current_branch.return_value = "main"
     registry = CommandRegistry([BranchCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=5, user_id=1, text="/branch"), ctx)
-    assert "현재 브랜치" in text
+    assert "Current branch" in text
     assert "main" in text
     ctx.git_service.get_current_branch.assert_called_once()
 
@@ -468,7 +468,7 @@ def test_branch_command_switches_when_local_exists(project_registry: ProjectRegi
     registry = CommandRegistry([BranchCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=5, user_id=1, text="/branch develop"), ctx)
     assert "develop" in text
-    assert "전환" in text
+    assert "selected" in text
     ctx.git_service.local_branch_exists.assert_called_once()
     ctx.git_service.switch_branch.assert_called_once()
 
@@ -478,7 +478,7 @@ def test_branch_command_missing_branch_error(project_registry: ProjectRegistry):
     ctx.git_service.local_branch_exists.return_value = False
     registry = CommandRegistry([BranchCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=5, user_id=1, text="/branch nope"), ctx)
-    assert "없습니다" in text
+    assert "not found" in text
     ctx.git_service.switch_branch.assert_not_called()
 
 
@@ -486,7 +486,7 @@ def test_branch_command_rejects_invalid_token(project_registry: ProjectRegistry)
     ctx = _ctx(project_registry)
     registry = CommandRegistry([BranchCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=5, user_id=1, text="/branch bad name"), ctx)
-    assert text == "사용법\n\n- /branch\n- /branch <브랜치이름>"
+    assert text == "Usage\n\n- /branch\n- /branch <branch>"
 
 
 def test_rebase_command_uses_latest_succeeded_branch(project_registry: ProjectRegistry):
@@ -510,7 +510,7 @@ def test_rebase_command_uses_latest_succeeded_branch(project_registry: ProjectRe
     registry = CommandRegistry([RebaseCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=99, user_id=1, text="/rebase remote-abc"), ctx)
 
-    assert text == "rebase ok\n브랜치 `remote-abc`를 로컬과 `origin`에서 삭제했습니다."
+    assert text == "rebase ok\nDeleted branch `remote-abc` locally and from `origin`."
     ctx.git_service.rebase_branch_onto_main_and_merge.assert_called_once()
     args = ctx.git_service.rebase_branch_onto_main_and_merge.call_args[0]
     assert args[1] == "remote-abc"
@@ -524,7 +524,7 @@ def test_rebase_command_with_explicit_branch(project_registry: ProjectRegistry):
     ctx.git_service.list_remote_branches_matching.return_value = ["my-feature"]
     registry = CommandRegistry([RebaseCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/rebase my-feature"), ctx)
-    assert text == "ok\n브랜치 `my-feature`를 로컬과 `origin`에서 삭제했습니다."
+    assert text == "ok\nDeleted branch `my-feature` locally and from `origin`."
     assert ctx.git_service.rebase_branch_onto_main_and_merge.call_args[0][1] == "my-feature"
     ctx.git_service.delete_remote_branches.assert_called_once()
     ctx.git_service.delete_local_branches.assert_called_once()
@@ -557,8 +557,8 @@ def test_rebase_command_rejects_duplicate_inflight_branch(project_registry: Proj
     release_first.set()
     thread.join(timeout=2)
     assert not thread.is_alive()
-    assert "이미 진행 중" in (second_text or "")
-    assert first_text == ["ok\n브랜치 `my-feature`를 로컬과 `origin`에서 삭제했습니다."]
+    assert "already running" in (second_text or "")
+    assert first_text == ["ok\nDeleted branch `my-feature` locally and from `origin`."]
     ctx.git_service.rebase_branch_onto_main_and_merge.assert_called_once()
     ctx.git_service.delete_remote_branches.assert_called_once()
     ctx.git_service.delete_local_branches.assert_called_once()
@@ -571,8 +571,8 @@ def test_rebase_command_reports_missing_remote_branch(project_registry: ProjectR
 
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/rebase stale-feature"), ctx)
 
-    assert "`stale-feature` 원격 브랜치" in (text or "")
-    assert "이미 rebase/병합 후 삭제" in (text or "")
+    assert "`stale-feature` remote branch" in (text or "")
+    assert "already been rebased/merged and deleted" in (text or "")
     ctx.git_service.rebase_branch_onto_main_and_merge.assert_not_called()
     ctx.git_service.delete_remote_branches.assert_not_called()
     ctx.git_service.delete_local_branches.assert_not_called()
@@ -597,7 +597,7 @@ def test_rebase_command_no_recent_branch(project_registry: ProjectRegistry):
     ctx = _ctx(project_registry)
     registry = CommandRegistry([RebaseCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=42, user_id=1, text="/rebase"), ctx)
-    assert "리베이스할 브랜치가 없습니다" in (text or "")
+    assert "No branch is available to rebase" in (text or "")
     ctx.git_service.rebase_branch_onto_main_and_merge.assert_not_called()
 
 
@@ -611,7 +611,7 @@ def test_rebase_command_lists_non_main_branch_buttons(project_registry: ProjectR
     response = registry.dispatch_rich(TelegramMessage(chat_id=42, user_id=1, text="/rebase"), ctx)
 
     assert response is not None
-    assert response.text == "리베이스할 브랜치를 선택하세요."
+    assert response.text == "Choose a branch to rebase."
     assert response.inline_buttons == [
         [InlineButton("feature-a", "/rebase feature-a")],
     ]
@@ -623,7 +623,7 @@ def test_pr_command_rejects_non_ascii_branch(project_registry: ProjectRegistry):
 
     text = registry.dispatch(TelegramMessage(chat_id=42, user_id=1, text="/pr 기능/수정"), ctx)
 
-    assert text == "브랜치 이름은 영문, 숫자, /, ., _, - 만 사용할 수 있습니다."
+    assert text == "Branch names may only use letters, numbers, /, ., _, and -."
     ctx.git_service.create_github_pr.assert_not_called()
 
 
@@ -839,9 +839,9 @@ def test_reports_command_summarizes_sqlite_memory(project_registry: ProjectRegis
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/reports"), ctx)
 
     assert text is not None
-    assert "기억 리포트" in text
-    assert "총 기록: 2개" in text
-    assert "최근 사용자 요청: README 수정해줘" in text
+    assert "Memory report" in text
+    assert "Total entries: 2" in text
+    assert "Latest user request: README 수정해줘" in text
     assert "job-7" in text
 
 
@@ -853,7 +853,7 @@ def test_reports_command_handles_empty_memory(project_registry: ProjectRegistry,
 
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/reports"), ctx)
 
-    assert text == "기억된 대화 기록이 없습니다. (project=remote-coder)"
+    assert text == "No conversation memory is stored. (project=remote-coder)"
 
 
 def test_monitor_command_shows_usage(project_registry: ProjectRegistry):
@@ -1009,7 +1009,7 @@ def test_stop_command_lists_cancellable_jobs_as_buttons(project_registry: Projec
     )
 
     assert response is not None
-    assert response.text == "중단할 Job을 선택하세요."
+    assert response.text == "Choose a job to stop."
     assert response.inline_buttons == [[InlineButton("job1 (queued)", "/stop job1")]]
 
 
@@ -1079,11 +1079,11 @@ def test_fix_command_no_args_shows_mode_buttons(project_registry: ProjectRegistr
     registry = CommandRegistry([FixCommand()])
     response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/fix"), ctx)
     assert response is not None
-    assert response.text == "수정할 항목을 선택하세요."
+    assert response.text == "Choose what to fix."
     assert response.inline_buttons == [
         [
-            InlineButton("커밋 수정 (commit)", "/fix commit"),
-            InlineButton("소스 수정 (source)", "/fix source"),
+            InlineButton("Fix commit", "/fix commit"),
+            InlineButton("Fix source", "/fix source"),
         ]
     ]
 
@@ -1100,7 +1100,7 @@ def test_fix_command_lists_candidates_only_succeeded_with_commit_and_branch(
         TelegramMessage(chat_id=1, user_id=1, text="/fix commit"), ctx
     )
     assert response is not None
-    assert response.text == "수정 대상 Job을 선택하세요."
+    assert response.text == "Choose a job to fix."
     assert response.inline_buttons is not None
     assert response.inline_buttons[0][0].callback_data == "/fix commit job_succ"
     assert "remote-fix-1" in response.inline_buttons[0][0].label
@@ -1114,7 +1114,7 @@ def test_fix_command_no_candidates_message(project_registry: ProjectRegistry):
     text = registry.dispatch(
         TelegramMessage(chat_id=1, user_id=1, text="/fix source"), ctx
     )
-    assert text == "수정 가능한 Job이 없습니다."
+    assert text == "No job is available to fix."
 
 
 def test_fix_commit_preview_stores_pending_with_prepared_payload(
@@ -1129,7 +1129,7 @@ def test_fix_commit_preview_stores_pending_with_prepared_payload(
         TelegramMessage(chat_id=1, user_id=1, text="/fix commit job_succ"), ctx
     )
     assert text is not None
-    assert "커밋 메시지 재생성 미리보기" in text
+    assert "Commit message preview" in text
     assert "remote-fix-1" in text
     assert "committed by remote-coder: parentX" in text  # trailer uses parent_job_id from preview
     pending = ctx.confirmation_store.get(ctx.project_name, 1)
@@ -1177,7 +1177,7 @@ def test_fix_commit_confirmation_yes_executes_fix_job(project_registry: ProjectR
     registry = CommandRegistry([FixCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="y"), ctx)
     assert text is not None
-    assert "커밋 메시지를 수정했습니다." in text
+    assert "Commit message updated." in text
     assert "def67890" in text
     ctx.job_manager.execute_fix_job.assert_called_once()
     args, kwargs = ctx.job_manager.execute_fix_job.call_args
@@ -1206,7 +1206,7 @@ def test_fix_commit_confirmation_no_cancels_pending(project_registry: ProjectReg
     registry = CommandRegistry([FixCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="n"), ctx)
     assert text is not None
-    assert "취소" in text
+    assert "Cancelled" in text
     ctx.job_manager.execute_fix_job.assert_not_called()
 
 
@@ -1220,7 +1220,7 @@ def test_fix_source_first_step_stores_await_instruction(project_registry: Projec
         TelegramMessage(chat_id=1, user_id=1, text="/fix source job_succ"), ctx
     )
     assert text is not None
-    assert "수정 지시를 보내주세요" in text
+    assert "Send the fix instruction" in text
     pending = ctx.confirmation_store.get(ctx.project_name, 1)
     assert pending is not None
     assert pending.command_name == "/fix"
@@ -1248,4 +1248,4 @@ def test_fix_command_rejects_non_candidate_job(project_registry: ProjectRegistry
     text = registry.dispatch(
         TelegramMessage(chat_id=1, user_id=1, text="/fix commit job_failed"), ctx
     )
-    assert "사용할 수 없는" in text
+    assert "cannot be used as a fix target" in text

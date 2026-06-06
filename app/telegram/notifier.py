@@ -44,17 +44,17 @@ class _OutboundButton:
 
 def build_job_accepted_message(job: Job) -> tuple[str, list[list[_OutboundButton]]]:
     lines = [
-        "✅ 작업 접수 완료",
+        "✅ Job accepted",
         "",
         f"- Job ID: {job.id}",
-        f"- 프로젝트: {job.request.project}",
-        f"- 모델: {format_model_selection(job.request.model, job.request.model_id)}",
+        f"- Project: {job.request.project}",
+        f"- Model: {format_model_selection(job.request.model, job.request.model_id)}",
     ]
     if job.request.mode is JobMode.PLAN:
-        lines.append("- 모드: plan")
+        lines.append("- Mode: plan")
     elif job.request.mode is JobMode.ASK:
-        lines.append("- 모드: ask")
-    buttons = [[_OutboundButton("작업 중단", f"/stop {job.id}")]]
+        lines.append("- Mode: ask")
+    buttons = [[_OutboundButton("Stop job", f"/stop {job.id}")]]
     return "\n".join(lines), buttons
 
 
@@ -67,9 +67,9 @@ def build_job_result_message(job: Job) -> str:
 
     if job.status.value == "cancelled":
         return (
-            f"{mode_prefix}⛔ 작업 중단됨\n\n"
+            f"{mode_prefix}⛔ Job cancelled\n\n"
             f"- Job ID: {job.id}\n"
-            f"- 프로젝트: {job.request.project}"
+            f"- Project: {job.request.project}"
         )
 
     if job.status.value == "succeeded":
@@ -80,57 +80,57 @@ def build_job_result_message(job: Job) -> str:
                 job.request.model_id,
             )
             text = (
-                f"[{label}] 응답 완료\n\n"
+                f"[{label}] Completed\n\n"
                 f"- Job ID: {job.id}\n"
-                f"- 프로젝트: {job.request.project}\n"
-                f"- 사용 모델: {model_label}\n"
-                f"- 토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}"
+                f"- Project: {job.request.project}\n"
+                f"- Model used: {model_label}\n"
+                f"- Token usage: {format_token_usage(job.runner_token_usage) or 'unavailable'}"
             )
             if job.runner_stdout_summary:
-                text += f"\n\nAI 응답:\n{job.runner_stdout_summary}"
+                text += f"\n\nAI response:\n{job.runner_stdout_summary}"
             return text
 
-        changed = ", ".join(job.changed_files) if job.changed_files else "변경 없음"
-        branch_line = job.branch if job.branch else "(없음 — 변경 없어 브랜치 미생성)"
+        changed = ", ".join(job.changed_files) if job.changed_files else "No changes"
+        branch_line = job.branch if job.branch else "(none - no branch; no changes)"
         commit_line = job.commit_hash or "-"
         if job.changed_files and not job.request.commit:
-            commit_line = "(no commit 옵션 — 커밋·push 생략)"
+            commit_line = "(no commit - commit/push skipped)"
         elif job.changed_files and job.request.commit and not job.commit_hash:
-            commit_line = "(스테이징된 변경 없음 — push 생략)"
+            commit_line = "(nothing staged - push skipped)"
         model_label = job.runner_actual_model or format_model_selection(
             job.request.model,
             job.request.model_id,
         )
         text = (
-            f"✅ 작업 완료\n\n"
+            f"✅ Job completed\n\n"
             f"- Job ID: {job.id}\n"
-            f"- 프로젝트: {job.request.project}\n"
-            f"- 브랜치: {branch_line}\n"
-            f"- 커밋: {commit_line}\n"
-            f"- 변경 파일: {changed}\n"
-            f"- 사용 모델: {model_label}\n"
-            f"- 토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}"
+            f"- Project: {job.request.project}\n"
+            f"- Branch: {branch_line}\n"
+            f"- Commit: {commit_line}\n"
+            f"- Changed files: {changed}\n"
+            f"- Model used: {model_label}\n"
+            f"- Token usage: {format_token_usage(job.runner_token_usage) or 'unavailable'}"
         )
         if job.runner_stdout_summary:
-            text += f"\n\nAI 응답:\n{job.runner_stdout_summary}"
+            text += f"\n\nAI response:\n{job.runner_stdout_summary}"
         return text
 
     details = []
     if job.error_stage:
-        details.append(f"- 실패 단계: {job.error_stage}")
+        details.append(f"- Failure stage: {job.error_stage}")
     if job.log_path:
-        details.append(f"- 로그 경로: {job.log_path}")
+        details.append(f"- Log path: {job.log_path}")
     text = (
-        f"{mode_prefix}❌ 작업 실패\n\n"
+        f"{mode_prefix}❌ Job failed\n\n"
         f"- Job ID: {job.id}\n"
-        f"- 프로젝트: {job.request.project}\n"
-        f"- 오류: {job.error or 'unknown error'}"
+        f"- Project: {job.request.project}\n"
+        f"- Error: {job.error or 'unknown error'}"
     )
     if details:
         text += "\n" + "\n".join(details)
     failure_summary = job.runner_stderr_summary or job.runner_stdout_summary
     if failure_summary:
-        text += f"\n\n실패 출력 요약:\n{failure_summary}"
+        text += f"\n\nFailure output summary:\n{failure_summary}"
     return text
 
 
@@ -286,7 +286,7 @@ class TelegramNotifier:
         return self.send_long_text(job.request.chat_id, build_job_result_message(job))
 
     def send_long_text(self, chat_id: int, text: str) -> list[int]:
-        """Telegram 단일 메시지 한도(4096자)를 넘으면 여러 메시지로 나눠 전송합니다."""
+        """Split text across Telegram messages when it exceeds the 4096-character limit."""
         outgoing = translate_text(text, self._language)
         chunks = self._chunk_text(outgoing, self._TELEGRAM_TEXT_LIMIT)
         _outbound.info(

@@ -26,25 +26,25 @@ def _fix_job_button_label(job: Job) -> str:
 
 class FixCommand(ConfirmableCommand):
     name = "/fix"
-    menu_text = "수정 대상을 선택하세요."
-    description = "이전 Job의 커밋 또는 소스를 다시 수정합니다"
+    menu_text = "Choose what to fix."
+    description = "Re-do the commit or source of a previous job"
 
     _MAX_CANDIDATES = 8
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
         if ctx.job_manager is None:
-            return "수정 기능을 사용할 수 없습니다."
+            return "Fix feature is not available."
         if len(tokens) == 1:
-            return "수정할 항목을 선택하세요."
+            return "Choose what to fix."
         if len(tokens) == 2:
             kind = tokens[1].lower()
             if kind not in {"commit", "source"}:
                 return format_usage("/fix", "/fix commit", "/fix source")
             candidates = self._list_candidates(message, ctx)
             if not candidates:
-                return "수정 가능한 Job이 없습니다."
-            return "수정 대상 Job을 선택하세요."
+                return "No job is available to fix."
+            return "Choose a job to fix."
         if len(tokens) >= 3:
             kind = tokens[1].lower()
             if kind not in {"commit", "source"}:
@@ -52,12 +52,12 @@ class FixCommand(ConfirmableCommand):
             job_id = tokens[2].strip()
             project_name = effective_project_name_for_chat(ctx, message.chat_id)
             if not project_name:
-                return "등록된 프로젝트가 없습니다."
+                return "No project is registered."
             target_job = ctx.job_store.get(job_id)
             if target_job is None or not ctx.job_manager.is_fix_candidate(
                 target_job, project_name, message.chat_id
             ):
-                return f"수정 대상으로 사용할 수 없는 Job입니다: {job_id}"
+                return f"Job cannot be used as a fix target: {job_id}"
             if kind == "commit":
                 return self._start_commit_fix(message, ctx, target_job)
             return self._start_source_fix(message, ctx, target_job)
@@ -79,11 +79,11 @@ class FixCommand(ConfirmableCommand):
             ),
         )
         lines = [
-            f"커밋 메시지 재생성 미리보기 (Job {target_job.id}, 브랜치 {target_job.branch})",
+            f"Commit message preview (Job {target_job.id}, branch {target_job.branch})",
             "",
             prepared_message,
             "",
-            "적용하려면 y/Y, 취소하려면 n/N (또는 버튼).",
+            "Send y/Y to apply, or n/N to cancel (or use buttons).",
         ]
         return "\n".join(lines)
 
@@ -100,8 +100,8 @@ class FixCommand(ConfirmableCommand):
             ),
         )
         return (
-            f"Job {target_job.id} 에 대한 수정 지시를 보내주세요. "
-            "다음 메시지를 그대로 지시로 사용합니다."
+            f"Send the fix instruction for Job {target_job.id}. "
+            "The next message will be used as the instruction."
         )
 
     def confirm(
@@ -114,7 +114,7 @@ class FixCommand(ConfirmableCommand):
             return self._confirm_commit(message, ctx, pending)
         if pending.action == FIX_SOURCE_PENDING_ACTION:
             return self._confirm_source(message, ctx, pending)
-        return "확인 대기 작업을 처리할 수 없습니다."
+        return "Could not process the pending confirmation."
 
     def _confirm_commit(
         self,
@@ -123,15 +123,15 @@ class FixCommand(ConfirmableCommand):
         pending: PendingConfirmation,
     ) -> str:
         if message.text.strip() not in {"y", "Y"}:
-            return "커밋 메시지 수정을 취소했습니다."
+            return "Cancelled the commit message fix."
         if ctx.job_manager is None or not pending.target_job_id or not pending.prepared_payload:
-            return "확인 대기 작업을 처리할 수 없습니다."
+            return "Could not process the pending confirmation."
         target_job = ctx.job_store.get(pending.target_job_id)
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if target_job is None or not project_name or not ctx.job_manager.is_fix_candidate(
             target_job, project_name, message.chat_id
         ):
-            return "수정 대상 Job을 더 이상 사용할 수 없습니다."
+            return "Fix target job is no longer available."
         request = JobRequest(
             project=project_name,
             model=target_job.request.model,
@@ -149,12 +149,12 @@ class FixCommand(ConfirmableCommand):
         )
         if result_job.status.value == "succeeded":
             return (
-                f"커밋 메시지를 수정했습니다.\n"
+                f"Commit message updated.\n"
                 f"- Job: {result_job.id}\n"
-                f"- 브랜치: {result_job.branch}\n"
-                f"- 새 커밋: {result_job.commit_hash}"
+                f"- Branch: {result_job.branch}\n"
+                f"- New commit: {result_job.commit_hash}"
             )
-        return f"커밋 메시지 수정 실패: {result_job.error or 'unknown'}"
+        return f"Commit message fix failed: {result_job.error or 'unknown'}"
 
     def _confirm_source(
         self,
@@ -165,7 +165,7 @@ class FixCommand(ConfirmableCommand):
         # Source-mode confirmation is routed by the webhook (background task);
         # see app/telegram/webhook.py for the actual execution.
         _ = (message, ctx, pending)
-        return "수정 작업을 백그라운드로 시작했습니다."
+        return "Started the fix job in the background."
 
     def get_inline_buttons(
         self,
@@ -178,8 +178,8 @@ class FixCommand(ConfirmableCommand):
         if len(tokens) == 1:
             return [
                 [
-                    InlineButton("커밋 수정 (commit)", "/fix commit"),
-                    InlineButton("소스 수정 (source)", "/fix source"),
+                    InlineButton("Fix commit", "/fix commit"),
+                    InlineButton("Fix source", "/fix source"),
                 ],
             ]
         if len(tokens) == 2:

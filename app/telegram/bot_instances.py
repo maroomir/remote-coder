@@ -24,9 +24,9 @@ BotInstanceFactory = Callable[[ProjectRecord], BotInstance]
 
 
 class BotInstanceManager:
-    # NOTE: 공유 싱글턴(JobManager, GitWorktreeService, parser, command_registry, conversation_store 등)은
-    # factory 클로저에서 캡쳐해 BotInstance 의 command_context 로 주입한다. 본 매니저는 봇별로 분리되는
-    # notifier / auth_service / command_context 만 보관·라우팅한다.
+    # NOTE: Shared singletons are captured by the factory closure and injected
+    # into each BotInstance command_context. This manager only stores and routes
+    # per-bot notifier/auth/command-context bindings.
 
     def __init__(self, factory: BotInstanceFactory) -> None:
         self._factory = factory

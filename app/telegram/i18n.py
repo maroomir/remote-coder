@@ -57,19 +57,19 @@ def instruction_frame_labels(language: UiLanguage) -> InstructionFrameLabels:
     )
 
 
-_GIT_BRANCH_VALIDATION_KO_TO_EN = {
-    "브랜치 이름이 비었거나 너무 깁니다.": "Branch name is empty or too long.",
-    "허용되지 않는 브랜치 이름입니다.": "Branch name is not allowed.",
-    "브랜치 이름은 영문, 숫자, /, ., _, - 만 사용할 수 있습니다.": (
-        "Branch names may only use letters, numbers, /, ., _, and -."
+_GIT_BRANCH_VALIDATION_EN_TO_KO = {
+    "Branch name is empty or too long.": "브랜치 이름이 비었거나 너무 깁니다.",
+    "Branch name is not allowed.": "허용되지 않는 브랜치 이름입니다.",
+    "Branch names may only use letters, numbers, /, ., _, and -.": (
+        "브랜치 이름은 영문, 숫자, /, ., _, - 만 사용할 수 있습니다."
     ),
 }
 
 
 def localize_git_branch_validation_message(message: str, language: UiLanguage) -> str:
-    if language is UiLanguage.KOREAN:
+    if language is UiLanguage.ENGLISH:
         return message
-    return _GIT_BRANCH_VALIDATION_KO_TO_EN.get(message, message)
+    return _GIT_BRANCH_VALIDATION_EN_TO_KO.get(message, message)
 
 
 def command_parse_error_empty_instruction_plan_ask(language: UiLanguage) -> str:
@@ -194,7 +194,7 @@ HELP_ASK_TOPIC_EN = "\n".join(
 )
 
 
-_TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
+_TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("도움말", "Help"),
     ("작업 지시는 일반 메시지로 보내세요.", "Send work requests as regular messages."),
     ("옵션", "Options"),
@@ -472,49 +472,57 @@ _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = (
     ("관리 UI는 로컬호스트에서만 사용할 수 있습니다.", "Admin UI is only available on localhost."),
 )
 
+_TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = tuple(
+    (english, korean) for korean, english in _TEXT_REPLACEMENTS_KO_TO_EN_RAW
+    if english not in {".", "- Mode", "Model provider selected."}
+) + (
+    ("- Mode:", "- 모드:"),
+    ("Model provider selected.", "모델 제공자가 선택되었습니다."),
+)
+
 _TEXT_REPLACEMENTS = tuple(sorted(set(_TEXT_REPLACEMENTS_RAW), key=lambda p: len(p[0]), reverse=True))
 
 
 _REGEX_TRANSLATIONS = (
-    re.compile(r"원격\(([^)]+)\)에서 모든 정보를 가져왔습니다\."),
-    re.compile(r" 현재 브랜치\(([^)]+)\)를 업데이트했습니다\."),
-    re.compile(r" 추가로 (\d+)개의 로컬 브랜치를 fast-forward 업데이트했습니다\."),
+    re.compile(r"Fetched updates from remote ([^.]+)\."),
+    re.compile(r" Updated current branch \(([^)]+)\)\."),
+    re.compile(r" Fast-forward updated (\d+) additional local branch\(es\)\."),
     re.compile(
-        r"rebase 완료: 브랜치 `([^`]+)`를 `([^`]+)/([^`]+)` 기준으로 rebase 후 `([^`]+)`에 "
-        r"fast-forward 병합하고 `([^`]+)`에 push했습니다\.",
+        r"Rebase complete: rebased `([^`]+)` onto `([^`]+)/([^`]+)`, "
+        r"fast-forward merged into `([^`]+)`, pushed to `([^`]+)`\."
     ),
-    re.compile(r"git fetch (\S+) 실패:"),
-    re.compile(r"git pull (\S+) (\S+) 실패 \(충돌 가능성\):"),
-    re.compile(r"gh pr create 실패:"),
-    re.compile(r"\(([^\n()]+) 원격 브랜치 없음\)"),
-    re.compile(r"\[([^\]\n]+) 원격\]"),
-    re.compile(r"(\d+)분 (\d+)초"),
-    re.compile(r"(\d+)초"),
-    re.compile(r"변경 파일 \((\d+)개\)"),
-    re.compile(r"- \.\.\. 외 (\d+)개"),
-    re.compile(r"\n\.\.\.\(외 (\d+)개 생략\)"),
+    re.compile(r"git fetch (\S+) failed:"),
+    re.compile(r"git pull (\S+) (\S+) failed \(possible conflict\):"),
+    re.compile(r"gh pr create failed:"),
+    re.compile(r"\(no remote branches on ([^\n()]+)\)"),
+    re.compile(r"\[([^\]\n]+) remote\]"),
+    re.compile(r"(\d+)m (\d+)s"),
+    re.compile(r"(\d+)s"),
+    re.compile(r"Changed files \((\d+) files\)"),
+    re.compile(r"- \.\.\. and (\d+) more"),
+    re.compile(r"\n\.\.\.\(omitted (\d+) entries\)"),
 )
 
 
-def _regex_patch_english(text: str) -> str:
+def _regex_patch_korean(text: str) -> str:
     replacements = (
-        lambda m: f"Fetched updates from remote {m.group(1)}.",
-        lambda m: f" Updated current branch ({m.group(1)}).",
-        lambda m: f" Fast-forward updated {m.group(1)} additional local branch(es).",
+        lambda m: f"원격({m.group(1)})에서 모든 정보를 가져왔습니다.",
+        lambda m: f" 현재 브랜치({m.group(1)})를 업데이트했습니다.",
+        lambda m: f" 추가로 {m.group(1)}개의 로컬 브랜치를 fast-forward 업데이트했습니다.",
         lambda m: (
-            f"Rebase complete: rebased `{m.group(1)}` onto `{m.group(2)}/{m.group(3)}`, "
-            f"fast-forward merged into `{m.group(4)}`, pushed to `{m.group(5)}`."
+            f"rebase 완료: 브랜치 `{m.group(1)}`를 `{m.group(2)}/{m.group(3)}` 기준으로 rebase 후 "
+            f"`{m.group(4)}`에 fast-forward 병합하고 `{m.group(5)}`에 push했습니다."
         ),
-        lambda m: f"git fetch {m.group(1)} failed:",
-        lambda m: f"git pull {m.group(1)} {m.group(2)} failed (possible conflict):",
-        lambda m: "gh pr create failed:",
-        lambda m: f"(no remote branches on {m.group(1)})",
+        lambda m: f"git fetch {m.group(1)} 실패:",
+        lambda m: f"git pull {m.group(1)} {m.group(2)} 실패 (충돌 가능성):",
+        lambda m: "gh pr create 실패:",
+        lambda m: f"({m.group(1)} 원격 브랜치 없음)",
         lambda m: f"[{m.group(1)} remote]",
-        lambda m: f"{m.group(1)}m {m.group(2)}s",
-        lambda m: f"{m.group(1)}s",
-        lambda m: f"Changed files ({m.group(1)} files)",
-        lambda m: f"- ... and {m.group(1)} more",
-        lambda m: f"\n...(omitted {m.group(1)} entries)",
+        lambda m: f"{m.group(1)}분 {m.group(2)}초",
+        lambda m: f"{m.group(1)}초",
+        lambda m: f"변경 파일 ({m.group(1)}개)",
+        lambda m: f"- ... 외 {m.group(1)}개",
+        lambda m: f"\n...(외 {m.group(1)}개 생략)",
     )
     result = text
     for rx, repl in zip(_REGEX_TRANSLATIONS, replacements, strict=True):
@@ -523,45 +531,45 @@ def _regex_patch_english(text: str) -> str:
 
 
 _BUTTON_LABELS = {
-    "도움말": "Help",
-    "모드별 안내": "Modes",
-    "모니터링": "Monitor",
-    "정리": "Clean",
-    "관리": "Manage",
-    "리포트": "Reports",
-    "브랜치 확인": "Branch",
-    "리베이스": "Rebase",
-    "PR 올리기": "Open PR",
-    "중단": "Stop",
-    "상태": "Status",
-    "모델": "Model",
-    "초기화": "Reset",
-    "뒤로": "Back",
-    "← 뒤로": "← Back",
-    "네": "Yes",
-    "아니오": "No",
-    "작업 중단": "Stop job",
-    "AGENTS 모드": "AGENTS mode",
-    "PLAN 모드": "PLAN mode",
-    "ASK 모드": "ASK mode",
+    "Help": "도움말",
+    "Modes": "모드별 안내",
+    "Monitor": "모니터링",
+    "Clean": "정리",
+    "Manage": "관리",
+    "Reports": "리포트",
+    "Branch": "브랜치 확인",
+    "Rebase": "리베이스",
+    "Open PR": "PR 올리기",
+    "Stop": "중단",
+    "Status": "상태",
+    "Model": "모델",
+    "Reset": "초기화",
+    "Back": "뒤로",
+    "← Back": "← 뒤로",
+    "Yes": "네",
+    "No": "아니오",
+    "Stop job": "작업 중단",
+    "AGENTS mode": "AGENTS 모드",
+    "PLAN mode": "PLAN 모드",
+    "ASK mode": "ASK 모드",
 }
 
 
 def translate_text(text: str, language: UiLanguage) -> str:
-    if language is UiLanguage.KOREAN:
+    if language is UiLanguage.ENGLISH:
         return text
-    translated = _regex_patch_english(text)
+    translated = _regex_patch_korean(text)
     for source, target in _TEXT_REPLACEMENTS:
         translated = translated.replace(source, target)
-    translated = translated.replace("DB 존재: 예", "DB exists: yes")
-    translated = translated.replace("DB 존재: 아니오", "DB exists: no")
-    translated = translated.replace("잔여 ", "remaining ")
-    translated = translated.replace("(사용 ", "(used ")
-    translated = translated.replace(", 리셋 ", ", reset ")
+    translated = translated.replace("DB exists: yes", "DB 존재: 예")
+    translated = translated.replace("DB exists: no", "DB 존재: 아니오")
+    translated = translated.replace("remaining ", "잔여 ")
+    translated = translated.replace("(used ", "(사용 ")
+    translated = translated.replace(", reset ", ", 리셋 ")
     return translated
 
 
 def translate_button_label(label: str, language: UiLanguage) -> str:
-    if language is UiLanguage.KOREAN:
+    if language is UiLanguage.ENGLISH:
         return label
-    return _BUTTON_LABELS.get(label, label.replace(" 모드", " mode"))
+    return _BUTTON_LABELS.get(label, label.replace(" mode", " 모드"))

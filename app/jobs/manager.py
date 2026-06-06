@@ -557,7 +557,7 @@ class JobManager:
             if parent_job is None or not self.is_fix_candidate(
                 parent_job, job.request.project, job.request.chat_id
             ):
-                raise RuntimeError("수정 대상 Job을 찾을 수 없거나 더 이상 수정할 수 없는 상태입니다.")
+                raise RuntimeError("Fix target job was not found or can no longer be fixed.")
             assert parent_job.branch is not None
             assert parent_job.commit_hash is not None
 

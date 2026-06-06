@@ -510,7 +510,7 @@ def test_rebase_branch_onto_main_removes_linked_worktree_before_add(mock_run, _m
     ops = tmp_path / "rebase_ops"
     summary = service.rebase_branch_onto_main_and_merge(project_path, branch, "origin", ops)
 
-    assert "rebase 완료" in summary
+    assert "Rebase complete" in summary
     idx_list = next(i for i, c in enumerate(commands) if c[1:4] == ["worktree", "list", "--porcelain"])
     idx_remove_linked = next(
         i for i, c in enumerate(commands) if c[1:3] == ["worktree", "remove"] and c[-1] == str(linked.resolve())

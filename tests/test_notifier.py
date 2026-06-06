@@ -403,7 +403,7 @@ def test_notifier_send_with_buttons_sends_inline_keyboard():
     )
     notifier = TelegramNotifier("token")
     buttons = [[InlineButton("claude", "/model claude"), InlineButton("codex", "/model codex")]]
-    message_id = notifier.send_with_buttons(42, "도움말", buttons)
+    message_id = notifier.send_with_buttons(42, "Help", buttons)
     assert route.called
     assert message_id == 789
     payload = json.loads(route.calls[0].request.content)

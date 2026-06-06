@@ -16,13 +16,13 @@ def instruction_for_runner_mode(instruction: str, mode: JobMode) -> str:
         return (
             "You are in PLAN mode. Read the codebase and produce a concrete change plan. "
             "Do not modify files.\n\n"
-            f"사용자 요청:\n{instruction}"
+            f"User request:\n{instruction}"
         )
     if mode == JobMode.ASK:
         return (
             "You are in ASK mode. Analyze the codebase and answer the user's question. "
             "Do not modify files.\n\n"
-            f"사용자 질문:\n{instruction}"
+            f"User question:\n{instruction}"
         )
     return instruction
 
@@ -111,7 +111,7 @@ class BaseCliRunner(AiRunner):
             raise
         finished_at = datetime.now(UTC)
         if cancelled.is_set():
-            raise RuntimeError("작업이 취소되었습니다.")
+            raise RuntimeError("The job was cancelled.")
         dur_ms = int((finished_at - started_at).total_seconds() * 1000)
         self._log.info(
             "done exit=%d dur_ms=%d stdout_len=%d stderr_len=%d",

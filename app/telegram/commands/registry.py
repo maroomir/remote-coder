@@ -29,7 +29,6 @@ class CommandRegistry:
     def dispatch(self, message: TelegramMessage, ctx: CommandContext) -> str | None:
         tokens = message.text.strip().split()
         head = tokens[0] if tokens else ""
-        # `/init`은 확인 대기보다 우선합니다. 대기 중이던 확인은 취소·삭제한 뒤 초기화합니다.
         scope_project = ctx.project_name
 
         if head == "/init":
@@ -47,13 +46,13 @@ class CommandRegistry:
             confirmed = ctx.confirmation_store.pop(scope_project, message.chat_id)
             if isinstance(command, ConfirmableCommand) and confirmed is not None:
                 return command.confirm(message, ctx, confirmed)
-            return "확인 대기 작업을 처리할 수 없습니다."
+            return "Could not process the pending confirmation."
 
         if not head.startswith("/"):
             return None
         command = self._commands.get(head)
         if not command:
-            return "알 수 없는 명령어입니다. /help 를 확인하세요."
+            return "Unknown command. See /help."
         return command.execute(message, ctx)
 
     def dispatch_rich(self, message: TelegramMessage, ctx: CommandContext) -> CommandResponse | None:
@@ -79,11 +78,11 @@ class CommandRegistry:
         return base + [
             {
                 "command": "plan",
-                "description": translate_text("계획 모드 메시지 (예: /plan 로그인 흐름 검토)", language),
+                "description": translate_text("plan mode message (example: /plan review login flow)", language),
             },
             {
                 "command": "ask",
-                "description": translate_text("질문 모드 메시지 (예: /ask JobManager 역할 설명)", language),
+                "description": translate_text("ask mode message (example: /ask explain the JobManager role)", language),
             },
         ]
 

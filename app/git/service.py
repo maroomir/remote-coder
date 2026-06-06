@@ -46,7 +46,7 @@ class GitWorktreeService:
             if result.returncode == 0:
                 return candidate
         raise RuntimeError(
-            "통합 브랜치(main 또는 master)를 찾을 수 없습니다. 저장소에 main 또는 master가 있어야 합니다."
+            "No integration branch (main or master). The repository needs main or master."
         )
 
     def _add_worktree(
@@ -141,22 +141,22 @@ class GitWorktreeService:
     @staticmethod
     def validate_branch_token(name: str) -> str | None:
         if not name or len(name) > 255:
-            return "브랜치 이름이 비었거나 너무 깁니다."
+            return "Branch name is empty or too long."
         if ".." in name or name.startswith("-"):
-            return "허용되지 않는 브랜치 이름입니다."
+            return "Branch name is not allowed."
         if not _SAFE_BRANCH_TOKEN.match(name):
-            return "브랜치 이름은 영문, 숫자, /, ., _, - 만 사용할 수 있습니다."
+            return "Branch names may only use letters, numbers, /, ., _, and -."
         return None
 
     def get_current_branch(self, project_path: Path) -> str:
-        """checkout 중인 로컬 브랜치 이름. detached면 안내 문구."""
+        """Return the checked-out local branch name, or a detached HEAD label."""
         result = self._run_git(project_path, ["branch", "--show-current"])
         if result.returncode != 0:
             raise RuntimeError(f"failed to read current branch: {result.stderr.strip()}")
         name = result.stdout.strip()
         if name:
             return name
-        return "(detached HEAD — 브랜치 이름 없음)"
+        return "(detached HEAD - no branch name)"
 
     def local_branch_exists(self, project_path: Path, branch: str) -> bool:
         result = self._run_git(project_path, ["show-ref", "--verify", f"refs/heads/{branch}"])
@@ -165,7 +165,7 @@ class GitWorktreeService:
 
     def switch_branch(self, project_path: Path, branch: str) -> None:
         if not self.local_branch_exists(project_path, branch):
-            raise RuntimeError(f"로컬 브랜치가 없습니다: {branch}")
+            raise RuntimeError(f"No local branch: {branch}")
         result = self._run_git(project_path, ["switch", branch])
         if result.returncode != 0:
             raise RuntimeError(f"git switch failed: {result.stderr.strip()}")
@@ -317,7 +317,7 @@ class GitWorktreeService:
         if result.returncode != 0:
             raise RuntimeError(f"failed to list local branches: {result.stderr.strip()}")
         text = result.stdout.strip()
-        return text if text else "(로컬 브랜치 없음)"
+        return text if text else "(no local branches)"
 
     def list_local_branches(self, project_path: Path) -> list[str]:
         result = self._run_git(project_path, ["branch", "--sort=refname"])
@@ -345,7 +345,7 @@ class GitWorktreeService:
                 if rest == "HEAD":
                     continue
                 lines.append(line)
-        return "\n".join(lines) if lines else f"({remote} 원격 브랜치 없음)"
+        return "\n".join(lines) if lines else f"(no remote branches on {remote})"
 
     def count_local_branches(self, project_path: Path) -> int:
         result = self._run_git(project_path, ["branch", "--format=%(refname:short)"])
@@ -378,7 +378,6 @@ class GitWorktreeService:
 
     @staticmethod
     def _branch_name_from_git_branch_output_line(line: str) -> str:
-        # `*` 현재 브랜치, `+` 다른 worktree checkout 마커를 제거합니다.
         name = line.strip()
         while name and name[0] in "+*":
             name = name[1:].lstrip()
@@ -419,7 +418,6 @@ class GitWorktreeService:
         return entries
 
     def remove_linked_worktrees_for_branches(self, project_path: Path, branch_names: list[str]) -> None:
-        # 삭제 대상 브랜치가 다른 linked worktree에 체크아웃되어 있으면 `branch -D`가 거부되므로 선제거합니다.
         if not branch_names:
             return
         want = set(branch_names)
@@ -448,7 +446,6 @@ class GitWorktreeService:
         worktree_base_dir: Path,
         branch_prefix: str = "remote-",
     ) -> int:
-        # 프로젝트 루트 worktree는 보존하고, branch_prefix 또는 managed/_rebase_ops 경로 하위만 정리합니다.
         root = project_path.resolve()
         managed_base = worktree_base_dir.resolve()
         rebase_ops_base = (worktree_base_dir / "_rebase_ops").resolve()
@@ -479,8 +476,6 @@ class GitWorktreeService:
         return removed
 
     def list_remote_branches_matching(self, project_path: Path, remote: str, prefix: str) -> list[str]:
-        # `git branch -r`은 로컬 캐시 의존이라 누락될 수 있어 `ls-remote --heads`로 직접 조회합니다.
-        # ref 패턴(`refs/heads/remote-*`) 인자는 원격/Git 조합에 따라 빈 결과만 돌려주는 경우가 있어 헤드 전체를 받은 뒤 접두사로 필터링합니다.
         result = self._run_git(project_path, ["ls-remote", "--heads", remote])
         if result.returncode != 0:
             raise RuntimeError(f"failed to list remote branches: {result.stderr.strip()}")
@@ -519,15 +514,14 @@ class GitWorktreeService:
 
         fetch_res = self._run_git(project_path, ["fetch", remote, "--prune"])
         if fetch_res.returncode != 0:
-            raise RuntimeError(f"git fetch {remote} 실패: {fetch_res.stderr.strip()}")
+            raise RuntimeError(f"git fetch {remote} failed: {fetch_res.stderr.strip()}")
 
         current = self.get_current_branch(project_path)
         if not current.startswith("("):
             pull_res = self._run_git(project_path, ["pull", remote, current])
             if pull_res.returncode != 0:
-                # 충돌 가능성이 있어 merge abort 후 사용자에게 원인을 다시 던집니다.
                 self._run_git(project_path, ["merge", "--abort"])
-                raise RuntimeError(f"git pull {remote} {current} 실패 (충돌 가능성): {pull_res.stderr.strip()}")
+                raise RuntimeError(f"git pull {remote} {current} failed (possible conflict): {pull_res.stderr.strip()}")
         else:
             _gitlog.info("pull_repository: detached HEAD, skipping pull for current branch")
 
@@ -547,11 +541,11 @@ class GitWorktreeService:
             if ff_res.returncode == 0:
                 updated_count += 1
 
-        summary = f"원격({remote})에서 모든 정보를 가져왔습니다."
+        summary = f"Fetched updates from remote {remote}."
         if not current.startswith("("):
-            summary += f" 현재 브랜치({current})를 업데이트했습니다."
+            summary += f" Updated current branch ({current})."
         if updated_count > 0:
-            summary += f" 추가로 {updated_count}개의 로컬 브랜치를 fast-forward 업데이트했습니다."
+            summary += f" Fast-forward updated {updated_count} additional local branch(es)."
 
         _gitlog.info("pull_repository done: %s", summary)
         return summary
@@ -572,7 +566,6 @@ class GitWorktreeService:
             project_path, ["fetch", remote, branch], f"git fetch {remote} {branch} failed"
         )
 
-        # 같은 브랜치가 Job worktree 등에 checkout되어 있으면 `worktree add -B`가 실패합니다.
         self.remove_linked_worktrees_for_branches(project_path, [branch])
 
         worktree_ops_base.mkdir(parents=True, exist_ok=True)
@@ -629,8 +622,8 @@ class GitWorktreeService:
             )
 
         summary = (
-            f"rebase 완료: 브랜치 `{branch}`를 `{remote}/{main_branch}` 기준으로 rebase 후 "
-            f"`{main_branch}`에 fast-forward 병합하고 `{remote}`에 push했습니다."
+            f"Rebase complete: rebased `{branch}` onto `{remote}/{main_branch}`, "
+            f"fast-forward merged into `{main_branch}`, pushed to `{remote}`."
         )
         _gitlog.info("rebase_branch_onto_main_and_merge done branch=%s", branch)
         return summary
@@ -673,4 +666,4 @@ class GitWorktreeService:
                 existing_url = view.stdout.strip()
                 _gitlog.info("create_github_pr already exists url=%s", existing_url)
                 return existing_url
-        raise RuntimeError(f"gh pr create 실패: {stderr or stdout}")
+        raise RuntimeError(f"gh pr create failed: {stderr or stdout}")

@@ -19,7 +19,7 @@ from app.telegram.confirmations import PendingConfirmation
 
 class ClearCommand(ConfirmableCommand):
     name = "/clear"
-    description = "브랜치, worktree, 대화 기억을 확인 후 정리합니다"
+    description = "Clean branches, worktrees, or conversation memory after confirmation"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -166,29 +166,29 @@ class ClearCommand(ConfirmableCommand):
 
 class StopCommand(TelegramCommand):
     name = "/stop"
-    description = "진행 중인 Job을 선택해 중단합니다"
+    description = "Choose and stop a running job"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split(maxsplit=1)
         if len(tokens) < 2:
             jobs = self._list_cancellable_jobs(message, ctx)
             if not jobs:
-                return "중단할 수 있는 진행 중 Job이 없습니다."
-            return "중단할 Job을 선택하세요."
+                return "No running job can be stopped."
+            return "Choose a job to stop."
         job_id = tokens[1].strip()
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         existing = ctx.job_store.get(job_id)
         if existing is not None and project_name and existing.request.project != project_name:
-            return f"Job을 찾을 수 없습니다: {job_id}"
+            return f"Job not found: {job_id}"
         if ctx.job_manager is None:
-            return "작업 중단 기능을 사용할 수 없습니다."
+            return "Job cancellation is not available."
         success = ctx.job_manager.cancel(job_id)
         if success:
-            return f"작업 중단 요청 완료: {job_id}"
+            return f"Stop requested: {job_id}"
         job = ctx.job_store.get(job_id)
         if not job:
-            return f"Job을 찾을 수 없습니다: {job_id}"
-        return f"작업을 중단할 수 없습니다: {job_id} (현재 상태: {job.status.value})"
+            return f"Job not found: {job_id}"
+        return f"Cannot stop job: {job_id} (current status: {job.status.value})"
 
     def get_inline_buttons(
         self,

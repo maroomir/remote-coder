@@ -700,7 +700,7 @@ def test_webhook_init_cancels_empty_slash_plan_wait(project_registry):
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert command_context.confirmation_store.get("remote-coder", 123) is None
-    assert "초기화했습니다" in notifier.sent[-1][1]
+    assert "were reset" in notifier.sent[-1][1]
 
 
 def test_webhook_ask_mode_requires_confirmation_then_accepts_y(project_registry):
@@ -1903,7 +1903,7 @@ def test_webhook_callback_query_shows_detail_model_buttons(project_registry):
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert notifier.sent_with_buttons
-    assert "세부 Model을 선택하세요" in notifier.sent_with_buttons[0][1]
+    assert "Choose a specific model" in notifier.sent_with_buttons[0][1]
     buttons = notifier.sent_with_buttons[0][2]
     assert buttons[0][0].callback_data == "/model codex gpt-5.3-codex"
     assert "cq_001" in notifier.answered_callbacks
@@ -1964,7 +1964,7 @@ def test_webhook_callback_query_confirms_detail_model(project_registry):
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert notifier.sent == [(123, "모델 설정이 변경되었습니다.\n\n- 기본 모델: codex / gpt-5.3-codex")]
+    assert notifier.sent == [(123, "Model setting updated.\n\n- Default model: codex / gpt-5.3-codex")]
     assert notifier.sent_with_buttons == []
     selection = model_preferences.get_explicit_selection("remote-coder", 123)
     assert selection is not None
@@ -2094,7 +2094,7 @@ def test_webhook_callback_query_sends_help_submenu_buttons(project_registry):
     assert response.json()["status"] == "ok"
     assert notifier.sent_with_buttons
     assert notifier.sent_with_buttons[0][0] == 123
-    assert notifier.sent_with_buttons[0][1] == "모델을 선택하세요."
+    assert notifier.sent_with_buttons[0][1] == "Choose a model."
     buttons = notifier.sent_with_buttons[0][2]
     assert buttons[0][0].callback_data == "/model claude"
     assert buttons[1][0].callback_data == "/help"

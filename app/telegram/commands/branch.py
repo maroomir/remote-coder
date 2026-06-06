@@ -17,19 +17,19 @@ from app.telegram.commands.base import (
 
 class BranchCommand(TelegramCommand):
     name = "/branch"
-    description = "현재 브랜치를 확인하거나 로컬 브랜치로 전환합니다"
+    description = "Show the current branch or switch to a local branch"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
         if len(tokens) > 2:
-            return format_usage("/branch", "/branch <브랜치이름>")
+            return format_usage("/branch", "/branch <branch>")
 
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
-            return "등록된 프로젝트가 없습니다. /projects 로 등록하세요."
+            return "No project is registered. Add one in /projects."
         entry = ctx.project_registry.get(project_name)
         if not entry or not entry.enabled:
-            return f"프로젝트를 찾을 수 없거나 비활성화되어 있습니다: {project_name}"
+            return f"Project not found or disabled: {project_name}"
 
         root = entry.root_path
 
@@ -37,8 +37,8 @@ class BranchCommand(TelegramCommand):
             try:
                 current = ctx.git_service.get_current_branch(root)
             except RuntimeError as exc:
-                return f"/branch 실패: {exc}"
-            return f"프로젝트: {project_name}\n현재 브랜치: {current}"
+                return f"/branch failed: {exc}"
+            return f"Project: {project_name}\nCurrent branch: {current}"
 
         branch = tokens[1]
         from app.git.service import GitWorktreeService
@@ -48,13 +48,13 @@ class BranchCommand(TelegramCommand):
             return err
 
         if not ctx.git_service.local_branch_exists(root, branch):
-            return f"브랜치가 없습니다: `{branch}` (로컬에만 전환 가능합니다)"
+            return f"Branch not found: `{branch}` (only local branches can be selected)"
 
         try:
             ctx.git_service.switch_branch(root, branch)
         except RuntimeError as exc:
-            return f"/branch 실패: {exc}"
-        return f"프로젝트: {project_name}\n`{branch}` 로 전환했습니다 (git switch)."
+            return f"/branch failed: {exc}"
+        return f"Project: {project_name}\n`{branch}` selected (git switch)."
 
     def get_inline_buttons(
         self,
@@ -83,7 +83,7 @@ class BranchCommand(TelegramCommand):
 
 class RebaseCommand(TelegramCommand):
     name = "/rebase"
-    description = "브랜치를 main 기준으로 rebase하고 push합니다"
+    description = "Rebase a branch onto main and push it"
     _inflight_guard = Lock()
     _inflight_keys: set[tuple[str, str, str]] = set()
 
@@ -101,26 +101,26 @@ class RebaseCommand(TelegramCommand):
         else:
             branches = self._list_rebase_candidates(message, ctx)
             if not branches:
-                return "리베이스할 브랜치가 없습니다. /rebase <branch> 로 직접 지정할 수 있습니다."
-            return "리베이스할 브랜치를 선택하세요."
+                return "No branch is available to rebase. Specify one with /rebase <branch>."
+            return "Choose a branch to rebase."
 
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
-            return "등록된 프로젝트가 없습니다. /projects 로 등록하세요."
+            return "No project is registered. Add one in /projects."
         entry = ctx.project_registry.get(project_name)
         if not entry or not entry.enabled:
-            return f"프로젝트를 찾을 수 없거나 비활성화되어 있습니다: {project_name}"
+            return f"Project not found or disabled: {project_name}"
 
         inflight_key = (str(entry.root_path.resolve()), ctx.git_remote_name, branch)
         if not self._mark_inflight(inflight_key):
-            return f"`{branch}` rebase/병합이 이미 진행 중입니다. 완료 메시지를 기다려 주세요."
+            return f"`{branch}` rebase/merge is already running. Wait for the completion message."
 
         ops_base = entry.worktree_base_dir / "_rebase_ops"
         try:
             if not self._remote_branch_exists(entry.root_path, branch, ctx):
                 return (
-                    f"`{branch}` 원격 브랜치를 `{ctx.git_remote_name}`에서 찾을 수 없습니다. "
-                    "이미 rebase/병합 후 삭제되었거나 아직 push되지 않은 브랜치일 수 있습니다."
+                    f"`{branch}` remote branch was not found on `{ctx.git_remote_name}`. "
+                    "It may have already been rebased/merged and deleted, or not pushed yet."
                 )
             summary = ctx.git_service.rebase_branch_onto_main_and_merge(
                 entry.root_path,
@@ -131,10 +131,10 @@ class RebaseCommand(TelegramCommand):
             if self._delete_rebased_branch_enabled(ctx):
                 ctx.git_service.delete_remote_branches(entry.root_path, ctx.git_remote_name, [branch])
                 ctx.git_service.delete_local_branches(entry.root_path, [branch])
-                summary += f"\n브랜치 `{branch}`를 로컬과 `{ctx.git_remote_name}`에서 삭제했습니다."
+                summary += f"\nDeleted branch `{branch}` locally and from `{ctx.git_remote_name}`."
             return summary
         except RuntimeError as exc:
-            return f"/rebase 실패: {exc}"
+            return f"/rebase failed: {exc}"
         finally:
             self._clear_inflight(inflight_key)
 
@@ -223,17 +223,17 @@ def _ascii_pr_text(text: str, fallback: str) -> str:
 
 class PullCommand(TelegramCommand):
     name = "/pull"
-    menu_text = "원격 저장소의 모든 브랜치 pull"
-    description = "원격 브랜치 정보를 가져오고 현재 브랜치를 pull합니다"
+    menu_text = "Pull all remote branch updates"
+    description = "Fetch remote branches and pull the current branch"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
-            return "등록된 프로젝트가 없습니다. /projects 로 등록하세요."
+            return "No project is registered. Add one in /projects."
 
         entry = ctx.project_registry.get(project_name)
         if not entry or not entry.enabled:
-            return f"프로젝트를 찾을 수 없거나 비활성화되어 있습니다: {project_name}"
+            return f"Project not found or disabled: {project_name}"
 
         try:
             summary = ctx.git_service.pull_repository(entry.root_path, ctx.git_remote_name)
@@ -241,15 +241,13 @@ class PullCommand(TelegramCommand):
             return f"✅ {project_name}: {summary}"
         except RuntimeError as exc:
             _cmd_evt.error("pull failed project=%s err=%s", project_name, str(exc), chat_id=message.chat_id)
-            return f"❌ {project_name} pull 실패: {exc}"
+            return f"❌ {project_name} pull failed: {exc}"
 
 
 class PrCommand(TelegramCommand):
-    """적용 프로젝트 저장소의 브랜치를 GitHub Pull Request로 올립니다."""
-
     name = "/pr"
-    menu_text = "PR을 올릴 브랜치를 선택하세요."
-    description = "선택한 브랜치로 GitHub Pull Request를 만듭니다"
+    menu_text = "Choose a branch for the PR."
+    description = "Create a GitHub Pull Request for a selected branch"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -260,8 +258,8 @@ class PrCommand(TelegramCommand):
         else:
             branches = self._list_pr_candidates(message, ctx)
             if not branches:
-                return "PR을 올릴 브랜치가 없습니다. /pr <branch> 로 직접 지정할 수 있습니다."
-            return "PR을 올릴 브랜치를 선택하세요."
+                return "No branch is available for PR creation. Specify one with /pr <branch>."
+            return "Choose a branch for the PR."
         from app.git.service import GitWorktreeService
 
         err = GitWorktreeService.validate_branch_token(branch)
@@ -270,15 +268,15 @@ class PrCommand(TelegramCommand):
 
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
-            return "등록된 프로젝트가 없습니다. /projects 로 등록하세요."
+            return "No project is registered. Add one in /projects."
         entry = ctx.project_registry.get(project_name)
         if not entry or not entry.enabled:
-            return f"프로젝트를 찾을 수 없거나 비활성화되어 있습니다: {project_name}"
+            return f"Project not found or disabled: {project_name}"
 
         try:
             base_branch = ctx.git_service.resolve_integrate_branch(entry.root_path)
         except RuntimeError as exc:
-            return f"/pr 실패: {exc}"
+            return f"/pr failed: {exc}"
 
         title, body = self._build_pr_content(branch, project_name, message.chat_id, ctx)
 
@@ -291,9 +289,9 @@ class PrCommand(TelegramCommand):
                 body,
             )
         except RuntimeError as exc:
-            return f"/pr 실패: {exc}"
+            return f"/pr failed: {exc}"
 
-        return f"PR이 생성되었습니다:\n{pr_url}"
+        return f"PR created:\n{pr_url}"
 
     def get_inline_buttons(
         self,
