@@ -33,7 +33,7 @@ from app.telegram.commands import (
 from app.telegram.bot_instances import BotInstance, BotInstanceManager
 from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
-from app.telegram.notifier import TelegramNotifier
+from app.telegram.notifier import Notifier, TelegramNotifier
 from app.telegram.parser import CommandParser
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.webhook import create_webhook_router
@@ -105,7 +105,7 @@ for project in project_registry.list_projects():
         bot_instance_manager.register(project)
 
 
-def _notifier_for_project(project_name: str) -> TelegramNotifier:
+def _notifier_for_project(project_name: str) -> Notifier:
     instance = bot_instance_manager.get_by_name(project_name)
     if instance is None:
         raise RuntimeError(

@@ -21,7 +21,7 @@ from app.jobs.schemas import FixKind, Job, JobMode, JobRequest, JobStatus
 from app.jobs.store import JobStore
 from app.monitoring.events import EventLogger
 from app.projects.registry import ProjectRegistry
-from app.telegram.notifier import TelegramNotifier
+from app.telegram.notifier import Notifier
 
 _joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
 
@@ -49,7 +49,7 @@ class JobManager:
         git_service: GitWorktreeService,
         runner_factory: AiRunnerFactory,
         branch_strategy: BranchNamingStrategy,
-        notifier_resolver: Callable[[str], TelegramNotifier],
+        notifier_resolver: Callable[[str], Notifier],
         project_registry: ProjectRegistry,
         advanced_settings_store: FileAdvancedSettingsStore | None = None,
         ai_commit_body_generator: AiCommitBodyGenerator | None = None,
@@ -66,7 +66,7 @@ class JobManager:
         self._cancel_events: dict[str, threading.Event] = {}
         self._cancelled_job_ids: set[str] = set()
 
-    def _notifier_for(self, project: str) -> TelegramNotifier:
+    def _notifier_for(self, project: str) -> Notifier:
         return self._notifier_resolver(project)
 
     @staticmethod

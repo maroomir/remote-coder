@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
+from typing import Protocol
 
 import httpx
 
@@ -13,8 +15,128 @@ from app.telegram.i18n import language_from_settings_store, translate_button_lab
 _outbound = EventLogger("app.telegram.outbound", "telegram.outbound")
 
 
+class Notifier(Protocol):
+    def send_text(self, chat_id: int, text: str, *, skip_body_i18n: bool = False) -> int | None: ...
+
+    def send_with_buttons(
+        self,
+        chat_id: int,
+        text: str,
+        inline_buttons: list,
+        *,
+        skip_body_i18n: bool = False,
+    ) -> int | None: ...
+
+    def answer_callback_query(self, callback_query_id: str) -> None: ...
+
+    def send_job_accepted(self, job: Job) -> int | None: ...
+
+    def send_job_result(self, job: Job) -> list[int]: ...
+
+    def send_long_text(self, chat_id: int, text: str) -> list[int]: ...
+
+
+@dataclass
+class _OutboundButton:
+    label: str
+    callback_data: str
+
+
+def build_job_accepted_message(job: Job) -> tuple[str, list[list[_OutboundButton]]]:
+    lines = [
+        "✅ 작업 접수 완료",
+        "",
+        f"- Job ID: {job.id}",
+        f"- 프로젝트: {job.request.project}",
+        f"- 모델: {format_model_selection(job.request.model, job.request.model_id)}",
+    ]
+    if job.request.mode is JobMode.PLAN:
+        lines.append("- 모드: plan")
+    elif job.request.mode is JobMode.ASK:
+        lines.append("- 모드: ask")
+    buttons = [[_OutboundButton("작업 중단", f"/stop {job.id}")]]
+    return "\n".join(lines), buttons
+
+
+def build_job_result_message(job: Job) -> str:
+    mode_prefix = ""
+    if job.request.mode is JobMode.PLAN:
+        mode_prefix = "[plan] "
+    elif job.request.mode is JobMode.ASK:
+        mode_prefix = "[ask] "
+
+    if job.status.value == "cancelled":
+        return (
+            f"{mode_prefix}⛔ 작업 중단됨\n\n"
+            f"- Job ID: {job.id}\n"
+            f"- 프로젝트: {job.request.project}"
+        )
+
+    if job.status.value == "succeeded":
+        if job.request.mode in (JobMode.PLAN, JobMode.ASK):
+            label = "plan" if job.request.mode is JobMode.PLAN else "ask"
+            model_label = job.runner_actual_model or format_model_selection(
+                job.request.model,
+                job.request.model_id,
+            )
+            text = (
+                f"[{label}] 응답 완료\n\n"
+                f"- Job ID: {job.id}\n"
+                f"- 프로젝트: {job.request.project}\n"
+                f"- 사용 모델: {model_label}\n"
+                f"- 토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}"
+            )
+            if job.runner_stdout_summary:
+                text += f"\n\nAI 응답:\n{job.runner_stdout_summary}"
+            return text
+
+        changed = ", ".join(job.changed_files) if job.changed_files else "변경 없음"
+        branch_line = job.branch if job.branch else "(없음 — 변경 없어 브랜치 미생성)"
+        commit_line = job.commit_hash or "-"
+        if job.changed_files and not job.request.commit:
+            commit_line = "(no commit 옵션 — 커밋·push 생략)"
+        elif job.changed_files and job.request.commit and not job.commit_hash:
+            commit_line = "(스테이징된 변경 없음 — push 생략)"
+        model_label = job.runner_actual_model or format_model_selection(
+            job.request.model,
+            job.request.model_id,
+        )
+        text = (
+            f"✅ 작업 완료\n\n"
+            f"- Job ID: {job.id}\n"
+            f"- 프로젝트: {job.request.project}\n"
+            f"- 브랜치: {branch_line}\n"
+            f"- 커밋: {commit_line}\n"
+            f"- 변경 파일: {changed}\n"
+            f"- 사용 모델: {model_label}\n"
+            f"- 토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}"
+        )
+        if job.runner_stdout_summary:
+            text += f"\n\nAI 응답:\n{job.runner_stdout_summary}"
+        return text
+
+    details = []
+    if job.error_stage:
+        details.append(f"- 실패 단계: {job.error_stage}")
+    if job.log_path:
+        details.append(f"- 로그 경로: {job.log_path}")
+    text = (
+        f"{mode_prefix}❌ 작업 실패\n\n"
+        f"- Job ID: {job.id}\n"
+        f"- 프로젝트: {job.request.project}\n"
+        f"- 오류: {job.error or 'unknown error'}"
+    )
+    if details:
+        text += "\n" + "\n".join(details)
+    failure_summary = job.runner_stderr_summary or job.runner_stdout_summary
+    if failure_summary:
+        text += f"\n\n실패 출력 요약:\n{failure_summary}"
+    return text
+
+
 class TelegramNotifier:
     _TELEGRAM_TEXT_LIMIT = 4096
+    _MAX_ATTEMPTS = 3
 
     def __init__(self, bot_token: str, advanced_settings_store=None) -> None:
         self._api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -35,44 +157,52 @@ class TelegramNotifier:
         message_id = result.get("message_id") if isinstance(result, dict) else None
         return int(message_id) if message_id is not None else None
 
-    def _post_message(self, chat_id: int, text: str) -> int | None:
-        payload = {"chat_id": chat_id, "text": text}
-        max_attempts = 3
-        _outbound.info("sendMessage start len=%d", len(text), chat_id=chat_id)
-        for attempt in range(1, max_attempts + 1):
+    def _post_with_retry(
+        self,
+        url: str,
+        payload: dict,
+        *,
+        log_label: str,
+        chat_id: int | None = None,
+    ) -> httpx.Response | None:
+        for attempt in range(1, self._MAX_ATTEMPTS + 1):
             try:
-                response = httpx.post(
-                    self._api_url,
-                    json=payload,
-                    timeout=httpx.Timeout(10.0, connect=5.0),
-                )
+                response = httpx.post(url, json=payload, timeout=httpx.Timeout(10.0, connect=5.0))
                 response.raise_for_status()
-                _outbound.info(
-                    "sent text len=%d attempt=%d status=%d",
-                    len(text),
-                    attempt,
-                    response.status_code,
-                    chat_id=chat_id,
-                )
-                return self._extract_message_id(response)
+                return response
             except httpx.HTTPError as exc:
                 _outbound.warning(
-                    "sendMessage attempt failed attempt=%d/%d err=%s",
+                    "%s attempt failed attempt=%d/%d err=%s",
+                    log_label,
                     attempt,
-                    max_attempts,
+                    self._MAX_ATTEMPTS,
                     type(exc).__name__,
                     chat_id=chat_id,
                 )
-                if attempt == max_attempts:
+                if attempt == self._MAX_ATTEMPTS:
                     _outbound.warning(
-                        "sendMessage failed after %s attempts: %s",
-                        max_attempts,
+                        "%s failed after %d attempts: %s",
+                        log_label,
+                        self._MAX_ATTEMPTS,
                         type(exc).__name__,
                         chat_id=chat_id,
                     )
                     return None
                 time.sleep(attempt)
         return None
+
+    def _post_message(self, chat_id: int, text: str) -> int | None:
+        _outbound.info("sendMessage start len=%d", len(text), chat_id=chat_id)
+        response = self._post_with_retry(
+            self._api_url,
+            {"chat_id": chat_id, "text": text},
+            log_label="sendMessage",
+            chat_id=chat_id,
+        )
+        if response is None:
+            return None
+        _outbound.info("sent text len=%d status=%d", len(text), response.status_code, chat_id=chat_id)
+        return self._extract_message_id(response)
 
     def send_text(self, chat_id: int, text: str, *, skip_body_i18n: bool = False) -> int | None:
         out = text if skip_body_i18n else translate_text(text, self._language)
@@ -100,7 +230,6 @@ class TelegramNotifier:
             "text": out_text,
             "reply_markup": {"inline_keyboard": keyboard},
         }
-        max_attempts = 3
         button_count = sum(len(row) for row in inline_buttons)
         _outbound.info(
             "sendMessage buttons start len=%d rows=%d buttons=%d",
@@ -109,66 +238,31 @@ class TelegramNotifier:
             button_count,
             chat_id=chat_id,
         )
-        for attempt in range(1, max_attempts + 1):
-            try:
-                response = httpx.post(
-                    self._api_url,
-                    json=payload,
-                    timeout=httpx.Timeout(10.0, connect=5.0),
-                )
-                response.raise_for_status()
-                _outbound.info(
-                    "sent message with buttons len=%d attempt=%d status=%d",
-                    len(out_text),
-                    attempt,
-                    response.status_code,
-                    chat_id=chat_id,
-                )
-                return self._extract_message_id(response)
-            except httpx.HTTPError as exc:
-                _outbound.warning(
-                    "sendMessage buttons attempt failed attempt=%d/%d err=%s",
-                    attempt,
-                    max_attempts,
-                    type(exc).__name__,
-                    chat_id=chat_id,
-                )
-                if attempt == max_attempts:
-                    _outbound.warning(
-                        "sendMessage (buttons) failed after %s attempts: %s",
-                        max_attempts,
-                        type(exc).__name__,
-                        chat_id=chat_id,
-                    )
-                    return None
-                time.sleep(attempt)
-        return None
+        response = self._post_with_retry(
+            self._api_url,
+            payload,
+            log_label="sendMessage (buttons)",
+            chat_id=chat_id,
+        )
+        if response is None:
+            return None
+        _outbound.info(
+            "sent message with buttons len=%d status=%d",
+            len(out_text),
+            response.status_code,
+            chat_id=chat_id,
+        )
+        return self._extract_message_id(response)
 
     def answer_callback_query(self, callback_query_id: str) -> None:
-        payload = {"callback_query_id": callback_query_id}
-        max_attempts = 3
         _outbound.info("answerCallbackQuery start")
-        for attempt in range(1, max_attempts + 1):
-            try:
-                response = httpx.post(
-                    self._callback_answer_url,
-                    json=payload,
-                    timeout=httpx.Timeout(10.0, connect=5.0),
-                )
-                response.raise_for_status()
-                _outbound.info("answerCallbackQuery sent attempt=%d status=%d", attempt, response.status_code)
-                return
-            except httpx.HTTPError as exc:
-                _outbound.warning(
-                    "answerCallbackQuery attempt failed attempt=%d/%d err=%s",
-                    attempt,
-                    max_attempts,
-                    type(exc).__name__,
-                )
-                if attempt == max_attempts:
-                    _outbound.warning("answerCallbackQuery failed after %s attempts", max_attempts)
-                    return
-                time.sleep(attempt)
+        response = self._post_with_retry(
+            self._callback_answer_url,
+            {"callback_query_id": callback_query_id},
+            log_label="answerCallbackQuery",
+        )
+        if response is not None:
+            _outbound.info("answerCallbackQuery sent status=%d", response.status_code)
 
     def send_job_accepted(self, job: Job) -> int | None:
         _outbound.info(
@@ -177,28 +271,8 @@ class TelegramNotifier:
             job_id=job.id,
             project=job.request.project,
         )
-
-        class _Btn:
-            def __init__(self, label: str, callback_data: str) -> None:
-                self.label = label
-                self.callback_data = callback_data
-
-        lines = [
-            "✅ 작업 접수 완료",
-            "",
-            f"- Job ID: {job.id}",
-            f"- 프로젝트: {job.request.project}",
-            f"- 모델: {format_model_selection(job.request.model, job.request.model_id)}",
-        ]
-        if job.request.mode is JobMode.PLAN:
-            lines.append("- 모드: plan")
-        elif job.request.mode is JobMode.ASK:
-            lines.append("- 모드: ask")
-        return self.send_with_buttons(
-            job.request.chat_id,
-            "\n".join(lines),
-            [[_Btn("작업 중단", f"/stop {job.id}")]],
-        )
+        text, buttons = build_job_accepted_message(job)
+        return self.send_with_buttons(job.request.chat_id, text, buttons)
 
     def send_job_result(self, job: Job) -> list[int]:
         _outbound.info(
@@ -209,77 +283,7 @@ class TelegramNotifier:
             job_id=job.id,
             project=job.request.project,
         )
-        mode_prefix = ""
-        if job.request.mode is JobMode.PLAN:
-            mode_prefix = "[plan] "
-        elif job.request.mode is JobMode.ASK:
-            mode_prefix = "[ask] "
-
-        if job.status.value == "cancelled":
-            text = (
-                f"{mode_prefix}⛔ 작업 중단됨\n\n"
-                f"- Job ID: {job.id}\n"
-                f"- 프로젝트: {job.request.project}"
-            )
-            return self.send_long_text(job.request.chat_id, text)
-        if job.status.value == "succeeded":
-            if job.request.mode in (JobMode.PLAN, JobMode.ASK):
-                label = "plan" if job.request.mode is JobMode.PLAN else "ask"
-                model_label = job.runner_actual_model or format_model_selection(
-                    job.request.model,
-                    job.request.model_id,
-                )
-                text = (
-                    f"[{label}] 응답 완료\n\n"
-                    f"- Job ID: {job.id}\n"
-                    f"- 프로젝트: {job.request.project}\n"
-                    f"- 사용 모델: {model_label}\n"
-                    f"- 토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}"
-                )
-                if job.runner_stdout_summary:
-                    text += f"\n\nAI 응답:\n{job.runner_stdout_summary}"
-            else:
-                changed = ", ".join(job.changed_files) if job.changed_files else "변경 없음"
-                branch_line = job.branch if job.branch else "(없음 — 변경 없어 브랜치 미생성)"
-                commit_line = job.commit_hash or "-"
-                if job.changed_files and not job.request.commit:
-                    commit_line = "(no commit 옵션 — 커밋·push 생략)"
-                elif job.changed_files and job.request.commit and not job.commit_hash:
-                    commit_line = "(스테이징된 변경 없음 — push 생략)"
-                model_label = job.runner_actual_model or format_model_selection(
-                    job.request.model,
-                    job.request.model_id,
-                )
-                text = (
-                    f"✅ 작업 완료\n\n"
-                    f"- Job ID: {job.id}\n"
-                    f"- 프로젝트: {job.request.project}\n"
-                    f"- 브랜치: {branch_line}\n"
-                    f"- 커밋: {commit_line}\n"
-                    f"- 변경 파일: {changed}\n"
-                    f"- 사용 모델: {model_label}\n"
-                    f"- 토큰 사용량: {format_token_usage(job.runner_token_usage) or '확인 불가'}"
-                )
-                if job.runner_stdout_summary:
-                    text += f"\n\nAI 응답:\n{job.runner_stdout_summary}"
-        else:
-            details = []
-            if job.error_stage:
-                details.append(f"- 실패 단계: {job.error_stage}")
-            if job.log_path:
-                details.append(f"- 로그 경로: {job.log_path}")
-            text = (
-                f"{mode_prefix}❌ 작업 실패\n\n"
-                f"- Job ID: {job.id}\n"
-                f"- 프로젝트: {job.request.project}\n"
-                f"- 오류: {job.error or 'unknown error'}"
-            )
-            if details:
-                text += "\n" + "\n".join(details)
-            failure_summary = job.runner_stderr_summary or job.runner_stdout_summary
-            if failure_summary:
-                text += f"\n\n실패 출력 요약:\n{failure_summary}"
-        return self.send_long_text(job.request.chat_id, text)
+        return self.send_long_text(job.request.chat_id, build_job_result_message(job))
 
     def send_long_text(self, chat_id: int, text: str) -> list[int]:
         """Telegram 단일 메시지 한도(4096자)를 넘으면 여러 메시지로 나눠 전송합니다."""

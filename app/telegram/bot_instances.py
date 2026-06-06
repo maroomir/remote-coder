@@ -7,14 +7,14 @@ from threading import Lock
 from app.projects.registry import ProjectRecord
 from app.security.auth import AllowlistAuthService
 from app.telegram.commands import CommandContext
-from app.telegram.notifier import TelegramNotifier
+from app.telegram.notifier import Notifier
 
 
 @dataclass(frozen=True)
 class BotInstance:
     project_name: str
     token_hash: str
-    notifier: TelegramNotifier
+    notifier: Notifier
     auth_service: AllowlistAuthService
     command_context: CommandContext
     webhook_secret: str | None = None

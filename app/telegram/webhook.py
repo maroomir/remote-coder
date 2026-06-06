@@ -31,7 +31,7 @@ from app.projects.registry import normalize_webhook_token_hash_path_segment
 from app.telegram.bot_instances import BotInstanceManager
 from app.telegram.confirmations import PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
-from app.telegram.notifier import TelegramNotifier
+from app.telegram.notifier import Notifier
 from app.telegram.parser import CommandParseError, CommandParser
 
 _inbound = EventLogger("app.telegram.inbound", "telegram.inbound")
@@ -250,7 +250,7 @@ class TelegramUpdate(BaseModel):
 class _Req:
     update: TelegramUpdate
     background_tasks: BackgroundTasks
-    notifier: TelegramNotifier
+    notifier: Notifier
     command_context: CommandContext
     scope_project: str | None
     chat_id: int
@@ -275,7 +275,7 @@ def create_webhook_router(
     def _handle_callback_query(
         update: TelegramUpdate,
         cq: TelegramCallbackQuery,
-        notifier: TelegramNotifier,
+        notifier: Notifier,
         auth_service: AllowlistAuthService,
         command_context: CommandContext,
         scope_project: str | None,
