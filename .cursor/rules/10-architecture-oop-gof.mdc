@@ -33,7 +33,7 @@ alwaysApply: true
 
 | Pattern | Candidate use |
 |---|---|
-| Strategy | Claude/Codex/Gemini runner selection, branch naming, worktree cleanup policy |
+| Strategy | Claude/Codex/Gemini runner selection, branch naming, model-usage monitoring, worktree cleanup policy |
 | Factory Method / Abstract Factory | Runner, store, notifier, or repository creation from configuration |
 | Adapter | Telegram Bot API, Claude CLI, Codex CLI, Gemini CLI, Git CLI |
 | Facade | Job execution flow through `JobManager` or `JobOrchestrator` |

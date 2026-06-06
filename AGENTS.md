@@ -118,7 +118,7 @@ app/
   telegram/
     webhook.py                # Webhook router
     bot_instances.py          # Per-bot notifier, auth, token_hash routing
-    notifier.py               # Telegram message delivery
+    notifier.py               # Notifier protocol + TelegramNotifier delivery
     commands/                 # /help, /model, /status, etc. (base, registry, one module per command group)
     parser.py                 # Message parsing
     conversation.py           # SQLite conversation context

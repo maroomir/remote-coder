@@ -27,7 +27,7 @@
 
 | Pattern | Candidate use |
 |---|---|
-| Strategy | Claude/Codex/Gemini runner selection, branch naming, worktree cleanup policy |
+| Strategy | Claude/Codex/Gemini runner selection, branch naming, model-usage monitoring, worktree cleanup policy |
 | Factory Method / Abstract Factory | Runner, store, notifier, or repository creation from configuration |
 | Adapter | Telegram Bot API, Claude CLI, Codex CLI, Gemini CLI, Git CLI |
 | Facade | Job execution flow through `JobManager` or `JobOrchestrator` |
@@ -54,7 +54,7 @@ app/
   models.py                   # Shared models
   telegram/
     webhook.py                # Webhook router
-    notifier.py               # Telegram message delivery
+    notifier.py               # Notifier protocol + TelegramNotifier delivery
     commands/                 # /help, /model, /status, etc. (base, registry, one module per command group)
     parser.py                 # Message parsing
     conversation.py           # SQLite conversation context
