@@ -6,7 +6,7 @@ def test_cli_version_matches_package() -> None:
     parser = build_parser()
 
     assert parser.prog == "remote-coder"
-    assert __version__ == "0.3.3"
+    assert __version__ == "0.4.0"
 
 
 def test_cli_serve_runs_uvicorn(monkeypatch) -> None:
