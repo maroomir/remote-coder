@@ -208,7 +208,17 @@ def _branch_to_pr_title(branch: str) -> str:
     if slug.startswith("remote-"):
         slug = slug[len("remote-"):]
     slug = re.sub(r"-\d{8}-\d{6}$", "", slug)
-    return slug.replace("-", " ").strip() or branch
+    title = slug.replace("-", " ").strip()
+    if title and title.isascii():
+        return title
+    return "remote coder changes"
+
+
+def _ascii_pr_text(text: str, fallback: str) -> str:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    if normalized and normalized.isascii():
+        return normalized
+    return fallback
 
 
 class PullCommand(TelegramCommand):
@@ -252,6 +262,11 @@ class PrCommand(TelegramCommand):
             if not branches:
                 return "PR을 올릴 브랜치가 없습니다. /pr <branch> 로 직접 지정할 수 있습니다."
             return "PR을 올릴 브랜치를 선택하세요."
+        from app.git.service import GitWorktreeService
+
+        err = GitWorktreeService.validate_branch_token(branch)
+        if err:
+            return err
 
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
@@ -307,8 +322,14 @@ class PrCommand(TelegramCommand):
             return []
         if not isinstance(branches, list):
             return []
+        from app.git.service import GitWorktreeService
+
         excluded = {main_branch, "main", "master"}
-        return [branch for branch in branches if branch not in excluded]
+        return [
+            branch
+            for branch in branches
+            if branch not in excluded and GitWorktreeService.validate_branch_token(branch) is None
+        ]
 
     def _build_pr_content(
         self,
@@ -318,21 +339,29 @@ class PrCommand(TelegramCommand):
         ctx: CommandContext,
     ) -> tuple[str, str]:
         if ctx.conversation_store is None:
-            return _branch_to_pr_title(branch), f"작업 브랜치: `{branch}`"
+            return _branch_to_pr_title(branch), f"Work branch: `{branch}`"
 
         entries = ctx.conversation_store.get_entries_for_branch(project_name, chat_id, branch)
         if not entries:
-            return _branch_to_pr_title(branch), f"작업 브랜치: `{branch}`"
+            return _branch_to_pr_title(branch), f"Work branch: `{branch}`"
 
-        title = entries[0][0][:70].rstrip()
+        title = _ascii_pr_text(entries[0][0], _branch_to_pr_title(branch))[:70].rstrip()
 
-        body_parts: list[str] = ["## 작업 요청\n"]
+        body_parts: list[str] = [f"Work branch: `{branch}`\n\n", "## Work request\n"]
         for i, (user_text, job_result) in enumerate(entries, 1):
             if len(entries) > 1:
-                body_parts.append(f"### 요청 {i}\n")
-            body_parts.append(f"**요청:** {user_text}\n")
+                body_parts.append(f"### Request {i}\n")
+            safe_user_text = _ascii_pr_text(
+                user_text,
+                "Request omitted because it contains non-ASCII text.",
+            )
+            body_parts.append(f"**Request:** {safe_user_text}\n")
             if job_result:
-                body_parts.append(f"\n**AI 결과:**\n{job_result}\n")
+                safe_job_result = _ascii_pr_text(
+                    job_result,
+                    "AI result omitted because it contains non-ASCII text.",
+                )
+                body_parts.append(f"\n**AI result:**\n{safe_job_result}\n")
             if i < len(entries):
                 body_parts.append("\n---\n")
 

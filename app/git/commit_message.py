@@ -8,19 +8,14 @@ class CommitMessageFormatter:
         r"\b(?:model|branch|project)\s*:\s*\S+|\bno\s+commit\b",
         flags=re.IGNORECASE,
     )
-    _SPEAKER_PREFIX_PATTERN = re.compile(r"^(?:user|사용자)\s*:\s*", flags=re.IGNORECASE)
-    _PARENTHETICAL_EXAMPLE_PATTERN = re.compile(r"\((?:ex|예시?)>?.*?\)", flags=re.IGNORECASE)
+    _SPEAKER_PREFIX_PATTERN = re.compile(r"^user\s*:\s*", flags=re.IGNORECASE)
+    _PARENTHETICAL_EXAMPLE_PATTERN = re.compile(r"\(ex>?.*?\)", flags=re.IGNORECASE)
     _WHITESPACE_PATTERN = re.compile(r"\s+")
     _REQUEST_MARKERS = (
         "please",
         "can you",
         "could you",
         "would you",
-        "부탁",
-        "주세요",
-        "해줘",
-        "해 줘",
-        "바랍니다",
     )
     _FIX_KEYWORDS = (
         "bug",
@@ -30,10 +25,6 @@ class CommitMessageFormatter:
         "patch",
         "repair",
         "resolve",
-        "고치",
-        "버그",
-        "수정",
-        "오류",
     )
     _REFACTOR_KEYWORDS = (
         "cleanup",
@@ -42,10 +33,6 @@ class CommitMessageFormatter:
         "rename",
         "restructure",
         "simplify",
-        "개선",
-        "리팩터링",
-        "리팩토링",
-        "정리",
     )
     _CHORE_KEYWORDS = (
         "build",
@@ -58,10 +45,6 @@ class CommitMessageFormatter:
         "documentation",
         "readme",
         "test",
-        "문서",
-        "설정",
-        "의존성",
-        "테스트",
     )
 
     @classmethod
@@ -79,9 +62,8 @@ class CommitMessageFormatter:
             changed_files,
             commit_type,
         )
-        if ai_body:
-            body = ai_body
-        else:
+        body = cls._safe_ai_body(ai_body)
+        if body is None:
             bullets = cls._build_bullets(commit_type, changed_files)
             body = "\n".join(f"- {bullet}" for bullet in bullets)
         return f"{commit_type}: {title}\n\n{body}\n\ncommitted by remote-coder: {job_id}"
@@ -133,6 +115,8 @@ class CommitMessageFormatter:
         line = line.strip().strip("-:;,.!?").strip("\"'`")
         if not line:
             return ""
+        if not cls._is_ascii_text(line):
+            return ""
 
         if cls._mentions_monitor_model_metrics(line):
             return "show current model and token usage in monitor model"
@@ -152,9 +136,23 @@ class CommitMessageFormatter:
         title = title.strip().strip("-:;,.!?").strip("\"'`")
         if not title or len(title) > max_length:
             return None
+        if not cls._is_ascii_text(title):
+            return None
         if cls._looks_like_raw_request(title):
             return None
         return cls._lowercase_initial_ascii(title)
+
+    @classmethod
+    def _safe_ai_body(cls, ai_body: str | None) -> str | None:
+        if ai_body is None:
+            return None
+        lines = [line.rstrip() for line in ai_body.strip().splitlines() if line.strip()]
+        if not lines:
+            return None
+        body = "\n".join(lines)
+        if not cls._is_ascii_text(body):
+            return None
+        return body
 
     @classmethod
     def _looks_like_raw_request(cls, text: str) -> bool:
@@ -196,13 +194,10 @@ class CommitMessageFormatter:
     _CURRENT_REQUEST_MARKERS = (
         "[Current request]",
         "[/current request]",
-        "[현재 요청]",
-        "[/현재 요청]",
     )
     _CONTEXT_NOISE_PREFIXES = (
         "job_id=",
         "message_id=",
-        "Job 결과:",
     )
 
     @classmethod
@@ -230,7 +225,11 @@ class CommitMessageFormatter:
     @staticmethod
     def _mentions_monitor_model_metrics(text: str) -> bool:
         lowered = text.casefold()
-        return "monitor model" in lowered and ("토큰" in lowered or "token" in lowered)
+        return "monitor model" in lowered and "token" in lowered
+
+    @staticmethod
+    def _is_ascii_text(text: str) -> bool:
+        return text.isascii()
 
     @staticmethod
     def _truncate_at_word(text: str, max_length: int) -> str:

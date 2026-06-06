@@ -1093,7 +1093,7 @@ def test_execute_fix_job_source_runs_runner_and_amends(test_settings, project_re
     assert refreshed_parent.changed_files == final.changed_files
     runner.run.assert_called_once()
     runner_input = runner.run.call_args.args[0]
-    assert "사용자 후속 수정 요청" in runner_input.instruction
+    assert "User follow-up fix request" in runner_input.instruction
     assert "rename foo to bar" in runner_input.instruction
     assert "original work" in runner_input.instruction
     # commit message trailer keeps parent id

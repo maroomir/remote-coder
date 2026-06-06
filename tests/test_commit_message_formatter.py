@@ -16,14 +16,14 @@ def test_commit_message_formatter_builds_remote_coder_template():
     )
 
 
-def test_commit_message_formatter_uses_chore_for_docs_only_changes():
+def test_commit_message_formatter_uses_english_fallback_for_non_ascii_docs_request():
     message = CommitMessageFormatter.format(
         job_id="job_20260430010101_ab12cd",
         instruction="README 문서 업데이트",
         changed_files=["README.md", "docs/claude-guide.md"],
     )
 
-    assert message.startswith("chore: README 문서 업데이트\n\n")
+    assert message.startswith("chore: update project documentation\n\n")
     assert "- AI agent refreshed related documentation where applicable\n" in message
 
 
@@ -47,7 +47,7 @@ def test_commit_message_formatter_prefers_feature_intent_over_changed_file_list(
     assert "10 architecture oop gof" not in message
 
 
-def test_commit_message_formatter_does_not_repeat_user_message():
+def test_commit_message_formatter_uses_english_fallback_for_non_ascii_user_message():
     instruction = (
         "user: Monitor model 로 모델을 조회할 때, 현재 사용 모델(ex> ChatGPT 5.5 또는 "
         "Claude Opus 4.7 등등)과 토큰 사용량 등도 나오면"
@@ -60,7 +60,7 @@ def test_commit_message_formatter_does_not_repeat_user_message():
     )
 
     assert message == (
-        "feat: show current model and token usage in monitor model\n\n"
+        "feat: update monitoring behavior\n\n"
         "- AI agent implemented the requested change\n"
         "- AI agent updated automated coverage where applicable\n\n"
         "committed by remote-coder: job_20260502215006_fa3889"
@@ -82,7 +82,7 @@ def test_commit_message_formatter_avoids_korean_prompt_as_title():
         changed_files=["src/utils/path.py", "src/utils/text.py"],
     )
 
-    assert message.startswith("refactor: refactor src/utils source\n\n")
+    assert message.startswith("feat: update src/utils source\n\n")
     assert "부탁드립니다" not in message.splitlines()[0]
     assert "모든 소스코드" not in message.splitlines()[0]
 
@@ -103,8 +103,24 @@ def test_commit_message_formatter_rejects_ai_title_that_repeats_prompt():
         ),
     )
 
-    assert message.startswith("refactor: refactor src/utils source\n\n")
+    assert message.startswith("feat: update src/utils source\n\n")
     assert "부탁드립니다" not in message.splitlines()[0]
+
+
+def test_commit_message_formatter_rejects_non_ascii_ai_body():
+    message = CommitMessageFormatter.format(
+        job_id="job_20260510065204_74fa92",
+        instruction="fix login validation",
+        changed_files=["app/auth.py"],
+        ai_title="fix login validation",
+        ai_body="- 로그인 검증을 수정했습니다",
+    )
+
+    assert message == (
+        "fix: fix login validation\n\n"
+        "- AI agent fixed the requested behavior\n\n"
+        "committed by remote-coder: job_20260510065204_74fa92"
+    )
 
 
 def test_commit_message_formatter_skips_reply_job_context_block_for_title():

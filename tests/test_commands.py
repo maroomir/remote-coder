@@ -16,6 +16,7 @@ from app.telegram.commands import (
     InitCommand,
     ModelCommand,
     MonitorCommand,
+    PrCommand,
     ReportsCommand,
     RebaseCommand,
     StartCommand,
@@ -614,6 +615,33 @@ def test_rebase_command_lists_non_main_branch_buttons(project_registry: ProjectR
     assert response.inline_buttons == [
         [InlineButton("feature-a", "/rebase feature-a")],
     ]
+
+
+def test_pr_command_rejects_non_ascii_branch(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    registry = CommandRegistry([PrCommand()])
+
+    text = registry.dispatch(TelegramMessage(chat_id=42, user_id=1, text="/pr 기능/수정"), ctx)
+
+    assert text == "브랜치 이름은 영문, 숫자, /, ., _, - 만 사용할 수 있습니다."
+    ctx.git_service.create_github_pr.assert_not_called()
+
+
+def test_pr_content_uses_ascii_fallback_for_non_ascii_conversation(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    ctx.conversation_store = Mock()
+    ctx.conversation_store.get_entries_for_branch.return_value = [
+        ("로그인 검증 수정해줘", "수정 완료"),
+    ]
+
+    title, body = PrCommand()._build_pr_content("remote-fix-login-20260606-010203", "remote-coder", 42, ctx)
+
+    assert title == "fix login"
+    assert "로그인" not in body
+    assert "수정 완료" not in body
+    assert "Work branch: `remote-fix-login-20260606-010203`" in body
+    assert "Request omitted because it contains non-ASCII text." in body
+    assert "AI result omitted because it contains non-ASCII text." in body
 
 
 def test_clear_branch_command_requests_confirmation(project_registry: ProjectRegistry):

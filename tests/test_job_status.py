@@ -25,3 +25,27 @@ def test_job_status_invalid_transition():
     )
     with pytest.raises(ValueError):
         job.mark_succeeded()
+
+
+def test_job_request_rejects_non_ascii_git_branch():
+    with pytest.raises(ValueError, match="branch"):
+        JobRequest(
+            project="proj",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+            branch="기능/수정",
+        )
+
+
+def test_job_request_rejects_non_ascii_job_ids():
+    with pytest.raises(ValueError, match="job_id"):
+        JobRequest(
+            project="proj",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+            job_id="작업-1",
+        )

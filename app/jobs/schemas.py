@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models import ModelName
+
+_SAFE_BRANCH_TOKEN = re.compile(r"^[A-Za-z0-9/._-]+$")
+_SAFE_JOB_ID_TOKEN = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 class JobStatus(StrEnum):
@@ -44,6 +48,26 @@ class JobRequest(BaseModel):
     reply_to_message_id: int | None = None
     parent_job_id: str | None = None
     fix_kind: FixKind | None = None
+
+    @field_validator("branch")
+    @classmethod
+    def _validate_branch(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not value or len(value) > 255:
+            raise ValueError("branch is empty or too long")
+        if ".." in value or value.startswith("-") or not _SAFE_BRANCH_TOKEN.match(value):
+            raise ValueError("branch must use only ASCII letters, numbers, /, ., _, -")
+        return value
+
+    @field_validator("job_id", "parent_job_id")
+    @classmethod
+    def _validate_job_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not value or len(value) > 128 or not _SAFE_JOB_ID_TOKEN.match(value):
+            raise ValueError("job_id must use only ASCII letters, numbers, ., _, -")
+        return value
 
 
 class Job(BaseModel):

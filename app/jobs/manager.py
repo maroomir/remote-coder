@@ -485,14 +485,14 @@ class JobManager:
             else "(none)"
         )
         return (
-            "[원래 작업 요청]\n"
+            "[Original request]\n"
             f"{parent_job.request.instruction.strip()}\n\n"
-            "[원래 변경 파일]\n"
+            "[Original changed files]\n"
             f"{original_files}\n\n"
-            "[사용자 후속 수정 요청]\n"
+            "[User follow-up fix request]\n"
             f"{fix_instruction.strip()}\n\n"
-            "기존 작업 위에 수정 사항을 적용해 주세요. "
-            "새 파일이나 무관한 변경은 추가하지 마세요."
+            "Apply the requested fix on top of the existing work. "
+            "Do not add new files or unrelated changes."
         )
 
     def execute_fix_job(
