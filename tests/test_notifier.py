@@ -453,3 +453,32 @@ def test_notifier_keeps_korean_when_ui_language_is_korean():
     payload = route.calls[0].request.content.decode()
     assert "작업 완료" in payload
     assert "프로젝트" in payload
+
+
+@respx.mock
+def test_notifier_does_not_translate_ai_response_body_under_korean_ui():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    store = type("Store", (), {"get": lambda self: AdvancedSettings(ui_language=UiLanguage.KOREAN)})()
+    notifier = TelegramNotifier("token", store)
+    job = Job(
+        id="j-ai",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+        status=JobStatus.SUCCEEDED,
+        runner_stdout_summary="Project: keep this exact\nModel: keep this exact",
+    )
+
+    notifier.send_job_result(job)
+
+    payload = json.loads(route.calls[0].request.content)
+    assert "AI 응답:" in payload["text"]
+    assert "Project: keep this exact" in payload["text"]
+    assert "Model: keep this exact" in payload["text"]
+    assert "프로젝트: keep this exact" not in payload["text"]

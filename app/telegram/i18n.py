@@ -6,6 +6,49 @@ from dataclasses import dataclass
 from app.models import UiLanguage
 
 
+class UiMessage(str):
+    def __new__(
+        cls,
+        key: str,
+        default_template: str,
+        params: dict[str, object] | None = None,
+    ) -> "UiMessage":
+        params = dict(params or {})
+        default = _format_template(default_template, params, UiLanguage.ENGLISH)
+        obj = str.__new__(cls, default)
+        obj.key = key
+        obj.default_template = default_template
+        obj.params = params
+        return obj
+
+    key: str
+    default_template: str
+    params: dict[str, object]
+
+    def render(self, language: UiLanguage) -> str:
+        if language is UiLanguage.ENGLISH:
+            return str(self)
+        template = _MESSAGE_CATALOG_KO.get(self.key, self.default_template)
+        return _format_template(template, self.params, language)
+
+
+class _SafeFormatDict(dict):
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
+
+
+def _format_template(template: str, params: dict[str, object], language: UiLanguage) -> str:
+    escaped_params = {
+        key: value.render(language) if isinstance(value, UiMessage) else str(value)
+        for key, value in params.items()
+    }
+    return template.format_map(_SafeFormatDict(escaped_params))
+
+
+def ui_message(key: str, default_template: str, **params: object) -> UiMessage:
+    return UiMessage(key, default_template, params)
+
+
 def language_from_settings_store(settings_store) -> UiLanguage:
     if settings_store is None:
         return UiLanguage.ENGLISH
@@ -472,6 +515,62 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("관리 UI는 로컬호스트에서만 사용할 수 있습니다.", "Admin UI is only available on localhost."),
 )
 
+_MESSAGE_CATALOG_KO: dict[str, str] = {
+    "model.menu": "모델을 선택하세요.",
+    "model.settings": "모델 설정\n\n- 현재 기본 모델: {selection}",
+    "model.provider_selected": (
+        "모델 제공자가 선택되었습니다.\n\n"
+        "- 기본 모델: {provider}\n"
+        "- 세부 모델을 선택하세요."
+    ),
+    "model.updated": "모델 설정이 변경되었습니다.\n\n- 기본 모델: {selection}",
+    "model.unknown_specific": "알 수 없는 세부 모델입니다: {model_id}\n\n{usage}",
+    "job.accepted": (
+        "✅ 작업 접수 완료\n\n"
+        "- Job ID: {job_id}\n"
+        "- 프로젝트: {project}\n"
+        "- 모델: {model}{mode_line}"
+    ),
+    "job.mode_line": "\n- 모드: {mode}",
+    "job.stop_button": "작업 중단",
+    "job.cancelled": "{mode_prefix}⛔ 작업 중단됨\n\n- Job ID: {job_id}\n- 프로젝트: {project}",
+    "job.readonly_completed": (
+        "[{mode}] 응답 완료\n\n"
+        "- Job ID: {job_id}\n"
+        "- 프로젝트: {project}\n"
+        "- 사용 모델: {model}\n"
+        "- 토큰 사용량: {token_usage}{response_block}"
+    ),
+    "job.response_block": "\n\nAI 응답:\n{summary}",
+    "job.no_changes": "변경 없음",
+    "job.branch_none_no_changes": "(없음 - 변경 없어 브랜치 미생성)",
+    "job.no_commit_skipped": "(no commit - 커밋/push 생략)",
+    "job.nothing_staged_skipped": "(스테이징된 변경 없음 - push 생략)",
+    "common.unavailable": "확인 불가",
+    "job.completed": (
+        "✅ 작업 완료\n\n"
+        "- Job ID: {job_id}\n"
+        "- 프로젝트: {project}\n"
+        "- 브랜치: {branch}\n"
+        "- 커밋: {commit}\n"
+        "- 변경 파일: {changed}\n"
+        "- 사용 모델: {model}\n"
+        "- 토큰 사용량: {token_usage}{response_block}"
+    ),
+    "job.failed": (
+        "{mode_prefix}❌ 작업 실패\n\n"
+        "- Job ID: {job_id}\n"
+        "- 프로젝트: {project}\n"
+        "- 오류: {error}{details}{failure_block}"
+    ),
+    "job.failure_detail_stage": "\n- 실패 단계: {stage}",
+    "job.failure_detail_log_path": "\n- 로그 경로: {log_path}",
+    "job.failure_block": "\n\n실패 출력 요약:\n{summary}",
+    "server.started": "✅ Remote AI Coder 서버가 시작되었습니다.\n{body}",
+    "server.shutdown": "🔴 Remote AI Coder 서버 연결이 종료되었습니다.",
+}
+
+
 _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = tuple(
     (english, korean) for korean, english in _TEXT_REPLACEMENTS_KO_TO_EN_RAW
     if english not in {".", "- Mode", "Model provider selected."}
@@ -481,6 +580,7 @@ _TEXT_REPLACEMENTS_RAW: tuple[tuple[str, str], ...] = tuple(
 )
 
 _TEXT_REPLACEMENTS = tuple(sorted(set(_TEXT_REPLACEMENTS_RAW), key=lambda p: len(p[0]), reverse=True))
+_EXACT_TEXT_REPLACEMENTS = dict(_TEXT_REPLACEMENTS)
 
 
 _REGEX_TRANSLATIONS = (
@@ -555,21 +655,88 @@ _BUTTON_LABELS = {
 }
 
 
+_LINE_TRANSLATIONS = (
+    (re.compile(r"^- Choose a specific model\.$"), lambda m: "- 세부 모델을 선택하세요."),
+    (
+        re.compile(r"^- Mode: agent \(allows edit, commit, and push\)$"),
+        lambda m: "- 모드: agent (코드 수정·커밋·push 가능)",
+    ),
+    (
+        re.compile(r"^- Mode: ([^(].*)$"),
+        lambda m: f"- 모드: {m.group(1)}",
+    ),
+    (
+        re.compile(r"^- 5-hour limit: remaining (.*)$"),
+        lambda m: f"- 5시간 한도: 잔여 {m.group(1)}",
+    ),
+    (
+        re.compile(r"^- Weekly limit: remaining (.*)$"),
+        lambda m: f"- 주간 한도: 잔여 {m.group(1)}",
+    ),
+    (re.compile(r"^- Project: (.*)$"), lambda m: f"- 프로젝트: {m.group(1)}"),
+    (re.compile(r"^- Model: (.*)$"), lambda m: f"- 모델: {m.group(1)}"),
+    (re.compile(r"^- Model used: (.*)$"), lambda m: f"- 사용 모델: {m.group(1)}"),
+    (re.compile(r"^- Requested model: (.*)$"), lambda m: f"- 요청 모델: {m.group(1)}"),
+    (re.compile(r"^- Default model: (.*)$"), lambda m: f"- 기본 모델: {m.group(1)}"),
+    (re.compile(r"^- Current default model: (.*)$"), lambda m: f"- 현재 기본 모델: {m.group(1)}"),
+    (re.compile(r"^- Token usage: (.*)$"), lambda m: f"- 토큰 사용량: {m.group(1)}"),
+    (re.compile(r"^- Branch: (.*)$"), lambda m: f"- 브랜치: {m.group(1)}"),
+    (re.compile(r"^- Commit: (.*)$"), lambda m: f"- 커밋: {m.group(1)}"),
+    (re.compile(r"^- Changed files: (.*)$"), lambda m: f"- 변경 파일: {m.group(1)}"),
+    (re.compile(r"^- Status: (.*)$"), lambda m: f"- 상태: {m.group(1)}"),
+    (re.compile(r"^- Instruction: (.*)$"), lambda m: f"- 지시: {m.group(1)}"),
+    (re.compile(r"^- Error: (.*)$"), lambda m: f"- 오류: {m.group(1)}"),
+    (re.compile(r"^- Error stage: (.*)$"), lambda m: f"- 오류 단계: {m.group(1)}"),
+    (re.compile(r"^- Failure stage: (.*)$"), lambda m: f"- 실패 단계: {m.group(1)}"),
+    (re.compile(r"^- Log path: (.*)$"), lambda m: f"- 로그 경로: {m.group(1)}"),
+    (re.compile(r"^- Started: (.*)$"), lambda m: f"- 시작: {m.group(1)}"),
+    (re.compile(r"^- Created: (.*)$"), lambda m: f"- 생성: {m.group(1)}"),
+    (re.compile(r"^Project: (.*)$"), lambda m: f"프로젝트: {m.group(1)}"),
+    (re.compile(r"^Current branch: (.*)$"), lambda m: f"현재 브랜치: {m.group(1)}"),
+    (re.compile(r"^Default model: (.*)$"), lambda m: f"기본 모델: {m.group(1)}"),
+    (re.compile(r"^Total entries: (.*)$"), lambda m: f"총 기록: {m.group(1)}"),
+    (re.compile(r"^User requests: (.*)$"), lambda m: f"사용자 요청: {m.group(1)}"),
+    (re.compile(r"^Jobs accepted: (.*)$"), lambda m: f"Job 접수: {m.group(1)}"),
+    (re.compile(r"^Job results: (.*)$"), lambda m: f"Job 결과: {m.group(1)}"),
+    (re.compile(r"^Latest user request: (.*)$"), lambda m: f"최근 사용자 요청: {m.group(1)}"),
+    (re.compile(r"^Latest job result: (.*)$"), lambda m: f"최근 Job 결과: {m.group(1)}"),
+)
+
+
+def _translate_known_lines(text: str) -> str:
+    rendered: list[str] = []
+    for raw_line in text.splitlines(keepends=True):
+        newline = ""
+        line = raw_line
+        if raw_line.endswith("\r\n"):
+            line = raw_line[:-2]
+            newline = "\r\n"
+        elif raw_line.endswith("\n"):
+            line = raw_line[:-1]
+            newline = "\n"
+        translated = _EXACT_TEXT_REPLACEMENTS.get(line)
+        if translated is None:
+            for rx, repl in _LINE_TRANSLATIONS:
+                match = rx.match(line)
+                if match is not None:
+                    translated = repl(match)
+                    break
+        rendered.append((translated if translated is not None else line) + newline)
+    return "".join(rendered)
+
+
 def translate_text(text: str, language: UiLanguage) -> str:
     if language is UiLanguage.ENGLISH:
-        return text
+        return str(text)
+    if isinstance(text, UiMessage):
+        return text.render(language)
     translated = _regex_patch_korean(text)
-    for source, target in _TEXT_REPLACEMENTS:
-        translated = translated.replace(source, target)
-    translated = translated.replace("DB exists: yes", "DB 존재: 예")
-    translated = translated.replace("DB exists: no", "DB 존재: 아니오")
-    translated = translated.replace("remaining ", "잔여 ")
-    translated = translated.replace("(used ", "(사용 ")
-    translated = translated.replace(", reset ", ", 리셋 ")
-    return translated
+    return _translate_known_lines(translated)
 
 
 def translate_button_label(label: str, language: UiLanguage) -> str:
     if language is UiLanguage.ENGLISH:
-        return label
+        return str(label)
+    if isinstance(label, UiMessage):
+        return label.render(language)
     return _BUTTON_LABELS.get(label, label.replace(" mode", " 모드"))

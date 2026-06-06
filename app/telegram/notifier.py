@@ -10,7 +10,7 @@ from app.ai.model_catalog import format_model_selection
 from app.ai.usage import format_token_usage
 from app.jobs.schemas import Job, JobMode
 from app.monitoring.events import EventLogger
-from app.telegram.i18n import language_from_settings_store, translate_button_label, translate_text
+from app.telegram.i18n import language_from_settings_store, translate_button_label, translate_text, ui_message
 
 _outbound = EventLogger("app.telegram.outbound", "telegram.outbound")
 
@@ -43,19 +43,56 @@ class _OutboundButton:
 
 
 def build_job_accepted_message(job: Job) -> tuple[str, list[list[_OutboundButton]]]:
-    lines = [
-        "✅ Job accepted",
-        "",
-        f"- Job ID: {job.id}",
-        f"- Project: {job.request.project}",
-        f"- Model: {format_model_selection(job.request.model, job.request.model_id)}",
-    ]
+    mode_line = ""
     if job.request.mode is JobMode.PLAN:
-        lines.append("- Mode: plan")
+        mode_line = ui_message("job.mode_line", "\n- Mode: {mode}", mode="plan")
     elif job.request.mode is JobMode.ASK:
-        lines.append("- Mode: ask")
-    buttons = [[_OutboundButton("Stop job", f"/stop {job.id}")]]
-    return "\n".join(lines), buttons
+        mode_line = ui_message("job.mode_line", "\n- Mode: {mode}", mode="ask")
+    text = ui_message(
+        "job.accepted",
+        "✅ Job accepted\n\n"
+        "- Job ID: {job_id}\n"
+        "- Project: {project}\n"
+        "- Model: {model}{mode_line}",
+        job_id=job.id,
+        project=job.request.project,
+        model=format_model_selection(job.request.model, job.request.model_id),
+        mode_line=mode_line,
+    )
+    buttons = [[_OutboundButton(ui_message("job.stop_button", "Stop job"), f"/stop {job.id}")]]
+    return text, buttons
+
+
+def _ui_response_block(summary: str | None) -> str:
+    if not summary:
+        return ""
+    return ui_message("job.response_block", "\n\nAI response:\n{summary}", summary=summary)
+
+
+def _ui_failure_details(job: Job) -> str:
+    details: list[str] = []
+    if job.error_stage:
+        details.append(
+            ui_message("job.failure_detail_stage", "\n- Failure stage: {stage}", stage=job.error_stage)
+        )
+    if job.log_path:
+        details.append(
+            ui_message("job.failure_detail_log_path", "\n- Log path: {log_path}", log_path=job.log_path)
+        )
+    return "".join(details)
+
+
+def _ui_failure_block(summary: str | None) -> str:
+    if not summary:
+        return ""
+    return ui_message("job.failure_block", "\n\nFailure output summary:\n{summary}", summary=summary)
+
+
+def _ui_token_usage(job: Job) -> str:
+    return format_token_usage(job.runner_token_usage) or ui_message(
+        "common.unavailable",
+        "unavailable",
+    )
 
 
 def build_job_result_message(job: Job) -> str:
@@ -66,10 +103,12 @@ def build_job_result_message(job: Job) -> str:
         mode_prefix = "[ask] "
 
     if job.status.value == "cancelled":
-        return (
-            f"{mode_prefix}⛔ Job cancelled\n\n"
-            f"- Job ID: {job.id}\n"
-            f"- Project: {job.request.project}"
+        return ui_message(
+            "job.cancelled",
+            "{mode_prefix}⛔ Job cancelled\n\n- Job ID: {job_id}\n- Project: {project}",
+            mode_prefix=mode_prefix,
+            job_id=job.id,
+            project=job.request.project,
         )
 
     if job.status.value == "succeeded":
@@ -79,59 +118,72 @@ def build_job_result_message(job: Job) -> str:
                 job.request.model,
                 job.request.model_id,
             )
-            text = (
-                f"[{label}] Completed\n\n"
-                f"- Job ID: {job.id}\n"
-                f"- Project: {job.request.project}\n"
-                f"- Model used: {model_label}\n"
-                f"- Token usage: {format_token_usage(job.runner_token_usage) or 'unavailable'}"
+            return ui_message(
+                "job.readonly_completed",
+                "[{mode}] Completed\n\n"
+                "- Job ID: {job_id}\n"
+                "- Project: {project}\n"
+                "- Model used: {model}\n"
+                "- Token usage: {token_usage}{response_block}",
+                mode=label,
+                job_id=job.id,
+                project=job.request.project,
+                model=model_label,
+                token_usage=_ui_token_usage(job),
+                response_block=_ui_response_block(job.runner_stdout_summary),
             )
-            if job.runner_stdout_summary:
-                text += f"\n\nAI response:\n{job.runner_stdout_summary}"
-            return text
 
-        changed = ", ".join(job.changed_files) if job.changed_files else "No changes"
-        branch_line = job.branch if job.branch else "(none - no branch; no changes)"
+        changed = ", ".join(job.changed_files) if job.changed_files else ui_message(
+            "job.no_changes",
+            "No changes",
+        )
+        branch_line = job.branch if job.branch else ui_message(
+            "job.branch_none_no_changes",
+            "(none - no branch; no changes)",
+        )
         commit_line = job.commit_hash or "-"
         if job.changed_files and not job.request.commit:
-            commit_line = "(no commit - commit/push skipped)"
+            commit_line = ui_message("job.no_commit_skipped", "(no commit - commit/push skipped)")
         elif job.changed_files and job.request.commit and not job.commit_hash:
-            commit_line = "(nothing staged - push skipped)"
+            commit_line = ui_message("job.nothing_staged_skipped", "(nothing staged - push skipped)")
         model_label = job.runner_actual_model or format_model_selection(
             job.request.model,
             job.request.model_id,
         )
-        text = (
-            f"✅ Job completed\n\n"
-            f"- Job ID: {job.id}\n"
-            f"- Project: {job.request.project}\n"
-            f"- Branch: {branch_line}\n"
-            f"- Commit: {commit_line}\n"
-            f"- Changed files: {changed}\n"
-            f"- Model used: {model_label}\n"
-            f"- Token usage: {format_token_usage(job.runner_token_usage) or 'unavailable'}"
+        return ui_message(
+            "job.completed",
+            "✅ Job completed\n\n"
+            "- Job ID: {job_id}\n"
+            "- Project: {project}\n"
+            "- Branch: {branch}\n"
+            "- Commit: {commit}\n"
+            "- Changed files: {changed}\n"
+            "- Model used: {model}\n"
+            "- Token usage: {token_usage}{response_block}",
+            job_id=job.id,
+            project=job.request.project,
+            branch=branch_line,
+            commit=commit_line,
+            changed=changed,
+            model=model_label,
+            token_usage=_ui_token_usage(job),
+            response_block=_ui_response_block(job.runner_stdout_summary),
         )
-        if job.runner_stdout_summary:
-            text += f"\n\nAI response:\n{job.runner_stdout_summary}"
-        return text
 
-    details = []
-    if job.error_stage:
-        details.append(f"- Failure stage: {job.error_stage}")
-    if job.log_path:
-        details.append(f"- Log path: {job.log_path}")
-    text = (
-        f"{mode_prefix}❌ Job failed\n\n"
-        f"- Job ID: {job.id}\n"
-        f"- Project: {job.request.project}\n"
-        f"- Error: {job.error or 'unknown error'}"
-    )
-    if details:
-        text += "\n" + "\n".join(details)
     failure_summary = job.runner_stderr_summary or job.runner_stdout_summary
-    if failure_summary:
-        text += f"\n\nFailure output summary:\n{failure_summary}"
-    return text
+    return ui_message(
+        "job.failed",
+        "{mode_prefix}❌ Job failed\n\n"
+        "- Job ID: {job_id}\n"
+        "- Project: {project}\n"
+        "- Error: {error}{details}{failure_block}",
+        mode_prefix=mode_prefix,
+        job_id=job.id,
+        project=job.request.project,
+        error=job.error or "unknown error",
+        details=_ui_failure_details(job),
+        failure_block=_ui_failure_block(failure_summary),
+    )
 
 
 class TelegramNotifier:

@@ -34,6 +34,7 @@ from app.telegram.bot_instances import BotInstance, BotInstanceManager
 from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.notifier import Notifier, TelegramNotifier
+from app.telegram.i18n import ui_message
 from app.telegram.parser import CommandParser
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
 from app.telegram.webhook import create_webhook_router
@@ -166,7 +167,11 @@ async def lifespan(_app: FastAPI):
                         ctx,
                     )
                     if response:
-                        text = f"✅ Remote AI Coder 서버가 시작되었습니다.\n{response.text}"
+                        text = ui_message(
+                            "server.started",
+                            "✅ Remote AI Coder server started.\n{body}",
+                            body=response.text,
+                        )
                         if response.inline_buttons:
                             bot_notifier.send_with_buttons(chat_id, text, response.inline_buttons)
                         else:
@@ -185,7 +190,13 @@ async def lifespan(_app: FastAPI):
             bot_notifier = instance.notifier
             for chat_id in instance.auth_service.allowed_chat_ids:
                 try:
-                    bot_notifier.send_text(chat_id, "🔴 Remote AI Coder 서버 연결이 종료되었습니다.")
+                    bot_notifier.send_text(
+                        chat_id,
+                        ui_message(
+                            "server.shutdown",
+                            "🔴 Remote AI Coder server connection closed.",
+                        ),
+                    )
                     _systemlog.info("shutdown notification sent", chat_id=chat_id)
                 except Exception:
                     _systemlog.exception("shutdown notification failed", chat_id=chat_id)

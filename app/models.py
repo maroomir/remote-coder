@@ -13,7 +13,7 @@ class ModelName(StrEnum):
 
 
 class CodexSandboxMode(StrEnum):
-    """Codex CLI `--sandbox` 값과 동일. `codex exec` 기본은 read-only이므로 Remote AI Coder는 기본을 workspace-write로 둡니다."""
+    """Matches Codex CLI `--sandbox`; remote-coder defaults to workspace-write."""
 
     READ_ONLY = "read-only"
     WORKSPACE_WRITE = "workspace-write"
