@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -58,14 +59,10 @@ def format_model_monitor(
     chat_id: int | None = None,
     project: str | None = None,
 ) -> str:
-    monitor_formatters = {
-        ModelName.CLAUDE: _format_claude_monitor,
-        ModelName.CODEX: _format_codex_monitor,
-        ModelName.GEMINI: _format_gemini_monitor,
-    }
-    body = monitor_formatters[model](timeout_seconds)
+    provider = _USAGE_PROVIDERS[model]
+    body = provider.format_monitor(timeout_seconds)
 
-    local_usage = _format_local_usage_section(_read_local_usage_snapshot(model))
+    local_usage = _format_local_usage_section(provider.read_local_usage())
     usage = _format_recent_usage_section(
         _summarize_recent_usage(recent_jobs, model=model, chat_id=chat_id, project=project)
     )
@@ -167,15 +164,6 @@ def _format_recent_usage_section(summary: RecentUsageSummary | None) -> str | No
     return "\n".join(lines)
 
 
-def _read_local_usage_snapshot(model: ModelName) -> LocalUsageSnapshot | None:
-    usage_readers = {
-        ModelName.CLAUDE: _read_claude_local_usage,
-        ModelName.CODEX: _read_codex_local_usage,
-        ModelName.GEMINI: _read_gemini_local_usage,
-    }
-    return usage_readers[model]()
-
-
 def _format_local_usage_section(snapshot: LocalUsageSnapshot | None) -> str | None:
     if snapshot is None:
         return "Local usage/quota snapshot\n- No local CLI usage logs found."
@@ -205,114 +193,6 @@ def _format_local_usage_section(snapshot: LocalUsageSnapshot | None) -> str | No
     elif snapshot.remaining_note:
         lines.append(f"- Remaining quota: {snapshot.remaining_note}")
     return "\n".join(lines)
-
-
-def _read_codex_local_usage() -> LocalUsageSnapshot | None:
-    root = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
-    sessions = root / "sessions"
-    newest: tuple[Path, dict[str, Any], datetime | None] | None = None
-    for path in _iter_recent_files(sessions, "*.jsonl"):
-        for item in _read_jsonl_objects(path):
-            payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
-            if not isinstance(payload, dict):
-                continue
-            if "rate_limits" not in payload and "info" not in payload:
-                continue
-            observed = _parse_datetime(item.get("timestamp"))
-            if _is_newer(observed, newest[2] if newest else None):
-                newest = (path, item, observed)
-    if newest is None:
-        return None
-
-    path, item, observed = newest
-    payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
-    info = payload.get("info") if isinstance(payload.get("info"), dict) else {}
-    rate_limits = payload.get("rate_limits") if isinstance(payload.get("rate_limits"), dict) else {}
-    token_usage = _normalize_token_dict(info.get("total_token_usage"))
-    windows = _codex_quota_windows(rate_limits)
-    return LocalUsageSnapshot(
-        source=_compact_home(path),
-        observed_at=observed,
-        token_metrics=token_usage or None,
-        quota_windows=tuple(windows),
-        plan_type=_string_or_none(rate_limits.get("plan_type")),
-        remaining_note=None if windows else "No rate_limits snapshot found in Codex session logs.",
-    )
-
-
-def _codex_quota_windows(rate_limits: dict[str, Any]) -> list[LocalQuotaWindow]:
-    windows: list[LocalQuotaWindow] = []
-    for key, fallback in (("primary", "primary window"), ("secondary", "secondary window")):
-        raw = rate_limits.get(key)
-        if not isinstance(raw, dict):
-            continue
-        used = _float_or_none(raw.get("used_percent"))
-        if used is None:
-            continue
-        minutes = _int_or_none(raw.get("window_minutes"))
-        label = _format_window_label(minutes) if minutes is not None else fallback
-        windows.append(
-            LocalQuotaWindow(
-                label=label,
-                used_percent=used,
-                remaining_percent=max(0.0, 100.0 - used),
-                resets_at=_datetime_from_epoch(raw.get("resets_at")),
-            )
-        )
-    return windows
-
-
-def _read_claude_local_usage() -> LocalUsageSnapshot | None:
-    root = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
-    projects = root / "projects"
-    newest: tuple[Path, dict[str, Any], dict[str, Any], datetime | None] | None = None
-    for path in _iter_recent_files(projects, "*.jsonl"):
-        for item in _read_jsonl_objects(path):
-            message = item.get("message") if isinstance(item.get("message"), dict) else {}
-            usage = message.get("usage") if isinstance(message.get("usage"), dict) else {}
-            if usage:
-                observed = _parse_datetime(item.get("timestamp"))
-                if _is_newer(observed, newest[3] if newest else None):
-                    newest = (path, item, message, observed)
-    if newest is None:
-        return None
-
-    path, _item, message, observed = newest
-    return LocalUsageSnapshot(
-        source=_compact_home(path),
-        observed_at=observed,
-        actual_model=_string_or_none(message.get("model")),
-        token_metrics=_normalize_token_dict(message.get("usage")) or None,
-        remaining_note="Claude local transcripts include session tokens but not account remaining quota snapshots.",
-    )
-
-
-def _read_gemini_local_usage() -> LocalUsageSnapshot | None:
-    root = Path(os.environ.get("GEMINI_HOME", Path.home() / ".gemini"))
-    newest: tuple[Path, dict[str, Any], datetime | None] | None = None
-    today = datetime.now().astimezone().date()
-    requests_today = 0
-    for path in _iter_recent_files(root, "*.jsonl"):
-        for item in _read_jsonl_objects(path):
-            if item.get("type") != "gemini" or not isinstance(item.get("tokens"), dict):
-                continue
-            observed = _parse_datetime(item.get("timestamp"))
-            if observed and observed.astimezone().date() == today:
-                requests_today += 1
-            if _is_newer(observed, newest[2] if newest else None):
-                newest = (path, item, observed)
-    if newest is None:
-        return None
-
-    path, item, observed = newest
-    return LocalUsageSnapshot(
-        source=_compact_home(path),
-        observed_at=observed,
-        actual_model=_string_or_none(item.get("model")),
-        token_metrics=_normalize_token_dict(item.get("tokens")) or None,
-        requests_today=requests_today,
-        remaining_note="Gemini local chat logs include requests/tokens but not account remaining quota snapshots.",
-    )
 
 
 def _iter_recent_files(root: Path, pattern: str) -> list[Path]:
@@ -456,154 +336,263 @@ def _string_or_none(raw: object) -> str | None:
     return value or None
 
 
-def _format_claude_monitor(timeout_seconds: int) -> str:
-    lines: list[str] = ["[Claude]"]
-    try:
-        proc = subprocess.run(
-            ["claude", "auth", "status", "--text"],
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            shell=False,
-        )
-    except FileNotFoundError:
-        lines.append("CLI: `claude` command not found. Check Claude Code CLI installation and PATH.")
-        lines.extend(_claude_footer())
+class ModelUsageProvider(ABC):
+    @abstractmethod
+    def format_monitor(self, timeout_seconds: int) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
+    def read_local_usage(self) -> LocalUsageSnapshot | None:
+        raise NotImplementedError
+
+
+class ClaudeUsageProvider(ModelUsageProvider):
+    def format_monitor(self, timeout_seconds: int) -> str:
+        lines: list[str] = ["[Claude]"]
+        try:
+            proc = subprocess.run(
+                ["claude", "auth", "status", "--text"],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                shell=False,
+            )
+        except FileNotFoundError:
+            lines.append("CLI: `claude` command not found. Check Claude Code CLI installation and PATH.")
+            return "\n".join(lines)
+        except subprocess.TimeoutExpired:
+            lines.append("`claude auth status --text` timed out.")
+            return "\n".join(lines)
+
+        out = (proc.stdout or "").strip()
+        err = (proc.stderr or "").strip()
+        if proc.returncode == 0 and out:
+            snippet = out if len(out) <= 2500 else out[:2500].rstrip() + "\n...(omitted)"
+            lines.append("auth status (--text):")
+            lines.append(snippet)
+        else:
+            lines.extend(self._auth_fallback_json(timeout_seconds, proc.returncode, err or out))
         return "\n".join(lines)
-    except subprocess.TimeoutExpired:
-        lines.append("`claude auth status --text` timed out.")
-        lines.extend(_claude_footer())
-        return "\n".join(lines)
 
-    out = (proc.stdout or "").strip()
-    err = (proc.stderr or "").strip()
-    if proc.returncode == 0 and out:
-        snippet = out if len(out) <= 2500 else out[:2500].rstrip() + "\n...(omitted)"
-        lines.append("auth status (--text):")
-        lines.append(snippet)
-    else:
-        lines.extend(_claude_auth_fallback_json(timeout_seconds, proc.returncode, err or out))
+    @staticmethod
+    def _auth_fallback_json(timeout_seconds: int, prev_code: int, prev_msg: str) -> list[str]:
+        lines: list[str] = []
+        try:
+            proc = subprocess.run(
+                ["claude", "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                shell=False,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            lines.append(f"auth status failed (previous exit {prev_code}): {prev_msg[:400]}")
+            return lines
 
-    lines.extend(_claude_footer())
-    return "\n".join(lines)
+        raw = (proc.stdout or "").strip()
+        if proc.returncode != 0 or not raw:
+            lines.append(f"auth status failed (exit {proc.returncode}): {(proc.stderr or prev_msg)[:400]}")
+            return lines
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            lines.append("auth status: non-JSON output (first 400 chars).")
+            lines.append(raw[:400])
+            return lines
 
-
-def _claude_auth_fallback_json(timeout_seconds: int, prev_code: int, prev_msg: str) -> list[str]:
-    lines: list[str] = []
-    try:
-        proc = subprocess.run(
-            ["claude", "auth", "status"],
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            shell=False,
+        safe_keys = (
+            "logged_in",
+            "authenticated",
+            "account",
+            "email",
+            "subscription",
+            "plan",
+            "organization",
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        lines.append(f"auth status failed (previous exit {prev_code}): {prev_msg[:400]}")
+        picked: dict[str, object] = {}
+        if isinstance(data, dict):
+            for k in safe_keys:
+                if k in data:
+                    picked[k] = data[k]
+            lines.append("auth status (JSON summary, sensitive values excluded):")
+            lines.append(json.dumps(picked, ensure_ascii=False, indent=2) if picked else "{}")
+        else:
+            lines.append("auth status: unexpected JSON shape.")
         return lines
 
-    raw = (proc.stdout or "").strip()
-    if proc.returncode != 0 or not raw:
-        lines.append(f"auth status failed (exit {proc.returncode}): {(proc.stderr or prev_msg)[:400]}")
-        return lines
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        lines.append("auth status: non-JSON output (first 400 chars).")
-        lines.append(raw[:400])
-        return lines
+    def read_local_usage(self) -> LocalUsageSnapshot | None:
+        root = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
+        projects = root / "projects"
+        newest: tuple[Path, dict[str, Any], dict[str, Any], datetime | None] | None = None
+        for path in _iter_recent_files(projects, "*.jsonl"):
+            for item in _read_jsonl_objects(path):
+                message = item.get("message") if isinstance(item.get("message"), dict) else {}
+                usage = message.get("usage") if isinstance(message.get("usage"), dict) else {}
+                if usage:
+                    observed = _parse_datetime(item.get("timestamp"))
+                    if _is_newer(observed, newest[3] if newest else None):
+                        newest = (path, item, message, observed)
+        if newest is None:
+            return None
 
-    safe_keys = (
-        "logged_in",
-        "authenticated",
-        "account",
-        "email",
-        "subscription",
-        "plan",
-        "organization",
-    )
-    picked: dict[str, object] = {}
-    if isinstance(data, dict):
-        for k in safe_keys:
-            if k in data:
-                picked[k] = data[k]
-        lines.append("auth status (JSON summary, sensitive values excluded):")
-        lines.append(json.dumps(picked, ensure_ascii=False, indent=2) if picked else "{}")
-    else:
-        lines.append("auth status: unexpected JSON shape.")
-    return lines
-
-
-def _claude_footer() -> list[str]:
-    return []
-
-
-def _format_codex_monitor(timeout_seconds: int) -> str:
-    lines: list[str] = ["[Codex]"]
-    try:
-        proc = subprocess.run(
-            ["codex", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            shell=False,
+        path, _item, message, observed = newest
+        return LocalUsageSnapshot(
+            source=_compact_home(path),
+            observed_at=observed,
+            actual_model=_string_or_none(message.get("model")),
+            token_metrics=_normalize_token_dict(message.get("usage")) or None,
+            remaining_note="Claude local transcripts include session tokens but not account remaining quota snapshots.",
         )
-    except FileNotFoundError:
-        lines.append("CLI: `codex` command not found. Check Codex CLI installation and PATH.")
-        lines.extend(_codex_footer())
+
+
+class CodexUsageProvider(ModelUsageProvider):
+    def format_monitor(self, timeout_seconds: int) -> str:
+        lines: list[str] = ["[Codex]"]
+        try:
+            proc = subprocess.run(
+                ["codex", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                shell=False,
+            )
+        except FileNotFoundError:
+            lines.append("CLI: `codex` command not found. Check Codex CLI installation and PATH.")
+            return "\n".join(lines)
+        except subprocess.TimeoutExpired:
+            lines.append("`codex --version` timed out.")
+            return "\n".join(lines)
+
+        ver = (proc.stdout or proc.stderr or "").strip()
+        if ver:
+            snippet = ver if len(ver) <= 500 else ver[:500] + "..."
+            lines.append(f"CLI version:\n{snippet}")
+        else:
+            lines.append(f"Version check failed (exit {proc.returncode}).")
         return "\n".join(lines)
-    except subprocess.TimeoutExpired:
-        lines.append("`codex --version` timed out.")
-        lines.extend(_codex_footer())
-        return "\n".join(lines)
 
-    ver = (proc.stdout or proc.stderr or "").strip()
-    if ver:
-        snippet = ver if len(ver) <= 500 else ver[:500] + "..."
-        lines.append(f"CLI version:\n{snippet}")
-    else:
-        lines.append(f"Version check failed (exit {proc.returncode}).")
+    def read_local_usage(self) -> LocalUsageSnapshot | None:
+        root = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+        sessions = root / "sessions"
+        newest: tuple[Path, dict[str, Any], datetime | None] | None = None
+        for path in _iter_recent_files(sessions, "*.jsonl"):
+            for item in _read_jsonl_objects(path):
+                payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+                if not isinstance(payload, dict):
+                    continue
+                if "rate_limits" not in payload and "info" not in payload:
+                    continue
+                observed = _parse_datetime(item.get("timestamp"))
+                if _is_newer(observed, newest[2] if newest else None):
+                    newest = (path, item, observed)
+        if newest is None:
+            return None
 
-    lines.extend(_codex_footer())
-    return "\n".join(lines)
-
-
-def _codex_footer() -> list[str]:
-    return []
-
-
-def _format_gemini_monitor(timeout_seconds: int) -> str:
-    lines: list[str] = ["[Gemini]"]
-    try:
-        proc = subprocess.run(
-            ["gemini", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            shell=False,
+        path, item, observed = newest
+        payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+        info = payload.get("info") if isinstance(payload.get("info"), dict) else {}
+        rate_limits = payload.get("rate_limits") if isinstance(payload.get("rate_limits"), dict) else {}
+        token_usage = _normalize_token_dict(info.get("total_token_usage"))
+        windows = self._quota_windows(rate_limits)
+        return LocalUsageSnapshot(
+            source=_compact_home(path),
+            observed_at=observed,
+            token_metrics=token_usage or None,
+            quota_windows=tuple(windows),
+            plan_type=_string_or_none(rate_limits.get("plan_type")),
+            remaining_note=None if windows else "No rate_limits snapshot found in Codex session logs.",
         )
-    except FileNotFoundError:
-        lines.append("CLI: `gemini` command not found. Check Gemini CLI installation and PATH.")
-        lines.extend(_gemini_footer())
+
+    @staticmethod
+    def _quota_windows(rate_limits: dict[str, Any]) -> list[LocalQuotaWindow]:
+        windows: list[LocalQuotaWindow] = []
+        for key, fallback in (("primary", "primary window"), ("secondary", "secondary window")):
+            raw = rate_limits.get(key)
+            if not isinstance(raw, dict):
+                continue
+            used = _float_or_none(raw.get("used_percent"))
+            if used is None:
+                continue
+            minutes = _int_or_none(raw.get("window_minutes"))
+            label = _format_window_label(minutes) if minutes is not None else fallback
+            windows.append(
+                LocalQuotaWindow(
+                    label=label,
+                    used_percent=used,
+                    remaining_percent=max(0.0, 100.0 - used),
+                    resets_at=_datetime_from_epoch(raw.get("resets_at")),
+                )
+            )
+        return windows
+
+
+class GeminiUsageProvider(ModelUsageProvider):
+    def format_monitor(self, timeout_seconds: int) -> str:
+        lines: list[str] = ["[Gemini]"]
+        try:
+            proc = subprocess.run(
+                ["gemini", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                shell=False,
+            )
+        except FileNotFoundError:
+            lines.append("CLI: `gemini` command not found. Check Gemini CLI installation and PATH.")
+            lines.extend(self._footer())
+            return "\n".join(lines)
+        except subprocess.TimeoutExpired:
+            lines.append("`gemini --version` timed out.")
+            lines.extend(self._footer())
+            return "\n".join(lines)
+
+        ver = (proc.stdout or proc.stderr or "").strip()
+        if ver:
+            snippet = ver if len(ver) <= 500 else ver[:500] + "..."
+            lines.append(f"CLI version:\n{snippet}")
+        else:
+            lines.append(f"Version check failed (exit {proc.returncode}).")
+
+        lines.extend(self._footer())
         return "\n".join(lines)
-    except subprocess.TimeoutExpired:
-        lines.append("`gemini --version` timed out.")
-        lines.extend(_gemini_footer())
-        return "\n".join(lines)
 
-    ver = (proc.stdout or proc.stderr or "").strip()
-    if ver:
-        snippet = ver if len(ver) <= 500 else ver[:500] + "..."
-        lines.append(f"CLI version:\n{snippet}")
-    else:
-        lines.append(f"Version check failed (exit {proc.returncode}).")
+    @staticmethod
+    def _footer() -> list[str]:
+        return [
+            "",
+            "Install: npm install -g @google/gemini-cli",
+        ]
 
-    lines.extend(_gemini_footer())
-    return "\n".join(lines)
+    def read_local_usage(self) -> LocalUsageSnapshot | None:
+        root = Path(os.environ.get("GEMINI_HOME", Path.home() / ".gemini"))
+        newest: tuple[Path, dict[str, Any], datetime | None] | None = None
+        today = datetime.now().astimezone().date()
+        requests_today = 0
+        for path in _iter_recent_files(root, "*.jsonl"):
+            for item in _read_jsonl_objects(path):
+                if item.get("type") != "gemini" or not isinstance(item.get("tokens"), dict):
+                    continue
+                observed = _parse_datetime(item.get("timestamp"))
+                if observed and observed.astimezone().date() == today:
+                    requests_today += 1
+                if _is_newer(observed, newest[2] if newest else None):
+                    newest = (path, item, observed)
+        if newest is None:
+            return None
+
+        path, item, observed = newest
+        return LocalUsageSnapshot(
+            source=_compact_home(path),
+            observed_at=observed,
+            actual_model=_string_or_none(item.get("model")),
+            token_metrics=_normalize_token_dict(item.get("tokens")) or None,
+            requests_today=requests_today,
+            remaining_note="Gemini local chat logs include requests/tokens but not account remaining quota snapshots.",
+        )
 
 
-def _gemini_footer() -> list[str]:
-    return [
-        "",
-        "Install: npm install -g @google/gemini-cli",
-    ]
+_USAGE_PROVIDERS: dict[ModelName, ModelUsageProvider] = {
+    ModelName.CLAUDE: ClaudeUsageProvider(),
+    ModelName.CODEX: CodexUsageProvider(),
+    ModelName.GEMINI: GeminiUsageProvider(),
+}
