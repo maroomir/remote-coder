@@ -39,11 +39,11 @@ conda run -n remote-coder pytest -q
 
 예: `0.1.0` 릴리즈 시 모두 `0.1.0`으로 통일
 
-## 3b) CHANGELOG.md
+## 3b) CHANGELOG.md / CHANGELOG.ko.md
 
-Keep a Changelog 형식을 유지합니다.
+Keep a Changelog 형식을 유지합니다. 변경 이력은 **영어 `CHANGELOG.md`(PyPI 노출)와 한국어 `CHANGELOG.ko.md`를 함께** 갱신합니다.
 
-- `[미배포]`에 쌓아 둔 항목이 있으면 새 버전 섹션 `## [X.Y.Z] — YYYY-MM-DD`로 옮기고, `[미배포]`는 비우거나 다음 릴리즈용 플레이스홀더만 남깁니다.
+- 쌓아 둔 항목(`CHANGELOG.md`의 `[Unreleased]`, `CHANGELOG.ko.md`의 `[미배포]`)이 있으면 새 버전 섹션 `## [X.Y.Z] — YYYY-MM-DD`로 옮기고, 미배포 섹션은 비우거나 다음 릴리즈용 플레이스홀더만 남깁니다.
 - 이번 릴리즈만 반영하는 추가·변경·수정·보안 요약을 사용자 관점으로 적습니다. 세부 커밋 나열은 생략하고 `git log`·GitHub Compare로 보완합니다.
 
 ## 4) 커밋 직전 체크리스트
@@ -51,7 +51,7 @@ Keep a Changelog 형식을 유지합니다.
 - [ ] `pyproject.toml` 버전 업데이트
 - [ ] `app/__init__.py` 버전 업데이트
 - [ ] `tests/test_cli.py` 버전 assertion 업데이트
-- [ ] `CHANGELOG.md`에 `[X.Y.Z]` 섹션 반영(및 `[미배포]` 정리)
+- [ ] `CHANGELOG.md`와 `CHANGELOG.ko.md`에 `[X.Y.Z]` 섹션 반영(및 미배포 섹션 정리)
 - [ ] `git diff`로 버전·CHANGELOG 관련 파일만 바뀌었는지 확인
 - [ ] `conda run -n remote-coder pytest -q` 통과 확인
 - [ ] 커밋 메시지 `chore: bump version to vX.Y.Z` 사용
@@ -61,7 +61,7 @@ Keep a Changelog 형식을 유지합니다.
 ```bash
 git diff
 conda run -n remote-coder pytest -q
-git add pyproject.toml app/__init__.py tests/test_cli.py CHANGELOG.md
+git add pyproject.toml app/__init__.py tests/test_cli.py CHANGELOG.md CHANGELOG.ko.md
 git commit -m "chore: bump version to vX.Y.Z"
 ```
 
@@ -133,7 +133,7 @@ git diff
 conda run -n remote-coder pytest -q
 
 # 2) 커밋/태그/푸시
-git add pyproject.toml app/__init__.py tests/test_cli.py CHANGELOG.md
+git add pyproject.toml app/__init__.py tests/test_cli.py CHANGELOG.md CHANGELOG.ko.md
 git commit -m "chore: bump version to vX.Y.Z"
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin <release-branch>

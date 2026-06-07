@@ -195,8 +195,8 @@ logger.info("message_received", extra={"chat_id": chat_id, "job_id": job_id})
 When the user asks to prepare a release, cut a version, or bump the package version:
 
 1. Follow `RELEASE.md` end-to-end for version strings, tests, commit message format, and optional tag/GitHub Release/PyPI steps.
-2. Update `CHANGELOG.md`: add `## [X.Y.Z] — YYYY-MM-DD`, move content out of `[미배포]` when applicable, keep Keep a Changelog structure.
-3. Keep the version bump commit minimal: `pyproject.toml`, `app/__init__.py`, `tests/test_cli.py`, and `CHANGELOG.md` unless the user explicitly includes other files.
+2. Update both `CHANGELOG.md` (English, the `[Unreleased]` section) and `CHANGELOG.ko.md` (Korean, the `[미배포]` section): add `## [X.Y.Z] — YYYY-MM-DD`, move content out of the unreleased section when applicable, keep Keep a Changelog structure.
+3. Keep the version bump commit minimal: `pyproject.toml`, `app/__init__.py`, `tests/test_cli.py`, `CHANGELOG.md`, and `CHANGELOG.ko.md` unless the user explicitly includes other files.
 4. Creating annotated tags and running `git push` (branch or tags) changes the remote; do this only when the user explicitly requests tagging/publishing or confirms the full `RELEASE.md` push steps.
 
 ## Testing and Verification

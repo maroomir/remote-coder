@@ -1,209 +1,211 @@
-# 변경 이력
+# Changelog
 
-이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며, 버전 번호는 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다.
+*English: this document · 한국어: [CHANGELOG.ko.md](CHANGELOG.ko.md)*
 
-히스토리를 한 번에 정리할 때 Git 로그와 문서를 함께 보고, 기능 단위로 묶는 편이 좋습니다. 단계적으로 주제를 나누고 중복을 제거하려면 Cursor의 **Sequential Thinking** MCP(`sequentialthinking`)처럼 생각을 번호 매겨 기록하는 도구도 도움이 됩니다. 다만 그 도구는 저장소와 연동되어 자동 취합해 주지 않으므로, **원본은 항상 `git log`·릴리즈 태그·이 파일의 이전 버전**을 기준으로 삼는 것이 안전합니다.
+This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format, and version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [미배포]
+When compiling history in one pass, it helps to read the Git log alongside the docs and group by feature. The **source of truth is always `git log`, the release tags, and previous versions of this file.**
+
+## [Unreleased]
 
 ## [0.4.1] — 2026-06-07
 
-### 추가됨
+### Added
 
-- **원커맨드 설치/실행**: `pip install remote-coder`로 설치 후, `remote-coder init`(대화형 설정 마법사)과 `remote-coder up`(ngrok 터널 + Telegram webhook 등록 + 서버 실행을 한 번에)으로 Conda 없이 시작할 수 있습니다. 서버만 실행은 `remote-coder up --no-tunnel`, 전제조건(ngrok·AI CLI) 점검은 `remote-coder doctor`. (CLI 명령은 `init`/`up`/`doctor` 3개) pipx·uv·`curl | bash`([`scripts/install.sh`](scripts/install.sh))도 대안으로 제공합니다.
-- **전역 설정 위치**: `REMOTE_CODER_HOME`(기본 `~/.remote-coder`)의 `.env`를 로드해 실행 디렉터리에 의존하지 않습니다. 저장소 내 개발 시에는 현재 디렉터리의 `.env`가 우선합니다.
-- **PyPI 자동 발행**: 태그(`vX.Y.Z`) push 시 GitHub Actions가 시크릿 없는 Trusted Publishing(OIDC)으로 PyPI에 업로드하고 GitHub Release까지 생성합니다.
+- **One-command install/run**: After `pip install remote-coder`, start without Conda using `remote-coder init` (interactive setup wizard) and `remote-coder up` (ngrok tunnel + Telegram webhook registration + server, all at once). Server-only is `remote-coder up --no-tunnel`; prerequisite checks (ngrok, AI CLIs) are `remote-coder doctor`. (The CLI has three commands: `init`/`up`/`doctor`.) pipx, uv, and `curl | bash` ([`scripts/install.sh`](scripts/install.sh)) are also available as alternatives.
+- **Global config location**: Loads `.env` from `REMOTE_CODER_HOME` (default `~/.remote-coder`) so it does not depend on the working directory. When developing inside the repo, the current directory's `.env` takes precedence.
+- **Automatic PyPI publishing**: Pushing a tag (`vX.Y.Z`) makes GitHub Actions upload to PyPI via secret-less Trusted Publishing (OIDC) and create a GitHub Release.
 
-### 변경됨
+### Changed
 
-- ngrok 처리를 `app/tunnel.py`로 옮기고, 활성 프로젝트 webhook/명령어 등록을 `register_all_enabled_projects`로 추출해 `remote-coder up`과 `scripts/set_webhook.py`가 공유합니다.
+- Moved ngrok handling into `app/tunnel.py` and extracted active-project webhook/command registration into `register_all_enabled_projects`, shared by `remote-coder up` and `scripts/set_webhook.py`.
 
-### 수정됨
+### Fixed
 
-- `pip install`로 설치한 경우 관리 UI가 깨지던 문제를 고쳤습니다. 패키지 데이터(`app/admin/templates/*.html`, `app/admin/static/*.js`, `app/admin/static/icons/*.svg`)를 빌드 산출물에 포함합니다.
+- Fixed the admin UI breaking when installed via `pip install`. Package data (`app/admin/templates/*.html`, `app/admin/static/*.js`, `app/admin/static/icons/*.svg`) is now included in the build artifacts.
 
 ## [0.4.0] — 2026-06-07
 
-### 변경됨
+### Changed
 
-- **AI 러너 구조 개선**: Claude/Codex/Gemini 공통 실행 흐름을 `BaseCliRunner`로 추출해 러너 간 코드 중복을 제거했습니다.
-- **AI 모델 분기 단순화**: 분산된 `if/elif` 체인을 딕셔너리 디스패치로 교체해 러너 선택 코드를 단순화했습니다.
-- **모델 사용량 모니터링 전략화**: 모델별 사용량 추적을 `ModelUsageProvider` 전략 패턴으로 재구성했습니다.
-- **Notifier 프로토콜 분리**: 메시지 포맷과 전달 역할을 `Notifier` 프로토콜로 명확히 분리했습니다.
-- **Telegram 웹훅·명령어 재구성**: 웹훅 핸들러를 역할별로 분해하고 명령어 모듈을 `commands/` 패키지로 재구성했습니다.
-- **Git 플러밍 통합**: 중복된 워크트리·리베이스 관련 Git 플러밍을 단일 서비스로 통합했습니다.
-- **i18n 메시지 정비**: 작업 알림, 서버 상태, 모델 공급자 선택 메시지에 번역을 적용하고 영어 기본 메시지를 정리했습니다.
-- **커밋 메시지 ASCII 적용**: 자동 생성 커밋 메시지가 ASCII 규칙을 따르도록 포맷 및 검증을 보강했습니다.
+- **AI runner restructuring**: Extracted the common Claude/Codex/Gemini execution flow into `BaseCliRunner`, removing code duplication across runners.
+- **Simplified AI model branching**: Replaced scattered `if/elif` chains with dictionary dispatch to simplify runner selection.
+- **Model-usage monitoring as a strategy**: Reorganized per-model usage tracking into a `ModelUsageProvider` strategy pattern.
+- **Notifier protocol separation**: Cleanly separated message formatting and delivery roles via a `Notifier` protocol.
+- **Telegram webhook/command restructuring**: Decomposed the webhook handler by responsibility and reorganized command modules into a `commands/` package.
+- **Git plumbing consolidation**: Consolidated duplicated worktree/rebase Git plumbing into a single service.
+- **i18n message cleanup**: Applied translations to task notifications, server status, and model-provider selection messages and cleaned up the English defaults.
+- **ASCII commit messages**: Strengthened formatting and validation so auto-generated commit messages follow ASCII rules.
 
-### 수정됨
+### Fixed
 
-- 미사용 클래스, 메서드, 임포트를 정리해 코드베이스 노이즈를 줄였습니다.
+- Cleaned up unused classes, methods, and imports to reduce codebase noise.
 
 ## [0.3.3] — 2026-06-06
 
-### 추가됨
+### Added
 
-- **모델 ID 처리 보강**: Claude/Codex/Gemini 러너와 관련 구성 요소가 모델 ID를 함께 다루도록 확장했습니다.
-- **`/fix` 명령**: 최근 작업 결과를 바탕으로 커밋 메시지를 수정하거나 소스 재작업을 요청할 수 있는 흐름을 추가했습니다.
+- **Stronger model-ID handling**: Extended the Claude/Codex/Gemini runners and related components to carry model IDs.
+- **`/fix` command**: Added a flow to fix the commit message or request a source rework based on a recent task result.
 
-### 수정됨
+### Fixed
 
-- 완료된 후속 작업이 부모 작업의 커밋 해시와 변경 파일 목록을 올바르게 갱신하도록 수정했습니다.
-- 불완전한 모델 명령에서만 모델 선택 버튼을 반환하도록 조정했습니다.
-- 수정 후보 복구에 필요한 작업 저장소 상태가 유지되도록 보완했습니다.
-- Gemini ASK/PLAN 모드 실행 시 `--skip-trust` 플래그를 사용하도록 수정했습니다.
-- AI 커밋 생성 시 선택한 모델을 사용하고 fallback 메시지에서 Job ID가 섞이지 않도록 수정했습니다.
+- Completed follow-up tasks now correctly update the parent task's commit hash and changed-file list.
+- Adjusted so model-selection buttons are returned only for incomplete model commands.
+- Ensured the task repository state needed for fix-candidate recovery is preserved.
+- Fixed Gemini ASK/PLAN mode execution to use the `--skip-trust` flag.
+- Fixed AI commit generation to use the selected model and avoid mixing the Job ID into the fallback message.
 
 ## [0.3.2] — 2026-05-25
 
-### 추가됨
+### Added
 
-- **관리 UI 다국어화**: 로컬 관리 UI(`/`, `/projects`, `/advanced`, `/logs`, `/database`)를 영어 기본으로 바꾸고, 고급 설정의 `ui_language`로 한국어를 선택하면 클라이언트에서 한국어로 표시되도록 했습니다(`app/admin/static/i18n.js` 카탈로그). 페이지 응답에 현재 언어를 주입하고, Telegram과 동일한 전역 설정을 따릅니다.
+- **Admin UI localization**: Switched the local admin UI (`/`, `/projects`, `/advanced`, `/logs`, `/database`) to English by default, and made it render in Korean on the client when `ui_language` is set to Korean in advanced settings (`app/admin/static/i18n.js` catalog). The current language is injected into page responses, following the same global setting as Telegram.
 
-### 변경됨
+### Changed
 
-- 관리 UI 백엔드의 사용자 노출 문자열(테이블 라벨, webhook 안내, 토큰 마스킹 표시값)을 영어 기준으로 정리했습니다. 오류·검증 메시지는 영어로 통일했습니다.
+- Standardized the user-facing strings in the admin UI backend (table labels, webhook guidance, masked-token display values) to English. Unified error/validation messages to English.
 
 ## [0.3.1] — 2026-05-22
 
-### 추가됨
+### Added
 
-- **언어별 응답 개선**: 도움말과 대화 맥락 출력에 언어 설정을 반영하도록 보강했습니다.
+- **Per-language response improvements**: Strengthened help and conversation-context output to reflect the language setting.
 
-### 변경됨
+### Changed
 
-- **기본 언어 설정**: 기본 응답 언어를 영어로 두고, 한국어는 고급 설정에서 선택하는 흐름을 정리했습니다.
-- **확인 메시지 문구**: 확인 단계에서 한국어와 영어가 섞여 보이던 문구를 다듬었습니다.
+- **Default language setting**: Kept the default response language as English and cleaned up the flow for selecting Korean in advanced settings.
+- **Confirmation message wording**: Polished wording that mixed Korean and English in the confirmation step.
 
-### 수정됨
+### Fixed
 
-- 모니터링 동작을 최신 상태에 맞게 조정했습니다.
+- Adjusted monitoring behavior to match the latest state.
 
 ## [0.3.0] — 2026-05-15
 
-### 추가됨
+### Added
 
-- **PLAN/ASK 작업 모드**: 자연어와 슬래시 명령에서 구현 작업, 계획 요청, 질문 응답을 구분하는 작업 모드를 추가했습니다.
-- **PLAN/ASK 확인 흐름**: PLAN·ASK 모드의 자연어 요청도 현재 프로젝트·브랜치·모델·모드를 확인한 뒤 실행하도록 했습니다.
-- **서버 시작 시 프로젝트 pull 설정**: 서버 기동 시 등록 프로젝트를 최신 상태로 당겨오는 운영 설정을 추가했습니다.
+- **PLAN/ASK task modes**: Added task modes that distinguish implementation tasks, plan requests, and question answers in both natural language and slash commands.
+- **PLAN/ASK confirmation flow**: Made natural-language requests in PLAN/ASK mode also confirm the current project/branch/model/mode before running.
+- **Pull projects on server start**: Added an operational setting to pull registered projects up to date on server startup.
 
-### 변경됨
+### Changed
 
-- **AI 러너 지시문 처리**: Claude/Codex/Gemini 실행 지시문에 작업 모드 맥락이 반영되도록 보강했습니다.
-- **`/start` 메뉴**: 시작 화면을 도움말과 모드 안내 중심으로 단순화하고, 주요 하위 명령으로 바로 이동하도록 정리했습니다.
-- **모델 선택 메뉴**: 모델 인라인 버튼을 관리 섹션 아래로 이동해 명령 메뉴 구조를 단순화했습니다.
+- **AI runner instruction handling**: Strengthened the Claude/Codex/Gemini execution instructions to reflect task-mode context.
+- **`/start` menu**: Simplified the start screen around help and mode guidance, with direct navigation to key subcommands.
+- **Model-selection menu**: Moved the model inline buttons under the admin section to simplify the command menu structure.
 
-### 수정됨
+### Fixed
 
-- `/clear`와 `/monitor` 명령을 인자 없이 호출했을 때 인라인 버튼 메뉴가 표시되도록 수정했습니다.
-- `/rebase` 콜백이 중복 실행될 수 있던 문제를 idempotency 잠금과 조기 응답으로 방지했습니다.
-- 봇 메시지에 답장한 후속 요청이 원래 Job ID와 대화 기록에 올바르게 연결되도록 수정했습니다.
-- 인자 없는 `/plan`과 `/ask` 명령이 입력 대기 모드로 전환되도록 수정했습니다.
+- Fixed so that calling `/clear` and `/monitor` without arguments shows the inline button menu.
+- Prevented possible duplicate execution of `/rebase` callbacks with an idempotency lock and an early response.
+- Fixed follow-up requests replying to a bot message to correctly link to the original Job ID and conversation history.
+- Fixed argument-less `/plan` and `/ask` commands to switch into input-waiting mode.
 
 ## [0.2.3] — 2026-05-12
 
-### 추가됨
+### Added
 
-- **Telegram 명령어 메뉴**: webhook 등록 시 `setMyCommands`도 함께 호출하고, 기본·개인 채팅·허용 채팅 scope에 등록해 Telegram 클라이언트에서 `/` 입력만으로 지원 명령어가 표시되도록 했습니다.
-- **관리 대시보드 요약 그리드**: 관리 UI 홈 화면에 프로젝트·작업·Git 상태 요약 카드를 추가했습니다.
-- **서버 생명주기 알림 설정**: 서버 시작·종료 시 Telegram 알림 전송 여부를 관리 UI에서 설정할 수 있습니다.
+- **Telegram command menu**: Also call `setMyCommands` during webhook registration, registering in the default, private-chat, and allowed-chat scopes so supported commands appear in the Telegram client just by typing `/`.
+- **Admin dashboard summary grid**: Added project/task/Git status summary cards to the admin UI home screen.
+- **Server lifecycle notification setting**: The admin UI can configure whether to send Telegram notifications on server start/stop.
 
-### 변경됨
+### Changed
 
-- **Telegram 메시지 레이아웃**: 명령어 응답 메시지에 구조화된 레이아웃을 적용해 가독성을 높였습니다.
-- **`/model` 확인 메시지**: 모델 변경 확인 메시지 형식을 업데이트했습니다.
+- **Telegram message layout**: Applied a structured layout to command response messages for readability.
+- **`/model` confirmation message**: Updated the model-change confirmation message format.
 
-### 수정됨
+### Fixed
 
-- Telegram 클라이언트에서 `/` 입력 시 봇 명령어 메뉴가 표시되지 않던 문제를 수정했습니다.
-- Git worktree 생성 시 브랜치 체크아웃 충돌이 발생하던 문제를 수정했습니다.
-- 인라인 버튼 플래그 활성화 시 기존 Y/y 확인 프롬프트를 올바르게 대체하지 않던 문제를 수정했습니다.
+- Fixed the bot command menu not appearing when typing `/` in the Telegram client.
+- Fixed a branch-checkout conflict during Git worktree creation.
+- Fixed inline-button flag activation not correctly replacing the existing Y/y confirmation prompt.
 
 ## [0.2.2] — 2026-05-11
 
-### 추가됨
+### Added
 
-- **관리 UI — 고급 설정**: 인라인 버튼 Yes/No 응답 사용 여부, 작업 타임아웃, 리베이스 후 브랜치 자동 삭제 옵션을 고급 설정에서 조정할 수 있습니다.
+- **Admin UI — advanced settings**: Whether to use inline-button Yes/No responses, task timeout, and auto-deleting a branch after rebase can be adjusted in advanced settings.
 
-### 변경됨
+### Changed
 
-- **웹훅 운영**: 관리 UI에서 프로젝트를 추가하거나 수정하면 Telegram webhook 설정이 재시작 없이 갱신됩니다.
-- **리베이스 진단**: 원격 참조가 없는 경우 등 리베이스 실패 원인을 더 명확히 진단하도록 보강했습니다.
+- **Webhook operations**: Adding or editing a project in the admin UI refreshes the Telegram webhook configuration without a restart.
+- **Rebase diagnostics**: Strengthened diagnosis of rebase-failure causes, such as missing remote references.
 
-### 수정됨
+### Fixed
 
-- 콜백 쿼리 처리 중 `scope_project` 지역 변수 초기화 오류가 발생할 수 있던 문제를 수정했습니다.
-- 봇 메시지에 답장할 때 이전 작업 맥락이 누락될 수 있던 문제를 수정했습니다.
-- 리베이스가 간헐적으로 실패하던 Git 연동 동작을 보완했습니다.
-- 사용자 프롬프트 원문이 자동 커밋 제목에 새어 들어갈 수 있던 문제를 방지했습니다.
+- Fixed a possible `scope_project` local-variable initialization error during callback-query handling.
+- Fixed previous task context possibly being lost when replying to a bot message.
+- Hardened the Git integration where rebase occasionally failed.
+- Prevented the user prompt's raw text from leaking into the auto-commit title.
 
 ## [0.2.1] — 2026-05-09
 
-### 변경됨
+### Changed
 
-- **관리 UI — 프로젝트 등록**: 멀티봇 webhook 안내 카드(Base URL 미리보기 등) 제거. 등록 목록의 Telegram 열은 마스킹된 봇 토큰과 웹훅 시크릿 설정 여부 배지만 표시. 추가·수정 폼에서 웹훅 시크릿·허용 User ID를 접이식「선택 항목」으로 묶어 화면을 단순화.
+- **Admin UI — project registration**: Removed the multi-bot webhook guidance card (Base URL preview, etc.). The Telegram column in the registration list shows only a masked bot token and a badge for whether a webhook secret is set. Grouped the webhook secret and allowed User IDs into a collapsible "optional items" section in the add/edit form to simplify the screen.
 
-### 추가됨
+### Added
 
-- **프로젝트 생성 기본값**: 관리 API `POST /api/projects`에서 `webhook_secret`을 생략하거나 비워 두면 `optional-secret`을 저장합니다. `PUT`으로 수정할 때의 생략·빈 문자열 동작은 기존과 같습니다.
+- **Project-creation defaults**: In the admin API `POST /api/projects`, omitting or leaving `webhook_secret` empty stores `optional-secret`. The omit/empty-string behavior when editing via `PUT` is unchanged.
 
 ## [0.2.0] — 2026-05-09
 
-멀티봇 전환 이전 형식의 프로젝트 레지스트리와 운영 편의 위주의 변경을 묶었습니다.
+A bundle of the pre-multi-bot registry format and operability-focused changes.
 
-### 추가됨
+### Added
 
-- **레거시 레지스트리 보강**: `projects.json`에 `bot_token`·`allowed_chat_ids`가 없거나 비어 있으면, 로드 시 `python-dotenv`로 `.env`를 읽은 뒤 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TELEGRAM_ALLOWED_USER_IDS`, (선택) `TELEGRAM_WEBHOOK_SECRET`으로 채워 검증합니다. 기존 파일을 한 번에 고치지 않아도 부팅·웹훅 등록이 가능해집니다.
-- **CI**: `v*.*.*` 태그 푸시 시 빌드·검사·GitHub Release 자동화 워크플로우.
+- **Legacy registry augmentation**: When `projects.json` lacks or has empty `bot_token`/`allowed_chat_ids`, on load it reads `.env` via `python-dotenv` and fills/validates with `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TELEGRAM_ALLOWED_USER_IDS`, and (optionally) `TELEGRAM_WEBHOOK_SECRET`. This enables booting and webhook registration without fixing the existing file all at once.
+- **CI**: A workflow that automates build, checks, and a GitHub Release on `v*.*.*` tag push.
 
-### 변경됨
+### Changed
 
-- **설정 정리**: 사용 중단된 `auto_pull_on_project_switch` 설정과 관련 로드·문서·관리 UI 노출을 제거했습니다.
+- **Settings cleanup**: Removed the deprecated `auto_pull_on_project_switch` setting and its related load logic, docs, and admin UI exposure.
 
-### 수정됨
+### Fixed
 
-- 레거시 레지스트리 로드 동작에 대한 회귀 테스트 보강.
+- Strengthened regression tests for the legacy registry load behavior.
 
 ## [0.1.0] — 2026-05-09
 
-첫 PyPI·Git 릴리즈에 해당하는 기능 묶음입니다. 저장소 커밋 히스토리상의 초기 부팅부터 멀티봇·패키징까지의 누적 변경을 사용자 관점으로 요약합니다.
+The feature bundle corresponding to the first PyPI/Git release. Summarizes, from a user's perspective, the cumulative changes from initial bootstrap to multi-bot/packaging in the repository commit history.
 
-### 추가됨
+### Added
 
-- **FastAPI 서버·웹훅**: 텔레그램 Bot Webhook 수신, 빠른 응답 후 백그라운드 작업 흐름.
-- **작업(Job) 관리**: 큐·상태(`queued`, `running`, `succeeded`, `failed`, `cancelled` 등), 타임아웃, 단계별 실패 기록, Job ID 고유성.
-- **Git 워크트리 격리**: 메인 작업 디렉터리 대신 요청별 워크트리에서 AI 작업, 브랜치명 지정 또는 안전한 자동 생성, 변경 없으면 브랜치·커밋·푸시 생략.
-- **AI 러너**: Claude Code, Codex CLI, Gemini CLI 공통 인터페이스·팩토리, 표준 출력·종료 코드·실행 시간 수집.
-- **자동 커밋**: `type: title` 형식, 본문 불릿, `committed by remote-coder: <job-id>` 풋터; 필요 시 AI 기반 커밋 메시지 보강.
-- **텔레그램 명령·파서**: 슬래시 명령, 자연어 요청 파싱, 자연어는 요약 확인 후 `y`/`Y`로만 Job 생성.
-- **SQLite 대화·메모리**: 작업 결과 요약 저장; 답장(reply) 체인으로 이전 Job 맥락 연결.
-- **`/init`**: 채팅의 모델 오버라이드·대기 중 확인 상태 초기화(SQLite·Git은 변경하지 않음).
-- **인라인 키보드**: `/model`, `/status`, `/branch`, `/rebase`, `/stop` 등 인자 없이 호출 시 버튼 UI; 콜백은 기존 슬래시 명령 경로로 라우팅.
-- **Git 보조 명령**: 브랜치 조회·전환, 리베이스·충돌 완화, 워크트리 정리(`clear`), 원격 브랜치 동기화(`/pull`), GitHub PR 생성(`/pr`), 모니터링용 브랜치·저장소 요약(`/monitor` 등).
-- **관리자 UI**: 프로젝트·고급 설정 페이지, 인메모리 로그 버퍼 및 로그 뷰, DB 브라우징, 요약·통계·모델 사용량 표시.
-- **모니터링·이벤트 로그**: 구조화 로깅, 텔레그램·작업·Git·러너 경계에서 `EventLogger` 사용; 메시지 본문에는 비밀·전체 경로 노출 금지 정책에 맞춘 미리보기만 기록.
-- **토큰·모델 메타데이터**: Job 결과에 관측 모델명·토큰 사용량 저장; Codex/Claude/Gemini 사용량·쿼터 추적 보강.
-- **설치 가능 패키지**: `pyproject.toml` 기반 빌드, 콘솔 진입점 `remote-coder`.
-- **운영 문서**: 예시 환경 변수, 에이전트 규칙(`AGENTS.md`, `.clinerules/`, `.cursor/rules/`), 릴리즈 런북(`RELEASE.md`), Gemini 등 CLI 설정 가이드.
-- **멀티봇·프로젝트 레지스트리**: 프로젝트별 봇 토큰·allowlist; 웹훅 경로는 봇 토큰 SHA-256 digest의 **앞 16자리 hex**로 라우팅(평문 토큰을 URL에 넣지 않음). `BotInstance` / `BotInstanceManager`로 인스턴스별 알림·인증·`CommandContext` 바인딩.
-- **프로젝트별 상태**: Job·확인·모델 선호 등 채팅 상태를 봇에 묶인 프로젝트 기준으로 분리; 동일 사용자가 여러 봇과 대화해도 작업 목록이 섞이지 않도록 필터링.
+- **FastAPI server / webhook**: Receive Telegram Bot webhooks, respond quickly, then run a background task flow.
+- **Job management**: Queue, states (`queued`, `running`, `succeeded`, `failed`, `cancelled`, etc.), timeouts, per-stage failure recording, Job ID uniqueness.
+- **Git worktree isolation**: AI work in a per-request worktree instead of the main working directory; branch-name specification or safe auto-generation; skip branch/commit/push when there are no changes.
+- **AI runners**: A shared interface/factory for Claude Code, Codex CLI, and Gemini CLI; collection of stdout, exit code, and execution time.
+- **Auto commit**: `type: title` format, body bullets, `committed by remote-coder: <job-id>` footer; optional AI-based commit-message augmentation.
+- **Telegram commands / parser**: Slash commands, natural-language request parsing; natural language creates a Job only after a summary confirmation with `y`/`Y`.
+- **SQLite conversation/memory**: Store task-result summaries; link previous Job context via reply chains.
+- **`/init`**: Reset the chat's model override and pending confirmation state (without changing SQLite or Git).
+- **Inline keyboards**: Button UI when `/model`, `/status`, `/branch`, `/rebase`, `/stop`, etc. are called without arguments; callbacks route through the existing slash-command path.
+- **Git helper commands**: Branch query/switch, rebase/conflict mitigation, worktree cleanup (`clear`), remote branch sync (`/pull`), GitHub PR creation (`/pr`), branch/repo summaries for monitoring (`/monitor`, etc.).
+- **Admin UI**: Project and advanced-settings pages, in-memory log buffer and log view, DB browsing, summary/statistics/model-usage display.
+- **Monitoring / event logs**: Structured logging; use `EventLogger` at the Telegram/Job/Git/Runner boundaries; record only previews per the policy that forbids exposing secrets/full paths in message bodies.
+- **Token/model metadata**: Store observed model name and token usage in Job results; strengthen Codex/Claude/Gemini usage/quota tracking.
+- **Installable package**: `pyproject.toml`-based build, console entry point `remote-coder`.
+- **Operational docs**: Example environment variables, agent rules (`AGENTS.md`, `.clinerules/`, `.cursor/rules/`), release runbook (`RELEASE.md`), and CLI setup guides for Gemini and others.
+- **Multi-bot / project registry**: Per-project bot token and allowlist; webhook path routed by the **first 16 hex chars** of the bot token's SHA-256 digest (no plain-text token in the URL). Per-instance notification/auth/`CommandContext` binding via `BotInstance` / `BotInstanceManager`.
+- **Per-project state**: Separate chat state (Jobs, confirmations, model preferences) per bot-bound project; filter so a single user talking to multiple bots does not get mixed task lists.
 
-### 변경됨
+### Changed
 
-- **프로젝트 선택 UX**: 채팅에서 `/project`로 저장소를 바꾸는 흐름을 제거하고, **봇(웹훅) = 하나의 등록 프로젝트** 모델로 단순화. 프로젝트 목록·모니터링은 `/monitor` 등으로 정리.
-- **`/start`·도움말**: 프로젝트 선택·버튼 배치 조정; `/help`는 텍스트 목록 위주로 단순화하는 등 UX 반복 개선.
-- **커밋·알림 메시지**: 커밋 메시지 규칙·완료 알림 포맷 명확화; 모델 변경 확인 등 일부 메시지에서 불필요한 인라인 버튼 제거.
-- **문서·규칙 동기화**: 보안(텔레그램·레지스트리 토큰 취급), Git/작업/러너 정책, 테스트·주석 최소화 정책 등을 `PLAN.md`와 규칙 파일에 반영.
+- **Project selection UX**: Removed the `/project` flow for switching repositories from chat and simplified to a **bot (webhook) = one registered project** model. Project lists/monitoring are organized via `/monitor`, etc.
+- **`/start` / help**: Adjusted project selection/button layout; simplified `/help` toward a text list, among iterative UX improvements.
+- **Commit/notification messages**: Clarified the commit-message rules and completion-notification format; removed unnecessary inline buttons from some messages such as model-change confirmation.
+- **Docs/rules sync**: Reflected security (Telegram/registry token handling), Git/task/runner policies, and the minimal-test/comment policy in `PLAN.md` and the rule files.
 
-### 수정됨
+### Fixed
 
-- 웹훅 등록 스크립트·콜백 처리·헬프·모델 명령 등 텔레그램 엣지 케이스 다수(예: 콜백 시 버튼 미표시, 알림 길이·전송 반복 문제).
-- 리베이스·브랜치 클리어·Codex 샌드박스 등 Git·CLI 연동 관련 버그 수정.
-- 읽기 전용 안내 문구, 변경 없는 작업 처리 등 사용자 오해를 줄이는 동작 수정.
+- Many Telegram edge cases in the webhook-registration script, callback handling, help, and model commands (e.g. buttons not showing on callback, notification length/repeat-send issues).
+- Git/CLI integration bugs in rebase, branch clear, the Codex sandbox, etc.
+- Behavior fixes that reduce user confusion, such as read-only guidance wording and handling of no-change tasks.
 
-### 보안·운영 참고
+### Security / operational notes
 
-- Allowlist는 **등록 프로젝트(봇)별**. 레지스트리 파일의 토큰은 평문 저장 가능 설계이므로 파일 권한·유출 방지가 전제입니다.
-- 사용자 메시지를 셸에 직접 넣지 않으며, 서브프로세스는 리스트 인자·명시적 `cwd`·타임아웃을 사용합니다.
+- The allowlist is **per registered project (bot)**. The registry file's tokens are designed to be storable in plain text, so file permissions and leak prevention are prerequisites.
+- User messages are never passed directly to a shell; subprocesses use list arguments, explicit `cwd`, and timeouts.
 
-[초기 커밋…`v0.1.0` 태그 비교](https://github.com/maroomir/remote-coder/compare/3931251...v0.1.0)
+[Compare initial commit…`v0.1.0` tag](https://github.com/maroomir/remote-coder/compare/3931251...v0.1.0)

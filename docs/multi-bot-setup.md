@@ -63,7 +63,7 @@ python scripts/set_webhook.py https://your-host.example
 2. 운영 환경에서는 관리 UI에서 **bot_token·allowlist·webhook_secret**을 프로젝트 단위로 채우는 것을 권장합니다.
 3. 시드 후에는 토큰을 레지스트리에만 두고 `.env`에서 민감 값을 제거할 수 있습니다(로컬 정책에 맞게 결정).
 
-자세한 환경 변수 설명은 저장소 루트의 [README.md](../README.md)와 [.env.example](../.env.example) 주석을 참고하세요.
+자세한 환경 변수 설명은 저장소 루트의 [README.ko.md](../README.ko.md)와 [.env.example](../.env.example) 주석을 참고하세요.
 
 ## 장기 개선(참고)
 
