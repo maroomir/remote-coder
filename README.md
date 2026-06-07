@@ -31,32 +31,43 @@
 - Claude Code CLI, Codex CLI, Gemini CLI 중 사용할 도구 1개 이상
 - 대상 Git 프로젝트와 worktree를 둘 로컬 디렉터리
 
-## 설치
+## 빠른 시작 (권장)
 
-아직 정식 공개 전 버전이며 현재 패키지 버전은 `v0.0.1`입니다.
-
-소스 체크아웃에서 설치:
+별도의 Conda 환경 없이 한 줄로 설치할 수 있습니다. 설치 스크립트는 [uv](https://docs.astral.sh/uv/)로 `remote-coder` CLI를 격리 설치하고 전제조건(ngrok·AI CLI)을 점검합니다.
 
 ```bash
-pipx install .
-remote-coder --version
-remote-coder serve
+curl -fsSL https://raw.githubusercontent.com/maroomir/remote-coder/main/scripts/install.sh | bash
 ```
 
-개발 중 editable 설치:
+설치 후에는 두 단계면 됩니다.
+
+```bash
+remote-coder init   # 봇 토큰·허용 Chat ID·대상 저장소 경로를 입력 → 전역 설정과 프로젝트 레지스트리 생성
+remote-coder up     # ngrok 터널 + Telegram webhook 등록 + 서버 실행을 한 번에 (종료: Ctrl+C)
+```
+
+- 전역 설정은 `REMOTE_CODER_HOME`(기본 `~/.remote-coder`)의 `.env`에 저장되므로 **어느 디렉터리에서 실행해도** 동작합니다. (봇 토큰이 평문으로 들어가므로 파일 권한은 `0600`으로 생성됩니다.)
+- 전제조건: `ngrok`(설치 후 `ngrok config add-authtoken <token>`)과 AI CLI(`claude`/`codex`/`gemini`) 중 1개 이상. `remote-coder doctor`로 점검할 수 있습니다.
+- 터널 없이 서버만 띄우려면 `remote-coder up --no-tunnel` 또는 `remote-coder serve`.
+
+### 수동/개발 설치
+
+PyPI 공개 전이므로 패키지 매니저로 직접 설치할 때도 git 소스를 사용합니다.
+
+```bash
+uv tool install git+https://github.com/maroomir/remote-coder.git
+# 또는
+pipx install git+https://github.com/maroomir/remote-coder.git
+```
+
+소스 체크아웃에서 개발용 editable 설치:
 
 ```bash
 python -m pip install -e ".[dev]"
 remote-coder serve --reload
 ```
 
-서버만 직접 실행할 때는 다음 명령과 동일합니다.
-
-```bash
-uvicorn app.main:app
-```
-
-`remote-coder serve`는 서버 실행만 담당합니다. ngrok 실행과 Telegram webhook 등록까지 한 번에 처리하려면 기존 개발용 스크립트인 `./run.sh`를 사용하세요.
+`remote-coder serve`는 서버만 실행하며 `uvicorn app.main:app` 와 동일합니다.
 
 ### 배포 패키지 빌드
 
@@ -78,7 +89,9 @@ python -m build
 - `shasum -a 256 dist/remote_coder-0.0.1.tar.gz` 값으로 `sha256` 교체
 - Python 의존성 `resource` 블록은 `brew pypi-poet remote-coder` 같은 도구로 생성해 Formula에 추가
 
-## 1) 환경 준비 (Conda)
+> 아래 “1) ~ 3)” 절은 `remote-coder init`/`up` 대신 저장소에서 직접 개발하거나 설정을 수동으로 다루려는 **개발/기여자용** 안내입니다. 빠른 시작만으로 충분하다면 건너뛰어도 됩니다.
+
+## 1) 환경 준비 (개발/기여자용 Conda)
 
 ```bash
 conda env create -f environment.yml
@@ -86,6 +99,8 @@ conda activate remote-coder
 ```
 
 ## 2) 설정
+
+`remote-coder init`을 쓰면 이 `.env`를 자동으로 생성합니다. 수동으로 다룰 때만 아래처럼 복사·편집하세요. (전역 실행 시에는 `REMOTE_CODER_HOME/.env`가, 저장소 내 개발 시에는 현재 디렉터리의 `.env`가 우선됩니다.)
 
 ```bash
 cp .env.example .env
@@ -109,7 +124,7 @@ cp .env.example .env
 서버를 띄운 뒤 **같은 머신**에서 브라우저로 접속합니다.
 
 - 관리 허브: `http://127.0.0.1:8000/` (요약·다른 페이지로 이동)
-- 프로젝트 등록: `http://127.0.0.1:8000/projects` (목록, 추가·수정·삭제, 폴백 기본값, **봇 토큰·allowlist·webhook secret**, 봇별 webhook 경로 표시. `./run.sh` 실행 중에는 등록·수정한 활성 프로젝트의 Telegram webhook과 `/` 명령어 메뉴도 즉시 갱신)
+- 프로젝트 등록: `http://127.0.0.1:8000/projects` (목록, 추가·수정·삭제, 폴백 기본값, **봇 토큰·allowlist·webhook secret**, 봇별 webhook 경로 표시. `remote-coder up`(또는 `./run.sh`) 실행 중에는 등록·수정한 활성 프로젝트의 Telegram webhook과 `/` 명령어 메뉴도 즉시 갱신)
 - 고급 설정: `http://127.0.0.1:8000/advanced`
 - 서버 로그: `http://127.0.0.1:8000/logs` (`app` 로거 기준 인메모리 링 버퍼, 자동 새로고침·카테고리·`chat_id`/`job_id` 필터)
 - 데이터 조회: `http://127.0.0.1:8000/database` (대화 기억 SQLite 테이블 조회·CSV보내기)
@@ -145,9 +160,15 @@ cp .env.example .env
 - **요청 결과를 즉시 main/master에 반영 후 push**: Job이 변경을 커밋·브랜치 push까지 성공하면, `/rebase`와 유사하게 해당 브랜치를 통합 브랜치(`main` 또는 `master`)에 fast-forward 병합한 뒤 원격에 push합니다. 충돌·non-ff 등으로 통합에 실패하면 Job은 실패로 기록됩니다.
 - **SQLite 대화 기억 저장량 제한**: 켜면 `conversation_entries` 테이블 전체를 대상으로, 오래된 행부터 삭제합니다. **최대 행 수**와 **최대 DB 용량(bytes)** 중 하나 이상을 양수로 지정해야 하며, 둘 다 지정하면 행 수 제한을 먼저 맞춘 뒤 용량 제한을 맞추기 위해 삭제·`VACUUM`을 반복합니다. `message_branch_links`는 고아 링크를 정리합니다.
 
-## 3) 한 번에 실행하기 (권장)
+## 3) 한 번에 실행하기
 
-미리 작성된 실행 스크립트를 사용하면 Conda 환경 활성화, ngrok 실행, Webhook 등록, 서버 실행을 모두 한 번에 처리합니다. `./run.sh`는 ngrok 공개 URL을 `TELEGRAM_WEBHOOK_PUBLIC_BASE_URL`로 서버에 전달하므로, 서버를 재시작하지 않아도 관리 UI에서 등록·수정한 활성 프로젝트의 Telegram webhook과 `/` 명령어 메뉴가 즉시 갱신됩니다. 멀티봇은 공개 HTTPS Base URL만 넘겨 활성 프로젝트마다 webhook과 명령어 메뉴를 등록하는 `python scripts/set_webhook.py <URL>` 을 사용할 수도 있습니다.
+설치형 CLI를 쓴다면 `remote-coder up` 한 줄이 ngrok 실행, Webhook 등록, 서버 실행을 모두 처리합니다. ngrok 공개 URL을 `TELEGRAM_WEBHOOK_PUBLIC_BASE_URL`로 서버에 전달하므로, 서버를 재시작하지 않아도 관리 UI에서 등록·수정한 활성 프로젝트의 Telegram webhook과 `/` 명령어 메뉴가 즉시 갱신됩니다.
+
+```bash
+remote-coder up
+```
+
+저장소에서 Conda로 개발할 때는 동등한 기능의 레거시 스크립트 `./run.sh`(conda 환경 활성화 포함)를 쓸 수 있습니다. 멀티봇은 공개 HTTPS Base URL만 넘겨 활성 프로젝트마다 webhook과 명령어 메뉴를 등록하는 `python scripts/set_webhook.py <URL>` 을 사용할 수도 있습니다.
 
 ```bash
 ./run.sh
@@ -176,7 +197,7 @@ ngrok version
 
 ## 4) 지원 명령어 (MVP)
 
-`./run.sh` 또는 `python scripts/set_webhook.py <URL>` 로 Telegram 등록을 갱신하면 BotFather에서 설정하는 것과 같은 `/` 명령어 메뉴가 각 프로젝트 봇에 등록됩니다.
+`remote-coder up`, `./run.sh`, 또는 `python scripts/set_webhook.py <URL>` 로 Telegram 등록을 갱신하면 BotFather에서 설정하는 것과 같은 `/` 명령어 메뉴가 각 프로젝트 봇에 등록됩니다.
 
 - `/start` : 인라인 메뉴 허브 (모델·모니터·정리·관리 항목별 버튼 바로가기)
 - `/help` : 명령어 도움말 (model·monitor·clear 항목별 인라인 버튼 제공)

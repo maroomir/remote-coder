@@ -6,6 +6,15 @@
 
 ## [미배포]
 
+### 추가됨
+
+- **원커맨드 설치/실행**: `curl | bash` 설치 스크립트([`scripts/install.sh`](scripts/install.sh))로 uv 기반 격리 설치 후, `remote-coder init`(대화형 설정 마법사)과 `remote-coder up`(ngrok 터널 + Telegram webhook 등록 + 서버 실행을 한 번에)으로 Conda 없이 시작할 수 있습니다. `remote-coder doctor`로 전제조건(ngrok·AI CLI)을 점검합니다.
+- **전역 설정 위치**: `REMOTE_CODER_HOME`(기본 `~/.remote-coder`)의 `.env`를 로드해 실행 디렉터리에 의존하지 않습니다. 저장소 내 개발 시에는 현재 디렉터리의 `.env`가 우선합니다.
+
+### 변경됨
+
+- ngrok 처리를 `app/tunnel.py`로 옮기고, 활성 프로젝트 webhook/명령어 등록을 `register_all_enabled_projects`로 추출해 `remote-coder up`과 `scripts/set_webhook.py`가 공유합니다.
+
 ## [0.4.0] — 2026-06-07
 
 ### 변경됨

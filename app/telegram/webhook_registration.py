@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import httpx
 
 from app.monitoring.events import EventLogger
 from app.projects.registry import ProjectRecord, build_public_webhook_url
+
+if TYPE_CHECKING:
+    from app.config import Settings
 
 _webhooklog = EventLogger("app.telegram.webhook_registration", "telegram.webhook")
 
@@ -129,3 +134,39 @@ class TelegramWebhookRegistrar:
 
         _webhooklog.info("setMyCommands synced project=%s", project_name, project=project_name)
         return True
+
+
+def register_all_enabled_projects(public_base_url: str, settings: "Settings") -> bool:
+    """Refresh Telegram webhook + command menu for every enabled registry project.
+
+    Shared by `remote-coder up` and `scripts/set_webhook.py`. Returns True only
+    when every enabled project synced successfully; missing/empty registry is a failure.
+    """
+    from app.projects.registry import ProjectRegistry, projects_config_path_for_settings
+    from app.telegram.commands import default_telegram_bot_commands
+
+    config_path = projects_config_path_for_settings(
+        settings.project_root,
+        settings.projects_config_path,
+    )
+    registry = ProjectRegistry(config_path)
+    registry.load()
+
+    enabled = [record for record in registry.list_projects() if record.enabled]
+    if not enabled:
+        _webhooklog.warning("no enabled projects to register config_path=%s", config_path)
+        return False
+
+    registrar = TelegramWebhookRegistrar(
+        public_base_url,
+        bot_commands=default_telegram_bot_commands(),
+    )
+    all_succeeded = True
+    for record in enabled:
+        if not record.bot_token.get_secret_value().strip():
+            _webhooklog.warning("empty bot_token project=%s", record.name, project=record.name)
+            all_succeeded = False
+            continue
+        if not registrar.sync_project(record):
+            all_succeeded = False
+    return all_succeeded

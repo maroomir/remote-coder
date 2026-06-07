@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Self
@@ -6,6 +7,18 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.models import CodexSandboxMode, ModelName
+
+
+def remote_coder_home() -> Path:
+    """Stable per-user config/state home so the CLI works from any directory.
+
+    Overridable with REMOTE_CODER_HOME; defaults to ~/.remote-coder. Holds the
+    global `.env` written by `remote-coder init`.
+    """
+    raw = os.environ.get("REMOTE_CODER_HOME", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return Path.home() / ".remote-coder"
 
 
 class Settings(BaseSettings):
@@ -40,8 +53,8 @@ class Settings(BaseSettings):
 
     default_model: ModelName = ModelName.CLAUDE
     default_project: str = "remote-coder"
-    project_root: Path
-    worktree_base_dir: Path
+    project_root: Path = Field(default_factory=remote_coder_home)
+    worktree_base_dir: Path = Field(default_factory=lambda: remote_coder_home() / "worktrees")
     job_timeout_seconds: int = 1800
     keep_worktree_on_success: bool = True
     projects_config_path: Path | None = None
@@ -112,4 +125,6 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    home = remote_coder_home()
+    # cwd ".env" overrides the global home file so in-repo development keeps working.
+    return Settings(_env_file=(home / ".env", Path(".env")))
