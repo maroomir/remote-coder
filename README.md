@@ -33,11 +33,17 @@
 
 ## 빠른 시작 (권장)
 
-별도의 Conda 환경 없이 한 줄로 설치할 수 있습니다. 설치 스크립트는 [uv](https://docs.astral.sh/uv/)로 `remote-coder` CLI를 격리 설치하고 전제조건(ngrok·AI CLI)을 점검합니다.
+별도의 Conda 환경 없이 `pip` 한 줄로 설치합니다. `remote-coder` CLI가 설치되고, 전제조건(ngrok·AI CLI)은 `remote-coder doctor`로 점검할 수 있습니다.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/maroomir/remote-coder/main/scripts/install.sh | bash
+pip install remote-coder
 ```
+
+> PyPI 첫 발행 전에는 git 소스에서 바로 설치하세요(이것도 `pip`입니다).
+>
+> ```bash
+> pip install git+https://github.com/maroomir/remote-coder.git
+> ```
 
 설치 후에는 두 단계면 됩니다.
 
@@ -50,17 +56,24 @@ remote-coder up     # ngrok 터널 + Telegram webhook 등록 + 서버 실행을 
 - 전제조건: `ngrok`(설치 후 `ngrok config add-authtoken <token>`)과 AI CLI(`claude`/`codex`/`gemini`) 중 1개 이상. `remote-coder doctor`로 점검할 수 있습니다.
 - 터널 없이 서버만 띄우려면 `remote-coder up --no-tunnel`.
 
-### 수동/개발 설치
+### 다른 설치 방법
 
-PyPI 공개 전이므로 패키지 매니저로 직접 설치할 때도 git 소스를 사용합니다.
+격리 설치를 선호하면 [pipx](https://pipx.pypa.io/)나 [uv](https://docs.astral.sh/uv/)를 쓸 수 있습니다. (PyPI 발행 전에는 패키지명 대신 `git+https://github.com/maroomir/remote-coder.git`을 넣으세요.)
 
 ```bash
-uv tool install git+https://github.com/maroomir/remote-coder.git
-# 또는
-pipx install git+https://github.com/maroomir/remote-coder.git
+pipx install remote-coder
+uv tool install remote-coder
 ```
 
-소스 체크아웃에서 개발용 editable 설치:
+전제조건 점검까지 한 번에 처리하는 설치 스크립트도 있습니다(uv로 격리 설치).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/maroomir/remote-coder/main/scripts/install.sh | bash
+```
+
+### 개발용 설치
+
+소스 체크아웃에서 editable 설치:
 
 ```bash
 python -m pip install -e ".[dev]"
@@ -76,7 +89,7 @@ python -m pip install build
 python -m build
 ```
 
-생성물은 `dist/remote_coder-0.0.1.tar.gz`와 `dist/remote_coder-0.0.1-py3-none-any.whl`입니다.
+생성물은 `dist/remote_coder-<버전>.tar.gz`와 `dist/remote_coder-<버전>-py3-none-any.whl`입니다. 태그(`vX.Y.Z`)를 push하면 GitHub Actions가 빌드·PyPI 발행(Trusted Publishing)·GitHub Release를 자동으로 수행합니다.
 
 ### Homebrew 배포
 
@@ -85,8 +98,8 @@ python -m build
 릴리스 후 필요한 작업:
 
 - `homepage`를 실제 저장소 URL로 교체
-- PyPI 또는 GitHub Release의 `remote_coder-0.0.1.tar.gz` URL로 `url` 교체
-- `shasum -a 256 dist/remote_coder-0.0.1.tar.gz` 값으로 `sha256` 교체
+- PyPI 또는 GitHub Release의 `remote_coder-<버전>.tar.gz` URL로 `url` 교체
+- `shasum -a 256 dist/remote_coder-<버전>.tar.gz` 값으로 `sha256` 교체
 - Python 의존성 `resource` 블록은 `brew pypi-poet remote-coder` 같은 도구로 생성해 Formula에 추가
 
 > 아래 “1) ~ 3)” 절은 `remote-coder init`/`up` 대신 저장소에서 직접 개발하거나 설정을 수동으로 다루려는 **개발/기여자용** 안내입니다. 빠른 시작만으로 충분하다면 건너뛰어도 됩니다.

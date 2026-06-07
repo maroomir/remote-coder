@@ -8,12 +8,17 @@
 
 ### 추가됨
 
-- **원커맨드 설치/실행**: `curl | bash` 설치 스크립트([`scripts/install.sh`](scripts/install.sh))로 uv 기반 격리 설치 후, `remote-coder init`(대화형 설정 마법사)과 `remote-coder up`(ngrok 터널 + Telegram webhook 등록 + 서버 실행을 한 번에)으로 Conda 없이 시작할 수 있습니다. 서버만 실행은 `remote-coder up --no-tunnel`, 전제조건(ngrok·AI CLI) 점검은 `remote-coder doctor`. (CLI 명령은 `init`/`up`/`doctor` 3개)
+- **원커맨드 설치/실행**: `pip install remote-coder`로 설치 후, `remote-coder init`(대화형 설정 마법사)과 `remote-coder up`(ngrok 터널 + Telegram webhook 등록 + 서버 실행을 한 번에)으로 Conda 없이 시작할 수 있습니다. 서버만 실행은 `remote-coder up --no-tunnel`, 전제조건(ngrok·AI CLI) 점검은 `remote-coder doctor`. (CLI 명령은 `init`/`up`/`doctor` 3개) pipx·uv·`curl | bash`([`scripts/install.sh`](scripts/install.sh))도 대안으로 제공합니다.
 - **전역 설정 위치**: `REMOTE_CODER_HOME`(기본 `~/.remote-coder`)의 `.env`를 로드해 실행 디렉터리에 의존하지 않습니다. 저장소 내 개발 시에는 현재 디렉터리의 `.env`가 우선합니다.
+- **PyPI 자동 발행**: 태그(`vX.Y.Z`) push 시 GitHub Actions가 시크릿 없는 Trusted Publishing(OIDC)으로 PyPI에 업로드하고 GitHub Release까지 생성합니다.
 
 ### 변경됨
 
 - ngrok 처리를 `app/tunnel.py`로 옮기고, 활성 프로젝트 webhook/명령어 등록을 `register_all_enabled_projects`로 추출해 `remote-coder up`과 `scripts/set_webhook.py`가 공유합니다.
+
+### 수정됨
+
+- `pip install`로 설치한 경우 관리 UI가 깨지던 문제를 고쳤습니다. 패키지 데이터(`app/admin/templates/*.html`, `app/admin/static/*.js`, `app/admin/static/icons/*.svg`)를 빌드 산출물에 포함합니다.
 
 ## [0.4.0] — 2026-06-07
 
