@@ -47,15 +47,15 @@ pip install remote-coder
 > pip install git+https://github.com/maroomir/remote-coder.git
 > ```
 
-설치 후에는 두 단계면 됩니다.
+설치 후에는 서버를 띄우고 브라우저에서 설정을 마치면 됩니다.
 
 ```bash
-remote-coder init   # 봇 토큰·허용 Chat ID·대상 저장소 경로를 입력 → 전역 설정과 프로젝트 레지스트리 생성
 remote-coder up     # ngrok 터널 + Telegram webhook 등록 + 서버 실행을 한 번에 (종료: Ctrl+C)
 ```
 
-- 전역 설정은 `REMOTE_CODER_HOME`(기본 `~/.remote-coder`)의 `.env`에 저장되므로 **어느 디렉터리에서 실행해도** 동작합니다. (봇 토큰이 평문으로 들어가므로 파일 권한은 `0600`으로 생성됩니다.)
-- 전제조건: `ngrok`(설치 후 `ngrok config add-authtoken <token>`)과 AI CLI(`claude`/`codex`/`gemini`) 중 1개 이상. `remote-coder doctor`로 점검할 수 있습니다.
+- 등록된 프로젝트가 없는 첫 실행에서는 로컬 관리 UI **http://127.0.0.1:8000/** 를 열고 **최초 설정** 카드에서 첫 프로젝트(봇 토큰·허용 Chat ID·대상 저장소 경로)를 추가하세요. 저장하는 즉시 봇이 연결됩니다.
+- 진짜 설정값의 소스는 프로젝트 레지스트리(`REMOTE_CODER_HOME`(기본 `~/.remote-coder`)의 `projects.json`)이며, 관리 UI가 여기에 기록합니다. 전역 `REMOTE_CODER_HOME/.env`는 선택이며 첫 프로젝트 시드용으로만 쓰입니다.
+- 전제조건: `ngrok`(설치 후 `ngrok config add-authtoken <token>`)과 AI CLI(`claude`/`codex`/`gemini`) 중 1개 이상. `remote-coder doctor` 또는 설정 카드에서 점검할 수 있습니다.
 - 터널 없이 서버만 띄우려면 `remote-coder up --no-tunnel`.
 
 ### 다른 설치 방법
@@ -104,7 +104,7 @@ python -m build
 - `shasum -a 256 dist/remote_coder-<버전>.tar.gz` 값으로 `sha256` 교체
 - Python 의존성 `resource` 블록은 `brew pypi-poet remote-coder` 같은 도구로 생성해 Formula에 추가
 
-> 아래 “1) ~ 3)” 절은 `remote-coder init`/`up` 대신 저장소에서 직접 개발하거나 설정을 수동으로 다루려는 **개발/기여자용** 안내입니다. 빠른 시작만으로 충분하다면 건너뛰어도 됩니다.
+> 아래 “1) ~ 3)” 절은 `remote-coder up` + 관리 UI 대신 저장소에서 직접 개발하거나 설정을 수동으로 다루려는 **개발/기여자용** 안내입니다. 빠른 시작만으로 충분하다면 건너뛰어도 됩니다.
 
 ## 1) 환경 준비 (개발/기여자용 Conda)
 
@@ -115,7 +115,7 @@ conda activate remote-coder
 
 ## 2) 설정
 
-`remote-coder init`을 쓰면 이 `.env`를 자동으로 생성합니다. 수동으로 다룰 때만 아래처럼 복사·편집하세요. (전역 실행 시에는 `REMOTE_CODER_HOME/.env`가, 저장소 내 개발 시에는 현재 디렉터리의 `.env`가 우선됩니다.)
+관리 UI 대신 설정을 수동으로 다룰 때만 아래처럼 이 `.env`를 복사·편집하세요. `.env`는 선택이며 레지스트리가 비어 있을 때 첫 프로젝트 시드로만 쓰입니다. (전역 실행 시에는 `REMOTE_CODER_HOME/.env`가, 저장소 내 개발 시에는 현재 디렉터리의 `.env`가 우선됩니다.)
 
 ```bash
 cp .env.example .env

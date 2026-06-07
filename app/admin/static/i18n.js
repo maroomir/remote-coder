@@ -80,6 +80,26 @@
     "admin.webhookSecret": { en: "Webhook secret", ko: "Webhook 시크릿" },
     "admin.webhookHintLabel": { en: "Webhook guide", ko: "Webhook 안내" },
 
+    "setup.title": { en: "First-time setup", ko: "최초 설정" },
+    "setup.lead": {
+      en: "No projects registered yet. Check the prerequisites below, then add your first project to bring a Telegram bot online.",
+      ko: "아직 등록된 프로젝트가 없습니다. 아래 전제조건을 확인한 뒤 첫 프로젝트를 추가하면 Telegram 봇이 연결됩니다.",
+    },
+    "setup.prereqTitle": { en: "Prerequisites", ko: "전제조건" },
+    "setup.ngrok": { en: "ngrok tunnel", ko: "ngrok 터널" },
+    "setup.aiCli": { en: "AI CLI", ko: "AI CLI" },
+    "setup.aiCliNone": {
+      en: "None found (install at least one: claude / codex / gemini)",
+      ko: "설치된 것 없음 (claude / codex / gemini 중 최소 1개 설치)",
+    },
+    "setup.checking": { en: "Checking…", ko: "확인 중…" },
+    "setup.recheck": { en: "Re-check", ko: "다시 확인" },
+    "setup.cta": { en: "Add your first project", ko: "첫 프로젝트 추가" },
+    "setup.nextNote": {
+      en: "Once a project is added while the server is running, its bot goes live automatically.",
+      ko: "서버가 실행 중일 때 프로젝트를 추가하면 해당 봇이 자동으로 연결됩니다.",
+    },
+
     // projects.html
     "projects.h1": { en: "Project registration", ko: "프로젝트 등록" },
     "projects.tagline": {

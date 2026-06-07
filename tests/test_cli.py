@@ -15,7 +15,7 @@ def test_cli_exposes_all_subcommands() -> None:
     parser = build_parser()
     subactions = parser._subparsers._group_actions[0].choices
 
-    assert set(subactions) == {"init", "up", "doctor"}
+    assert set(subactions) == {"up", "doctor"}
 
 
 def test_cli_up_no_tunnel_runs_server_only(monkeypatch) -> None:
@@ -80,7 +80,7 @@ def test_cli_doctor_reports_status(monkeypatch, capsys) -> None:
     monkeypatch.setattr("app.tunnel.ensure_ngrok_available", lambda: "/usr/bin/ngrok")
     monkeypatch.setattr("app.tunnel.ensure_ngrok_configured", lambda: None)
     monkeypatch.setattr(
-        "app.cli.shutil.which", lambda name: "/usr/bin/claude" if name == "claude" else None
+        "shutil.which", lambda name: "/usr/bin/claude" if name == "claude" else None
     )
 
     main(["doctor"])
@@ -88,39 +88,6 @@ def test_cli_doctor_reports_status(monkeypatch, capsys) -> None:
     out = capsys.readouterr().out
     assert "ngrok" in out
     assert "claude" in out
-
-
-def test_cli_init_writes_config_and_registry(monkeypatch, tmp_path, capsys) -> None:
-    home = tmp_path / "home"
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setenv("REMOTE_CODER_HOME", str(home))
-
-    answers = iter(
-        [
-            str(repo),  # 대상 저장소 경로
-            "",  # worktree (기본값)
-            "",  # 프로젝트 이름 (기본값 = repo 이름)
-            "123:abc-token",  # 봇 토큰
-            "111,222",  # 허용 Chat ID
-            "",  # 기본 모델 (기본값 claude)
-        ]
-    )
-    monkeypatch.setattr("builtins.input", lambda *_a, **_k: next(answers))
-
-    main(["init"])
-    capsys.readouterr()
-
-    env_path = home / ".env"
-    assert env_path.exists()
-    assert oct(env_path.stat().st_mode & 0o777) == oct(0o600)
-    env_text = env_path.read_text(encoding="utf-8")
-    assert "TELEGRAM_BOT_TOKEN=123:abc-token" in env_text
-    assert f"PROJECT_ROOT={repo.resolve()}" in env_text
-    assert "TELEGRAM_ALLOWED_CHAT_IDS=111,222" in env_text
-
-    registry_path = repo / ".remote-coder" / "projects.json"
-    assert registry_path.exists()
 
 
 def test_cli_up_no_tunnel_forwards_server_args(monkeypatch) -> None:

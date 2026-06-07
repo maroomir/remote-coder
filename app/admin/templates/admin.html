@@ -353,6 +353,77 @@
       height: 1.35rem;
     }
 
+    .setup-prereq-title {
+      margin: 0 0 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
+
+    .setup-prereq {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 0.4rem;
+    }
+
+    .setup-prereq li {
+      display: flex;
+      gap: 0.5rem;
+      align-items: baseline;
+      font-size: 0.9rem;
+    }
+
+    .setup-prereq .mark { flex-shrink: 0; }
+
+    .setup-prereq .detail {
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      word-break: break-word;
+    }
+
+    .setup-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+
+    .btn {
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.45rem 0.75rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .btn:hover {
+      background: #2d3d54;
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .btn-cta {
+      display: inline-block;
+      padding: 0.5rem 0.9rem;
+      background: var(--accent);
+      border: 1px solid transparent;
+      color: #0a1628;
+      font-weight: 600;
+      text-decoration: none;
+      border-radius: var(--radius-sm);
+    }
+
+    .btn-cta:hover { background: #5aadf7; }
+
     @media (max-width: 640px) {
       .app-header h1 { font-size: 1.25rem; }
     }
@@ -392,6 +463,18 @@
 
     <div class="summary-grid" id="summary-grid" aria-label="Summary" data-i18n-aria-label="common.summaryAria"></div>
 
+    <section class="card" id="setup-section" aria-labelledby="setup-heading" hidden>
+      <h2 id="setup-heading" data-i18n="setup.title">First-time setup</h2>
+      <p class="lead" data-i18n="setup.lead">No projects registered yet. Check the prerequisites below, then add your first project to bring a Telegram bot online.</p>
+      <p class="setup-prereq-title" data-i18n="setup.prereqTitle">Prerequisites</p>
+      <ul class="setup-prereq" id="setup-prereq" aria-live="polite"></ul>
+      <div class="setup-actions">
+        <a href="/projects" class="btn-cta" data-i18n="setup.cta">Add your first project</a>
+        <button type="button" class="btn" id="btn-prereq-recheck" data-i18n="setup.recheck">Re-check</button>
+      </div>
+      <p class="lead" style="margin:1rem 0 0" data-i18n="setup.nextNote">Once a project is added while the server is running, its bot goes live automatically.</p>
+    </section>
+
     <section class="card" aria-labelledby="active-projects-heading">
       <div class="section-head">
         <h2 id="active-projects-heading" data-i18n="admin.activeProjects">Active projects</h2>
@@ -413,6 +496,7 @@
   <script>
     const $ = (s) => document.querySelector(s);
     const globalMsg = $("#global-msg");
+    const setupSection = $("#setup-section");
 
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, (c) => ({
@@ -493,6 +577,41 @@
       `;
     }
 
+    function renderPrereqRow(ok, label, detail) {
+      const mark = ok ? "✅" : "⚠️";
+      const detailHtml = detail
+        ? ' <span class="detail">' + escapeHtml(detail) + "</span>"
+        : "";
+      return '<li><span class="mark">' + mark + "</span><span>" + escapeHtml(label) + detailHtml + "</span></li>";
+    }
+
+    function renderPrerequisites(report) {
+      const ngrokDetail = report.ngrok_ok
+        ? ""
+        : (i18n.tv(report.ngrok_detail) || report.ngrok_detail || "");
+      const installed = (report.ai_clis || []).filter((c) => c.installed).map((c) => c.name);
+      const aiOk = installed.length > 0;
+      const aiDetail = aiOk ? installed.join(", ") : i18n.t("setup.aiCliNone");
+      $("#setup-prereq").innerHTML =
+        renderPrereqRow(!!report.ngrok_ok, i18n.t("setup.ngrok"), ngrokDetail) +
+        renderPrereqRow(aiOk, i18n.t("setup.aiCli"), aiDetail);
+    }
+
+    async function loadPrerequisites() {
+      $("#setup-prereq").innerHTML = "<li>" + escapeHtml(i18n.t("setup.checking")) + "</li>";
+      try {
+        const r = await fetch("/api/prerequisites");
+        const t = await r.text();
+        if (!r.ok) {
+          setGlobalMsg("err", await parseApiError(r, t));
+          return;
+        }
+        renderPrerequisites(JSON.parse(t));
+      } catch (e) {
+        setGlobalMsg("err", String(e));
+      }
+    }
+
     async function loadHub() {
       setGlobalMsg("", "");
       try {
@@ -500,10 +619,17 @@
         if (!result.ok) return;
         renderSettings(result.settings);
         renderActiveProjects(result.projectsPayload);
+        const registeredCount = (result.projectsPayload.projects || []).length;
+        setupSection.hidden = registeredCount !== 0;
+        if (registeredCount === 0) {
+          await loadPrerequisites();
+        }
       } catch (e) {
         setGlobalMsg("err", String(e));
       }
     }
+
+    $("#btn-prereq-recheck").addEventListener("click", loadPrerequisites);
 
     loadHub();
   </script>

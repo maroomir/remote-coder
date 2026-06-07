@@ -13,7 +13,7 @@ def remote_coder_home() -> Path:
     """Stable per-user config/state home so the CLI works from any directory.
 
     Overridable with REMOTE_CODER_HOME; defaults to ~/.remote-coder. Holds the
-    global `.env` written by `remote-coder init`.
+    project registry and the optional global `.env` seed.
     """
     raw = os.environ.get("REMOTE_CODER_HOME", "").strip()
     if raw:

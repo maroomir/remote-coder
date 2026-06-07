@@ -45,15 +45,15 @@ pip install remote-coder
 > pip install git+https://github.com/maroomir/remote-coder.git
 > ```
 
-After installing, two steps are enough:
+After installing, start the server and finish setup in the browser:
 
 ```bash
-remote-coder init   # Enter bot token, allowed Chat IDs, and target repo path -> creates global config + project registry
 remote-coder up     # ngrok tunnel + Telegram webhook registration + server, all at once (stop: Ctrl+C)
 ```
 
-- Global config is stored in `REMOTE_CODER_HOME` (default `~/.remote-coder`) as `.env`, so it **works from any directory**. (Because the bot token is stored in plain text, the file is created with `0600` permissions.)
-- Prerequisites: `ngrok` (after installing, run `ngrok config add-authtoken <token>`) and at least one AI CLI (`claude`/`codex`/`gemini`). Check them with `remote-coder doctor`.
+- On the first run (no projects yet), open the local admin UI at **http://127.0.0.1:8000/** and use the **First-time setup** card to add your first project (bot token, allowed Chat IDs, target repo path). The bot goes live as soon as the project is saved.
+- The project registry (`projects.json` under `REMOTE_CODER_HOME`, default `~/.remote-coder`) is the source of truth; the admin UI writes to it. A global `REMOTE_CODER_HOME/.env` is optional and used only to seed the first project.
+- Prerequisites: `ngrok` (after installing, run `ngrok config add-authtoken <token>`) and at least one AI CLI (`claude`/`codex`/`gemini`). Check them with `remote-coder doctor` or in the setup card.
 - To run the server only, without a tunnel: `remote-coder up --no-tunnel`.
 
 ### Other installation methods
@@ -102,7 +102,7 @@ After a release you still need to:
 - Replace `sha256` with the value from `shasum -a 256 dist/remote_coder-<version>.tar.gz`
 - Generate the Python dependency `resource` blocks with a tool like `brew pypi-poet remote-coder` and add them to the Formula
 
-> Sections "1) – 3)" below are for **developers/contributors** who work directly from the repository or handle configuration manually instead of using `remote-coder init`/`up`. Skip them if the quick start is enough.
+> Sections "1) – 3)" below are for **developers/contributors** who work directly from the repository or handle configuration manually instead of using `remote-coder up` plus the admin UI. Skip them if the quick start is enough.
 
 ## 1) Environment setup (Conda, for developers/contributors)
 
@@ -113,7 +113,7 @@ conda activate remote-coder
 
 ## 2) Configuration
 
-`remote-coder init` creates this `.env` for you. Copy and edit it manually only when handling configuration yourself. (When running globally, `REMOTE_CODER_HOME/.env` takes precedence; when developing inside the repo, the current directory's `.env` takes precedence.)
+Copy and edit this `.env` only when configuring manually instead of using the admin UI. The `.env` is optional and seeds the first project when the registry is empty. (When running globally, `REMOTE_CODER_HOME/.env` takes precedence; when developing inside the repo, the current directory's `.env` takes precedence.)
 
 ```bash
 cp .env.example .env

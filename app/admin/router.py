@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, SecretStr
 from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsStore
 from app.admin.database_browser import ConversationDatabaseBrowser
 from app.config import Settings
+from app.diagnostics import check_prerequisites
 from app.models import ModelName, UiLanguage
 from app.monitoring.events import EventLogger
 from app.monitoring.log_buffer import InMemoryLogBuffer
@@ -358,6 +359,17 @@ def create_admin_router(
                 "deleteWebhook or rerun scripts/set_webhook.py with the updated registry."
             ),
         }
+
+    @router.get("/api/prerequisites")
+    def api_prerequisites(_: LocalhostOnly) -> dict:
+        report = check_prerequisites()
+        installed = [cli.name for cli in report.ai_clis if cli.installed]
+        _adminlog.info(
+            "prerequisites queried ngrok_ok=%s ai_clis=%s",
+            report.ngrok_ok,
+            ",".join(installed) or "-",
+        )
+        return report.model_dump()
 
     @router.get("/api/projects")
     def api_projects_get(_: LocalhostOnly) -> JSONResponse:

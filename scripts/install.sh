@@ -80,8 +80,8 @@ main() {
 
     echo
     ok "다음 단계:"
-    echo "  1) remote-coder init   # 봇 토큰·Chat ID·프로젝트 경로 설정 (1회)"
-    echo "  2) remote-coder up     # 터널 + webhook + 서버 실행"
+    echo "  1) remote-coder up                 # 터널 + webhook + 서버 실행"
+    echo "  2) http://127.0.0.1:8000/ 접속      # 최초 설정 카드에서 첫 프로젝트 등록"
 }
 
 main "$@"

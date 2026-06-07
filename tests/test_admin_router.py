@@ -46,6 +46,7 @@ def test_admin_root_returns_html(test_settings, project_registry, advanced_setti
     assert 'id="adv-form"' not in response.text
     assert 'id="active-projects-view"' in response.text
     assert 'id="summary-grid"' in response.text
+    assert 'id="setup-section"' in response.text
     assert "/admin-static/i18n.js" in response.text
     assert "/admin-static/summary.js" in response.text
 
@@ -811,6 +812,39 @@ def test_admin_pages_inject_korean_when_selected(
     # English stays canonical in the DOM; Korean is applied client-side from the catalog.
     assert "Active projects" in r.text
     advanced_settings_store.save(AdvancedSettings(ui_language=UiLanguage.ENGLISH))
+
+
+def test_api_prerequisites_returns_report(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store, monkeypatch
+):
+    from app.diagnostics import AiCliStatus, PrerequisitesReport
+
+    report = PrerequisitesReport(
+        ngrok_ok=True,
+        ngrok_detail="",
+        ai_clis=[
+            AiCliStatus(name="claude", installed=True),
+            AiCliStatus(name="codex", installed=False),
+            AiCliStatus(name="gemini", installed=False),
+        ],
+    )
+    monkeypatch.setattr(admin_router_module, "check_prerequisites", lambda: report)
+
+    app = FastAPI()
+    app.include_router(create_admin_router(
+        test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    ))
+    client = TestClient(app)
+
+    response = client.get("/api/prerequisites")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ngrok_ok"] is True
+    assert {c["name"]: c["installed"] for c in body["ai_clis"]} == {
+        "claude": True,
+        "codex": False,
+        "gemini": False,
+    }
 
 
 def test_admin_i18n_referenced_keys_exist_in_catalog():
