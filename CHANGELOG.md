@@ -6,6 +6,8 @@
 
 ## [미배포]
 
+## [0.4.1] — 2026-06-07
+
 ### 추가됨
 
 - **원커맨드 설치/실행**: `pip install remote-coder`로 설치 후, `remote-coder init`(대화형 설정 마법사)과 `remote-coder up`(ngrok 터널 + Telegram webhook 등록 + 서버 실행을 한 번에)으로 Conda 없이 시작할 수 있습니다. 서버만 실행은 `remote-coder up --no-tunnel`, 전제조건(ngrok·AI CLI) 점검은 `remote-coder doctor`. (CLI 명령은 `init`/`up`/`doctor` 3개) pipx·uv·`curl | bash`([`scripts/install.sh`](scripts/install.sh))도 대안으로 제공합니다.

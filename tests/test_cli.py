@@ -8,7 +8,7 @@ def test_cli_version_matches_package() -> None:
     parser = build_parser()
 
     assert parser.prog == "remote-coder"
-    assert __version__ == "0.4.0"
+    assert __version__ == "0.4.1"
 
 
 def test_cli_exposes_all_subcommands() -> None:
