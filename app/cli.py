@@ -14,6 +14,13 @@ _AI_CLI_TOOLS = ("claude", "codex", "gemini")
 _VALID_MODELS = ("claude", "codex", "gemini")
 
 
+def _add_server_args(subparser: argparse.ArgumentParser) -> None:
+    subparser.add_argument("--host", default="127.0.0.1", help="Host interface to bind")
+    subparser.add_argument("--port", default=8000, type=int, help="Port to bind")
+    subparser.add_argument("--reload", action="store_true", help="Enable Uvicorn reload mode")
+    subparser.add_argument("--log-level", default="info", help="Uvicorn log level")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="remote-coder")
     parser.add_argument("--version", action="version", version=f"remote-coder {__version__}")
@@ -26,21 +33,12 @@ def build_parser() -> argparse.ArgumentParser:
     up = subparsers.add_parser(
         "up", help="Start ngrok tunnel, register Telegram webhooks, and run the server"
     )
-    up.add_argument("--host", default="127.0.0.1", help="Host interface to bind")
-    up.add_argument("--port", default=8000, type=int, help="Port to bind")
-    up.add_argument("--reload", action="store_true", help="Enable Uvicorn reload mode")
-    up.add_argument("--log-level", default="info", help="Uvicorn log level")
+    _add_server_args(up)
     up.add_argument(
         "--no-tunnel",
         action="store_true",
         help="Run the server only (skip ngrok and webhook registration)",
     )
-
-    serve = subparsers.add_parser("serve", help="Run the Remote AI Coder FastAPI server only")
-    serve.add_argument("--host", default="127.0.0.1", help="Host interface to bind")
-    serve.add_argument("--port", default=8000, type=int, help="Port to bind")
-    serve.add_argument("--reload", action="store_true", help="Enable Uvicorn reload mode")
-    serve.add_argument("--log-level", default="info", help="Uvicorn log level")
 
     subparsers.add_parser("doctor", help="Check prerequisites (ngrok, AI CLIs)")
     return parser
@@ -49,39 +47,41 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
-    command = args.command or "serve"
+    if args.command is None:
+        args = parser.parse_args(["up"])
 
-    if command == "init":
-        run_init(force=getattr(args, "force", False))
-        return
-    if command == "doctor":
+    if args.command == "init":
+        run_init(force=args.force)
+    elif args.command == "doctor":
         run_doctor()
-        return
-    if command == "up" and not args.no_tunnel:
-        run_up(host=args.host, port=args.port, reload=args.reload, log_level=args.log_level)
-        return
-
-    run_serve(
-        host=getattr(args, "host", "127.0.0.1"),
-        port=getattr(args, "port", 8000),
-        reload=getattr(args, "reload", False),
-        log_level=getattr(args, "log_level", "info"),
-    )
+    else:
+        run_up(
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+            log_level=args.log_level,
+            tunnel=not args.no_tunnel,
+        )
 
 
-def run_serve(*, host: str, port: int, reload: bool, log_level: str) -> None:
+def _run_server(*, host: str, port: int, reload: bool, log_level: str) -> None:
+    print("🚀 서버를 시작합니다... (종료: Ctrl+C)")
     uvicorn.run("app.main:app", host=host, port=port, reload=reload, log_level=log_level)
 
 
-def run_up(*, host: str, port: int, reload: bool, log_level: str) -> None:
+def run_up(*, host: str, port: int, reload: bool, log_level: str, tunnel: bool = True) -> None:
+    if not tunnel:
+        _run_server(host=host, port=port, reload=reload, log_level=log_level)
+        return
+
     from app.config import get_settings
     from app.telegram.webhook_registration import register_all_enabled_projects
     from app.tunnel import NgrokTunnel, TunnelError
 
-    tunnel = NgrokTunnel(port)
+    ngrok = NgrokTunnel(port)
     try:
         print("🌐 ngrok 터널을 시작합니다...")
-        public_url = tunnel.start()
+        public_url = ngrok.start()
     except TunnelError as exc:
         print(f"❌ {exc}")
         raise SystemExit(1) from exc
@@ -96,10 +96,9 @@ def run_up(*, host: str, port: int, reload: bool, log_level: str) -> None:
         print("⚠️ 일부 프로젝트 webhook 등록에 실패했습니다. 기존 등록이 유효하면 계속 동작할 수 있습니다.")
 
     try:
-        print("🚀 서버를 시작합니다... (종료: Ctrl+C)")
-        uvicorn.run("app.main:app", host=host, port=port, reload=reload, log_level=log_level)
+        _run_server(host=host, port=port, reload=reload, log_level=log_level)
     finally:
-        tunnel.stop()
+        ngrok.stop()
         print("🛑 ngrok 터널을 종료했습니다.")
 
 

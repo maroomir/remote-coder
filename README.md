@@ -48,7 +48,7 @@ remote-coder up     # ngrok 터널 + Telegram webhook 등록 + 서버 실행을 
 
 - 전역 설정은 `REMOTE_CODER_HOME`(기본 `~/.remote-coder`)의 `.env`에 저장되므로 **어느 디렉터리에서 실행해도** 동작합니다. (봇 토큰이 평문으로 들어가므로 파일 권한은 `0600`으로 생성됩니다.)
 - 전제조건: `ngrok`(설치 후 `ngrok config add-authtoken <token>`)과 AI CLI(`claude`/`codex`/`gemini`) 중 1개 이상. `remote-coder doctor`로 점검할 수 있습니다.
-- 터널 없이 서버만 띄우려면 `remote-coder up --no-tunnel` 또는 `remote-coder serve`.
+- 터널 없이 서버만 띄우려면 `remote-coder up --no-tunnel`.
 
 ### 수동/개발 설치
 
@@ -64,10 +64,10 @@ pipx install git+https://github.com/maroomir/remote-coder.git
 
 ```bash
 python -m pip install -e ".[dev]"
-remote-coder serve --reload
+remote-coder up --no-tunnel --reload
 ```
 
-`remote-coder serve`는 서버만 실행하며 `uvicorn app.main:app` 와 동일합니다.
+`remote-coder up --no-tunnel`은 터널·webhook 등록 없이 서버만 실행하며 `uvicorn app.main:app` 와 동일합니다.
 
 ### 배포 패키지 빌드
 

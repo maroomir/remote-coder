@@ -15,7 +15,7 @@ def test_cli_exposes_all_subcommands() -> None:
     parser = build_parser()
     subactions = parser._subparsers._group_actions[0].choices
 
-    assert set(subactions) == {"init", "up", "serve", "doctor"}
+    assert set(subactions) == {"init", "up", "doctor"}
 
 
 def test_cli_up_no_tunnel_runs_server_only(monkeypatch) -> None:
@@ -123,47 +123,54 @@ def test_cli_init_writes_config_and_registry(monkeypatch, tmp_path, capsys) -> N
     assert registry_path.exists()
 
 
-def test_cli_serve_runs_uvicorn(monkeypatch) -> None:
+def test_cli_up_no_tunnel_forwards_server_args(monkeypatch) -> None:
     calls = []
+    monkeypatch.setattr("app.cli.uvicorn.run", lambda *a, **k: calls.append((a, k)))
 
-    def fake_run(*args, **kwargs):
-        calls.append((args, kwargs))
-
-    monkeypatch.setattr("app.cli.uvicorn.run", fake_run)
-
-    main(["serve", "--host", "0.0.0.0", "--port", "9000", "--reload", "--log-level", "debug"])
+    main(["up", "--no-tunnel", "--host", "0.0.0.0", "--port", "9000", "--reload", "--log-level", "debug"])
 
     assert calls == [
         (
             ("app.main:app",),
-            {
-                "host": "0.0.0.0",
-                "port": 9000,
-                "reload": True,
-                "log_level": "debug",
-            },
+            {"host": "0.0.0.0", "port": 9000, "reload": True, "log_level": "debug"},
         )
     ]
 
 
-def test_cli_defaults_to_serve(monkeypatch) -> None:
-    calls = []
+def test_cli_defaults_to_up(monkeypatch) -> None:
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_PUBLIC_BASE_URL", "")
+    started = []
 
-    def fake_run(*args, **kwargs):
-        calls.append((args, kwargs))
+    class FakeTunnel:
+        def __init__(self, port):
+            pass
 
-    monkeypatch.setattr("app.cli.uvicorn.run", fake_run)
+        def start(self):
+            started.append(True)
+            return "https://abcd.ngrok-free.app"
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr("app.tunnel.NgrokTunnel", FakeTunnel)
+    monkeypatch.setattr(
+        "app.telegram.webhook_registration.register_all_enabled_projects",
+        lambda url, settings: True,
+    )
+
+    class FakeGetSettings:
+        def cache_clear(self):
+            pass
+
+        def __call__(self):
+            return object()
+
+    monkeypatch.setattr("app.config.get_settings", FakeGetSettings())
+
+    run_calls = []
+    monkeypatch.setattr("app.cli.uvicorn.run", lambda *a, **k: run_calls.append(k))
 
     main([])
 
-    assert calls == [
-        (
-            ("app.main:app",),
-            {
-                "host": "127.0.0.1",
-                "port": 8000,
-                "reload": False,
-                "log_level": "info",
-            },
-        )
-    ]
+    assert started == [True]
+    assert run_calls and run_calls[0]["port"] == 8000
