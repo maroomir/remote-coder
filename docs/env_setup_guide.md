@@ -84,18 +84,17 @@ KEEP_WORKTREE_ON_SUCCESS=true
 
 ## 3. 서버 실행 및 웹훅 등록 방법 (초간단 방식)
 
-로컬에서 서버를 켜고 웹훅을 등록하는 복잡한 과정을 `run.sh` 스크립트 하나로 자동화해 두었습니다.
+`remote-coder up` 한 줄이 ngrok 실행, Webhook 등록, 서버 실행을 모두 처리합니다.
 
 ### 터미널에서 다음 명령어를 실행하세요:
 ```bash
-./run.sh
+remote-coder up
 ```
 
-이 스크립트는 다음 작업들을 자동으로 수행합니다:
-1. Conda 가상 환경(`remote-coder`) 활성화
-2. 백그라운드에서 `ngrok` 터널 생성 및 주소 가져오기
-3. 발급된 ngrok 주소를 `.env` 설정과 함께 텔레그램 서버에 안전하게 등록 (`setWebhook`)
-4. FastAPI 봇 서버 실행
+다음 작업들을 자동으로 수행합니다:
+1. `ngrok` 터널 생성 및 공개 HTTPS 주소 가져오기
+2. 발급된 ngrok 주소로 활성 프로젝트의 Telegram webhook 등록 (`setWebhook`)
+3. FastAPI 봇 서버 실행
 
 서버를 끄고 싶을 때는 터미널에서 `Ctrl+C`를 누르면 `ngrok`과 서버가 함께 안전하게 종료됩니다.
 

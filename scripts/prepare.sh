@@ -103,7 +103,7 @@ print_next_steps() {
     echo "다음 명령어를 실행하여 가상 환경을 활성화하세요:"
     echo "conda activate remote-coder"
     echo ""
-    echo "이후 ./run.sh 를 통해 서버를 실행할 수 있습니다."
+    echo "이후 remote-coder up 을 통해 서버를 실행할 수 있습니다."
 }
 
 main() {

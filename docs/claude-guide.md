@@ -44,7 +44,7 @@ claude -p "Say hello in one line" --dangerously-skip-permissions
 1. 서버 실행
 
 ```bash
-./run.sh
+remote-coder up
 ```
 
 2. Telegram에서 모델 지정

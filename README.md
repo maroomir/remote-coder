@@ -124,7 +124,7 @@ cp .env.example .env
 서버를 띄운 뒤 **같은 머신**에서 브라우저로 접속합니다.
 
 - 관리 허브: `http://127.0.0.1:8000/` (요약·다른 페이지로 이동)
-- 프로젝트 등록: `http://127.0.0.1:8000/projects` (목록, 추가·수정·삭제, 폴백 기본값, **봇 토큰·allowlist·webhook secret**, 봇별 webhook 경로 표시. `remote-coder up`(또는 `./run.sh`) 실행 중에는 등록·수정한 활성 프로젝트의 Telegram webhook과 `/` 명령어 메뉴도 즉시 갱신)
+- 프로젝트 등록: `http://127.0.0.1:8000/projects` (목록, 추가·수정·삭제, 폴백 기본값, **봇 토큰·allowlist·webhook secret**, 봇별 webhook 경로 표시. `remote-coder up` 실행 중에는 등록·수정한 활성 프로젝트의 Telegram webhook과 `/` 명령어 메뉴도 즉시 갱신)
 - 고급 설정: `http://127.0.0.1:8000/advanced`
 - 서버 로그: `http://127.0.0.1:8000/logs` (`app` 로거 기준 인메모리 링 버퍼, 자동 새로고침·카테고리·`chat_id`/`job_id` 필터)
 - 데이터 조회: `http://127.0.0.1:8000/database` (대화 기억 SQLite 테이블 조회·CSV보내기)
@@ -168,11 +168,7 @@ cp .env.example .env
 remote-coder up
 ```
 
-저장소에서 Conda로 개발할 때는 동등한 기능의 레거시 스크립트 `./run.sh`(conda 환경 활성화 포함)를 쓸 수 있습니다. 멀티봇은 공개 HTTPS Base URL만 넘겨 활성 프로젝트마다 webhook과 명령어 메뉴를 등록하는 `python scripts/set_webhook.py <URL>` 을 사용할 수도 있습니다.
-
-```bash
-./run.sh
-```
+멀티봇은 공개 HTTPS Base URL만 넘겨 활성 프로젝트마다 webhook과 명령어 메뉴를 등록하는 `python scripts/set_webhook.py <URL>` 을 사용할 수도 있습니다.
 
 Windows PowerShell에서는 다음 스크립트를 사용할 수 있습니다.
 
@@ -197,7 +193,7 @@ ngrok version
 
 ## 4) 지원 명령어 (MVP)
 
-`remote-coder up`, `./run.sh`, 또는 `python scripts/set_webhook.py <URL>` 로 Telegram 등록을 갱신하면 BotFather에서 설정하는 것과 같은 `/` 명령어 메뉴가 각 프로젝트 봇에 등록됩니다.
+`remote-coder up` 또는 `python scripts/set_webhook.py <URL>` 로 Telegram 등록을 갱신하면 BotFather에서 설정하는 것과 같은 `/` 명령어 메뉴가 각 프로젝트 봇에 등록됩니다.
 
 - `/start` : 인라인 메뉴 허브 (모델·모니터·정리·관리 항목별 버튼 바로가기)
 - `/help` : 명령어 도움말 (model·monitor·clear 항목별 인라인 버튼 제공)

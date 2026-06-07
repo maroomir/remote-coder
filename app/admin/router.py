@@ -348,7 +348,7 @@ def create_admin_router(
             "webhook_route_template": "/telegram/webhook/{token_hash_prefix}",
             "webhook_public_url_rule": "<public HTTPS Base URL> + each project's webhook_path",
             "webhook_hint": "Each project (bot) has its own webhook_path and token_hash_prefix. "
-            "The full URL is the public Base joined with webhook_path. While ./run.sh is running, "
+            "The full URL is the public Base joined with webhook_path. While remote-coder up is running, "
             "registration/edits refresh it automatically. "
             "Manual registration: python scripts/set_webhook.py <Base URL>",
             "webhook_deleted_disabled_note": (
