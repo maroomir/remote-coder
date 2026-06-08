@@ -84,6 +84,8 @@ remote-coder up --no-tunnel --reload
 
 `remote-coder up --no-tunnel`은 터널·webhook 등록 없이 서버만 실행하며 `uvicorn app.main:app` 와 동일합니다.
 
+위 두 단계(editable 설치 보장 + reload 실행)를 한 번에 하려면 `./scripts/dev.sh`를 쓰세요(`remote-coder` conda 환경에서 실행). 터널까지 포함한 라이브 테스트는 `remote-coder up --reload`를 사용합니다.
+
 ### 배포 패키지 빌드
 
 ```bash

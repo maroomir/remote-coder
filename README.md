@@ -82,6 +82,8 @@ remote-coder up --no-tunnel --reload
 
 `remote-coder up --no-tunnel` runs the server only, without tunnel/webhook registration — equivalent to `uvicorn app.main:app`.
 
+To do both steps in one go (ensure editable install, then run with reload), use `./scripts/dev.sh` (runs in the `remote-coder` conda env). For live testing with the tunnel, run `remote-coder up --reload` instead.
+
 ### Building distribution packages
 
 ```bash
