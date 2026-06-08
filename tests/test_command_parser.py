@@ -392,7 +392,7 @@ def test_parse_natural_reply_to_bot_job_result_expands_job_context(project_regis
     assert "[Reply message context]" not in req.instruction
 
 
-def test_parse_natural_reply_to_recorded_bot_message_reuses_job_id(project_registry: ProjectRegistry):
+def test_parse_natural_reply_to_recorded_bot_message_does_not_reuse_job_id(project_registry: ProjectRegistry):
     db = project_registry.config_path.parent / "parser_reply_recorded_bot.sqlite3"
     store = SQLiteConversationStore(db)
     store.append(
@@ -426,7 +426,7 @@ def test_parse_natural_reply_to_recorded_bot_message_reuses_job_id(project_regis
         reply_to_message_id=101,
     )
 
-    assert req.job_id == "job_same"
+    assert req.job_id is None
     assert "최초 요청" in req.instruction
     assert "앱 응답" in req.instruction
     assert "이 응답 기준으로 이어서 수정해줘" in req.instruction

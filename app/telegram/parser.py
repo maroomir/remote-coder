@@ -186,13 +186,6 @@ class CommandParser:
                 raise CommandParseError(localize_git_branch_validation_message(branch_err, lang))
 
         instruction_body = remaining.strip()
-        reply_job_id: str | None = None
-        if reply_to_message_id is not None and self._conversation_store is not None:
-            reply_job_id = self._conversation_store.get_job_id_for_message_id(
-                project_name,
-                chat_id,
-                reply_to_message_id,
-            )
         reply_prefix = ""
         if reply_to_message_id is not None and self._conversation_store is not None:
             reply_prefix = self._conversation_store.format_reply_context(
@@ -206,7 +199,6 @@ class CommandParser:
             if self._conversation_store is not None:
                 extracted_reply_job_id = _extract_reply_job_id(reply_to_text)
                 if extracted_reply_job_id:
-                    reply_job_id = extracted_reply_job_id
                     reply_prefix = self._conversation_store.format_job_context(
                         project_name,
                         chat_id,
@@ -268,5 +260,4 @@ class CommandParser:
             requested_by=user_id,
             message_id=message_id,
             reply_to_message_id=reply_to_message_id,
-            job_id=reply_job_id,
         )
