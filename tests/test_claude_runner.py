@@ -25,7 +25,7 @@ def test_claude_runner_invokes_subprocess(mock_popen, caplog):
 
 
 @patch("app.ai.base.subprocess.Popen")
-def test_claude_runner_plan_uses_permission_mode_plan(mock_popen, caplog):
+def test_claude_runner_plan_wraps_prompt_with_read_only_prefix(mock_popen, caplog):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("plan out", "")
     mock_proc.returncode = 0
@@ -45,7 +45,7 @@ def test_claude_runner_plan_uses_permission_mode_plan(mock_popen, caplog):
     assert cmd[0] == "claude" and cmd[1] == "-p"
     assert "PLAN mode" in cmd[2]
     assert "refactor auth" in cmd[2]
-    assert cmd[-2:] == ["--permission-mode", "plan"]
+    assert cmd[-1] == "--dangerously-skip-permissions"
 
 
 @patch("app.ai.base.subprocess.Popen")
