@@ -1,73 +1,75 @@
-# 멀티봇·멀티프로젝트 설정 가이드
+# Multi-Bot And Multi-Project Setup
 
-Remote Coder는 **등록된 프로젝트마다 별도의 Telegram 봇**을 두는 모델입니다. 채팅방에서 프로젝트를 바꾸는 `/project` 명령은 없으며, **어떤 봇과 대화하느냐가 곧 어떤 Git 저장소에 작업할지**를 결정합니다.
+*English: this document · 한국어: [multi-bot-setup.ko.md](multi-bot-setup.ko.md)*
 
-## 전제
+Remote Coder uses **one Telegram bot per registered project**. There is no `/project` command in chat. The bot you talk to determines which Git repository receives the request.
 
-- HTTPS로 공개 가능한 Base URL(예: ngrok)이 있어야 Telegram이 webhook을 호출할 수 있습니다.
-- 프로젝트 메타데이터·봇 토큰·allowlist는 `~/.remote-coder/projects.json`에 저장됩니다.
-- 전역 동작 설정은 `~/.remote-coder/advanced_settings.json`에 저장됩니다.
+## Prerequisites
 
-## 보안 주의
+- Telegram must be able to call a public HTTPS base URL, such as an ngrok URL.
+- Project metadata, bot tokens, and allowlists are stored in `~/.remote-coder/projects.json`.
+- Global behavior settings are stored in `~/.remote-coder/advanced_settings.json`.
 
-- `projects.json`에는 **BotFather 토큰이 평문**으로 들어갑니다. 파일 권한을 제한하고, 저장소에 커밋하지 마세요.
-- 관리 UI와 `/api/*`는 **localhost 전용**으로 두세요. 토큰이 노출되면 해당 봇을 탈취당할 수 있습니다.
-- 어드민 API 응답의 토큰은 마스킹되어 표시됩니다.
+## Security Notes
 
-## 1. BotFather에서 봇 만들기
+- `projects.json` stores **BotFather tokens in plain text**. Restrict file permissions and never commit it.
+- Keep the admin UI and `/api/*` on localhost. A leaked token can let someone take over the bot.
+- Admin API responses mask token values.
 
-1. Telegram에서 [@BotFather](https://t.me/BotFather)를 엽니다.
-2. `/newbot`으로 봇을 생성하고 **HTTP API 토큰**을 복사해 둡니다.
-3. (선택) webhook 검증용으로 `secret_token`을 쓰려면 임의의 긴 문자열을 준비합니다. 프로젝트 레코드의 `webhook_secret`에 넣고, Telegram `setWebhook` 시 동일 값을 등록합니다.
+## 1. Create Bots In BotFather
 
-프로젝트가 둘 이상이면 **프로젝트마다 봇을 하나씩** 만듭니다.
+1. Open [@BotFather](https://t.me/BotFather) in Telegram.
+2. Create a bot with `/newbot` and copy its **HTTP API token**.
+3. Optional: prepare a long random `secret_token` for webhook verification. Store it as `webhook_secret` in the project record and pass the same value when registering the Telegram webhook.
 
-## 2. 관리 UI에서 프로젝트 등록
+Create **one bot per project** if you manage more than one repository.
 
-1. 서버를 띄운 뒤 같은 머신에서 `http://127.0.0.1:8000/projects` 로 이동합니다.
-2. **프로젝트 이름**, **저장소 루트 경로**, **기본 모델**을 입력합니다.
-3. 해당 봇의 **bot_token**, (선택) **webhook_secret**, **허용 Chat ID**(최소 1개), (선택) **허용 User ID**를 입력합니다.
-4. 저장하면 서버는 재시작 없이 해당 봇 인스턴스를 등록합니다.
+## 2. Register A Project In The Admin UI
 
-워크트리는 `~/.remote-coder/worktrees/<project>/` 아래에 자동 생성됩니다.
+1. Start the server and open `http://127.0.0.1:8000/projects` on the same machine.
+2. Enter the **project name**, **repository root path**, and **default model**.
+3. Enter the bot's **bot_token**, optional **webhook_secret**, at least one **allowed Chat ID**, and optional **allowed User IDs**.
+4. Save the project. The server registers the bot instance without a restart.
 
-`GET /api/projects` 응답에는 봇별 **`webhook_path`**(예: `/telegram/webhook/<16자리 16진 prefix>`), **`token_hash_prefix`**가 포함됩니다. 전체 webhook URL은 `<공개 HTTPS Base>` + `webhook_path` 입니다.
+Worktrees are created automatically under `~/.remote-coder/worktrees/<project>/`.
 
-### Webhook URL과 토큰 해시
+`GET /api/projects` includes each bot's **`webhook_path`** such as `/telegram/webhook/<16-hex-prefix>` and **`token_hash_prefix`**. The full webhook URL is `<public HTTPS base>` + `webhook_path`.
 
-경로 마지막 세그먼트는 봇 토큰 문자열의 **SHA-256 16진 digest 앞 16자리**입니다. BotFather에서 토큰을 재발급하면 prefix가 바뀌므로 **Webhook URL도 다시 등록**해야 합니다.
+### Webhook URL And Token Hash
 
-## 3. Webhook 등록
+The final path segment is the first **16 hex characters** of the bot token's SHA-256 digest. If you regenerate the token in BotFather, the prefix changes and the webhook URL must be registered again.
 
-공개 Base URL만 넘기면, **활성화(enabled)된** 모든 프로젝트에 대해 해당 봇 토큰으로 `setWebhook`을 호출합니다. `remote-coder up`은 ngrok 공개 URL로 이 등록을 자동 수행하므로 보통 별도 호출이 필요 없습니다. 외부 호스트의 고정 URL을 직접 등록하려면 다음을 사용하세요.
+## 3. Register Webhooks
+
+Pass a public base URL to register `setWebhook` for every **enabled** project. `remote-coder up` normally does this automatically with the ngrok URL. Use this command only when you need to register a fixed external URL manually.
 
 ```bash
 python scripts/set_webhook.py https://your-host.example
-# 저장소에서 Conda로 개발 중이라면: conda activate remote-coder 후 위 명령 실행
+# If developing from the repository with Conda, activate remote-coder first.
 ```
 
-각 프로젝트에 `webhook_secret`이 있으면 Telegram에 `secret_token`으로 함께 등록됩니다.
+If a project has `webhook_secret`, it is registered with Telegram as `secret_token`.
 
-### 삭제·비활성화 후 Telegram 쪽 정리
+### Cleanup After Deleting Or Disabling A Project
 
-레지스트리에서 프로젝트를 **삭제**하거나 **비활성**으로 두면, 서버는 그 토큰 해시 prefix에 해당하는 webhook 경로를 더 이상 매칭하지 않습니다(요청이 와도 처리되지 않거나 404). Telegram 클라우드에는 예전 webhook URL이 남을 수 있으므로, 완전히 끊거나 다른 서비스로 돌리려면 해당 봇에 대해 `deleteWebhook`을 호출하거나, 변경된 레지스트리 기준으로 `scripts/set_webhook.py`를 다시 실행해 URL을 맞추면 됩니다.
+When you **delete** or **disable** a project, the server stops matching webhook paths for that token hash prefix. Telegram may still keep the old webhook URL. To fully disconnect or repoint a bot, call `deleteWebhook` for that bot or rerun `scripts/set_webhook.py` against the current registry.
 
-## 4. 채팅에서 사용하기
+## 4. Use The Bot In Chat
 
-- 허용된 Chat/User로 해당 **봇과의 1:1 또는 그룹**에서 `/start`, 자연어 작업 요청 등을 사용합니다.
-- 자연어 옵션은 `model:`, `branch:`, `no commit` 만 지원합니다. **`project:` 토큰은 없습니다.**
-- `/init`은 이 채팅의 **기본 모델 오버라이드**와 **확인 대기 상태**만 초기화합니다. 봇에 묶인 프로젝트는 바뀌지 않습니다.
+- Use `/start` or a natural-language request in a 1:1 chat or group with an allowed Chat/User.
+- Natural-language options support only `model:`, `branch:`, and `no commit`. There is **no `project:` token**.
+- `/init` resets only this chat's **default-model override** and **pending confirmation state**. It does not change the project bound to the bot.
 
-## 기존 `.env` 사용자 마이그레이션
+## Migration From `.env`
 
-`.env` 기반 시드는 제거되었습니다.
+`.env`-based seeding has been removed.
 
-1. `remote-coder up`으로 서버를 띄우고 관리 UI **최초 설정** 카드 또는 `/projects`에서 각 프로젝트의 `bot_token`·allowlist·`root_path`를 등록합니다.
-2. 전역 옵션(`GIT_REMOTE_NAME`, `CODEX_SANDBOX`, `JOB_TIMEOUT_SECONDS` 등)은 `/advanced` 또는 `advanced_settings.json`으로 옮깁니다.
-3. 더 이상 쓰지 않는 `.env` 파일은 삭제하거나 민감 값을 제거합니다.
+1. Run `remote-coder up`, then register each project's `bot_token`, allowlist, and `root_path` from the admin UI first-time setup card or `/projects`.
+2. Move global options such as `GIT_REMOTE_NAME`, `CODEX_SANDBOX`, and `JOB_TIMEOUT_SECONDS` to `/advanced` or `advanced_settings.json`.
+3. Delete old `.env` files or remove sensitive values from them.
 
-자세한 설정 설명은 [README.ko.md](../README.ko.md)를 참고하세요.
+For the compact setup overview, see [README.md](../README.md).
 
-## 장기 개선(참고)
+## Future Improvement
 
-토큰 평문 저장 대신 OS 키링·암호화 저장 등은 제품 로드맵에서 별도로 검토할 수 있습니다. 현재 MVP는 파일 기반 레지스트리를 사용합니다.
+Replacing plain-text token storage with OS keychain or encrypted storage can be considered separately. The current MVP uses a file-based registry.
