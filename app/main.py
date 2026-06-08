@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from app.admin.advanced_settings import FileAdvancedSettingsStore, advanced_settings_path_for_project_root
 from app.admin.router import create_admin_router
 from app.ai.factory import AiRunnerFactory
-from app.config import get_settings
+from app.config import get_settings, worktrees_root
 from app.git.ai_commit import AiCommitBodyGenerator
 from app.git.branch_naming import TimestampSlugStrategy
 from app.git.service import GitWorktreeService
@@ -72,7 +72,7 @@ parser = CommandParser(
     advanced_settings_store=advanced_settings_store,
 )
 command_registry = CommandRegistry(commands=build_default_commands())
-git_service = GitWorktreeService(base_dir=settings.worktree_base_dir)
+git_service = GitWorktreeService(base_dir=worktrees_root())
 command_context = CommandContext(
     job_store=job_store,
     default_model=settings.default_model,

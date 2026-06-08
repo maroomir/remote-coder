@@ -24,7 +24,6 @@ def test_webhook_registrar_sets_project_webhook(tmp_path):
     record = ProjectRecord(
         name="whproj",
         root_path=tmp_path,
-        worktree_base_dir=tmp_path / "wt",
         default_model=ModelName.CLAUDE,
         enabled=True,
         bot_token=SecretStr(token),
@@ -57,7 +56,6 @@ def test_webhook_registrar_sets_bot_commands(tmp_path):
     record = ProjectRecord(
         name="cmdproj",
         root_path=tmp_path,
-        worktree_base_dir=tmp_path / "wt",
         default_model=ModelName.CLAUDE,
         enabled=True,
         bot_token=SecretStr(token),
@@ -94,7 +92,6 @@ def test_webhook_registrar_skips_disabled_project(tmp_path):
     record = ProjectRecord(
         name="disabled",
         root_path=tmp_path,
-        worktree_base_dir=tmp_path / "wt",
         default_model=ModelName.CLAUDE,
         enabled=False,
         bot_token=SecretStr(token),
@@ -112,7 +109,6 @@ def _settings_with_registry(tmp_path) -> Settings:
         default_project="enabled-proj",
         default_model="claude",
         project_root=tmp_path,
-        worktree_base_dir=tmp_path / "wt",
         projects_config_path=config_path,
         _env_file=None,
     )
@@ -130,7 +126,6 @@ def test_register_all_enabled_projects_only_targets_enabled(tmp_path):
         ProjectRecord(
             name="enabled-proj",
             root_path=tmp_path,
-            worktree_base_dir=tmp_path / "wt-enabled",
             default_model=ModelName.CLAUDE,
             enabled=True,
             bot_token=SecretStr(enabled_token),
@@ -142,7 +137,6 @@ def test_register_all_enabled_projects_only_targets_enabled(tmp_path):
         ProjectRecord(
             name="disabled-proj",
             root_path=tmp_path,
-            worktree_base_dir=tmp_path / "wt-disabled",
             default_model=ModelName.CLAUDE,
             enabled=False,
             bot_token=SecretStr(disabled_token),

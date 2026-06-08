@@ -7,9 +7,9 @@ from hashlib import sha256
 from pathlib import Path
 from threading import Lock
 import yaml
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
-from app.config import Settings
+from app.config import Settings, default_worktree_base_dir, resolve_state_path
 from app.models import ModelName
 
 _NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -116,7 +116,7 @@ def mask_bot_token(token: str) -> str:
 def projects_config_path_for_settings(project_root: Path, explicit: Path | None) -> Path:
     if explicit is not None:
         return explicit.expanduser().resolve()
-    return (project_root / ".remote-coder" / "projects.json").resolve()
+    return resolve_state_path("projects.json", project_root)
 
 
 class ProjectRecord(BaseModel):
@@ -124,7 +124,8 @@ class ProjectRecord(BaseModel):
 
     name: str
     root_path: Path
-    worktree_base_dir: Path
+    # 입력값은 하위호환을 위해 받아두되 무시하고, name 기준으로 ~/.remote-coder/worktrees/<name> 로 도출한다.
+    worktree_base_dir: Path | None = None
     default_model: ModelName = ModelName.CLAUDE
     enabled: bool = True
     bot_token: SecretStr
@@ -141,7 +142,7 @@ class ProjectRecord(BaseModel):
             )
         return value
 
-    @field_validator("root_path", "worktree_base_dir", mode="before")
+    @field_validator("root_path", mode="before")
     @classmethod
     def expand_path(cls, value: object) -> Path:
         if isinstance(value, Path):
@@ -149,6 +150,11 @@ class ProjectRecord(BaseModel):
         if isinstance(value, str):
             return Path(value).expanduser().resolve()
         raise TypeError("path must be str or Path")
+
+    @model_validator(mode="after")
+    def _derive_worktree_base_dir(self) -> ProjectRecord:
+        self.worktree_base_dir = default_worktree_base_dir(self.name)
+        return self
 
 
 class ProjectsFilePayload(BaseModel):
@@ -198,7 +204,6 @@ class ProjectRegistry:
                 ProjectRecord(
                     name=settings.default_project,
                     root_path=settings.project_root,
-                    worktree_base_dir=settings.worktree_base_dir,
                     default_model=settings.default_model,
                     enabled=True,
                     bot_token=token,
@@ -357,7 +362,10 @@ class ProjectRegistry:
 
     @staticmethod
     def _project_record_to_storable_dict(record: ProjectRecord) -> dict:
-        data = record.model_dump(mode="json", exclude={"bot_token", "webhook_secret"})
+        # worktree_base_dir 는 name 기준으로 항상 도출하므로 저장하지 않는다.
+        data = record.model_dump(
+            mode="json", exclude={"bot_token", "webhook_secret", "worktree_base_dir"}
+        )
         data["bot_token"] = record.bot_token.get_secret_value()
         data["webhook_secret"] = (
             record.webhook_secret.get_secret_value() if record.webhook_secret else None

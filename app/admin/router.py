@@ -50,7 +50,6 @@ _DEFAULT_NEW_PROJECT_WEBHOOK_SECRET = "optional-secret"
 class ProjectUpsertBody(BaseModel):
     name: str
     root_path: str
-    worktree_base_dir: str
     default_model: ModelName = ModelName.CLAUDE
     enabled: bool = True
     bot_token: str | None = None
@@ -389,7 +388,6 @@ def create_admin_router(
         record = ProjectRecord(
             name=body.name,
             root_path=body.root_path,
-            worktree_base_dir=body.worktree_base_dir,
             default_model=body.default_model,
             enabled=body.enabled,
             bot_token=SecretStr(body.bot_token.strip()),
@@ -436,7 +434,6 @@ def create_admin_router(
         record = ProjectRecord(
             name=body.name,
             root_path=body.root_path,
-            worktree_base_dir=body.worktree_base_dir,
             default_model=body.default_model,
             enabled=body.enabled,
             bot_token=bot_token,

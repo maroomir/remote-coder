@@ -126,11 +126,12 @@ cp .env.example .env
 - 선택(초기 시드): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TELEGRAM_ALLOWED_USER_IDS`, `TELEGRAM_WEBHOOK_SECRET` — 레지스트리가 비어 있을 때 첫 프로젝트 생성에만 쓰일 수 있습니다. 운영 설정은 관리 UI 또는 `projects.json`의 **프로젝트별** 필드를 우선합니다.
 - 선택: `GIT_REMOTE_NAME` (기본 `origin`) — 커밋 후 push 및 `/rebase`, `/pr`, `/clear` 시 사용
 - 선택: `PROJECTS_CONFIG_PATH` — 여러 Git 프로젝트 등록 파일(JSON 또는 `.yaml`) 경로
-- 선택: `CONVERSATION_DB_PATH` — 프로젝트+채팅별 대화 기억 SQLite 경로 (미설정 시 `PROJECT_ROOT/.remote-coder/conversations.sqlite3`)
+- 선택: `CONVERSATION_DB_PATH` — 프로젝트+채팅별 대화 기억 SQLite 경로 (미설정 시 `~/.remote-coder/conversations.sqlite3`)
 - 선택: `CONVERSATION_RECENT_LIMIT` — 모호한 후속 요청 시 runner에 붙이는 최근 기록 개수 (기본 `10`)
 - 선택: `CODEX_SANDBOX` — Codex `codex exec --sandbox` 값 (`read-only`, `workspace-write`, `danger-full-access`). 기본 `workspace-write`(Job worktree에서 파일 수정 가능)
 - 선택: Gemini 사용 시 `npm install -g @google/gemini-cli`로 Gemini CLI를 설치하고 `gemini` 명령이 PATH에 잡히도록 설정
-- 초기 시드(1회용): `DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`
+- 초기 시드(1회용): `DEFAULT_PROJECT`, `PROJECT_ROOT`
+- 워크트리는 `~/.remote-coder/worktrees/<project>/` 아래에 자동 생성되므로 워크트리 경로를 따로 설정할 필요가 없습니다
 
 기존 단일 `.env`만 쓰던 경우 → 관리 UI에서 각 프로젝트에 `bot_token`·allowlist를 옮기거나, 시드 생성 후 `.env`의 민감 값을 정리하는 것을 권장합니다. [`docs/multi-bot-setup.md`](docs/multi-bot-setup.md) 마이그레이션 절을 참고하세요.
 
@@ -144,8 +145,8 @@ cp .env.example .env
 - 서버 로그: `http://127.0.0.1:8000/logs` (`app` 로거 기준 인메모리 링 버퍼, 자동 새로고침·카테고리·`chat_id`/`job_id` 필터)
 - 데이터 조회: `http://127.0.0.1:8000/database` (대화 기억 SQLite 테이블 조회·CSV보내기)
 - 자연어 작업 대상 프로젝트는 **해당 봇에 고정**되어 있습니다. `project:` 토큰은 지원하지 않습니다.
-- `PROJECTS_CONFIG_PATH`가 없으면 기본 경로 `PROJECT_ROOT/.remote-coder/projects.json`을 사용합니다.
-- 레지스트리 파일이 없으면 `.env`의 초기 시드 값(`DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`)으로 자동 생성됩니다.
+- `PROJECTS_CONFIG_PATH`가 없으면 기본 경로 `~/.remote-coder/projects.json`을 사용합니다(기존 `PROJECT_ROOT/.remote-coder/projects.json`이 있으면 하위호환으로 계속 읽습니다).
+- 레지스트리 파일이 없으면 `.env`의 초기 시드 값(`DEFAULT_PROJECT`, `PROJECT_ROOT`)으로 자동 생성됩니다.
 
 ### 서버 로그(이벤트) 로거 네임 규약
 
@@ -165,7 +166,7 @@ cp .env.example .env
 
 ### 고급 설정 (위험 옵션)
 
-관리 UI의 **고급 설정** 페이지(`http://127.0.0.1:8000/advanced`)에서 전역 설정 파일 `PROJECT_ROOT/.remote-coder/advanced_settings.json`을 읽고 저장할 수 있습니다. **Interface language** (`ui_language`): 기본값은 **English**이며, Telegram 봇이 보내는 안내·버튼 라벨뿐 아니라 **관리 UI(`/`, `/projects`, `/advanced`, `/logs`, `/database`) 전체**가 이 언어를 따릅니다. **한국어**로 바꾼 뒤 저장하고 페이지를 새로고침하면 관리 UI와 Telegram 응답이 모두 한국어로 표시됩니다. (관리 UI는 영어를 기본값으로 렌더링하고, 한국어는 클라이언트에서 오버레이합니다.)
+관리 UI의 **고급 설정** 페이지(`http://127.0.0.1:8000/advanced`)에서 전역 설정 파일 `~/.remote-coder/advanced_settings.json`을 읽고 저장할 수 있습니다. **Interface language** (`ui_language`): 기본값은 **English**이며, Telegram 봇이 보내는 안내·버튼 라벨뿐 아니라 **관리 UI(`/`, `/projects`, `/advanced`, `/logs`, `/database`) 전체**가 이 언어를 따릅니다. **한국어**로 바꾼 뒤 저장하고 페이지를 새로고침하면 관리 UI와 Telegram 응답이 모두 한국어로 표시됩니다. (관리 UI는 영어를 기본값으로 렌더링하고, 한국어는 클라이언트에서 오버레이합니다.)
 
 옵션마다 기본값이 다르며(예: 서버 생명주기 Telegram 알림은 기본 켜짐, 서버 시작 시 저장소 `git pull`은 기본 꺼짐), 켜지 않은 옵션은 해당 기능이 비활성인 것과 같습니다. 예전 버전에서만 쓰이던 키는 로드 시 무시됩니다(예: 제거된 `auto_pull_on_project_switch`).
 
@@ -271,7 +272,7 @@ ngrok version
 - `/reports 7`처럼 최근 표시 개수를 함께 줄 수 있습니다. 허용 범위는 `1~10`이며, 기본값은 `5`입니다.
 - worktree 생성 직후 쓰기 가능 여부를 점검합니다. AI 출력에 읽기 전용·수정 불가 등의 표현이 있고 Git 변경이 없으면 성공이 아니라 **실패**로 처리됩니다.
 - 작업 완료/실패 메시지에는 AI 실행 결과 요약(`stdout`/`stderr`)이 함께 포함됩니다.
-- 전체 출력 원문은 worktree 로그 파일(`WORKTREE_BASE_DIR/_logs/<job_id>.log`)에서 확인할 수 있습니다.
+- 전체 출력 원문은 worktree 로그 파일(`~/.remote-coder/worktrees/<project>/_logs/<job_id>.log`)에서 확인할 수 있습니다.
 
 ## 5) 모델별 사용 가이드
 

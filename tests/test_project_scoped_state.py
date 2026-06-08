@@ -39,13 +39,10 @@ def test_confirmations_isolated_per_project_same_chat_id():
 def test_status_lists_only_jobs_for_bot_project(project_registry: ProjectRegistry):
     root_a = project_registry.config_path.parent / "psc_a_repo"
     root_a.mkdir()
-    wt_a = project_registry.config_path.parent / "psc_a_wt"
-    wt_a.mkdir()
     project_registry.add_project(
         ProjectRecord(
             name="proj-a",
             root_path=root_a,
-            worktree_base_dir=wt_a,
             default_model=ModelName.CLAUDE,
             enabled=True,
             bot_token="123:psc_a",
@@ -54,13 +51,10 @@ def test_status_lists_only_jobs_for_bot_project(project_registry: ProjectRegistr
     )
     root_b = project_registry.config_path.parent / "psc_b_repo"
     root_b.mkdir()
-    wt_b = project_registry.config_path.parent / "psc_b_wt"
-    wt_b.mkdir()
     project_registry.add_project(
         ProjectRecord(
             name="proj-b",
             root_path=root_b,
-            worktree_base_dir=wt_b,
             default_model=ModelName.CLAUDE,
             enabled=True,
             bot_token="123:psc_b",

@@ -16,12 +16,9 @@ from app.telegram.model_preferences import InMemoryModelPreferenceStore
 def _record(tmp_path: Path, name: str, token: str) -> ProjectRecord:
     root = tmp_path / name / "repo"
     root.mkdir(parents=True, exist_ok=True)
-    wt = tmp_path / name / "wt"
-    wt.mkdir(parents=True, exist_ok=True)
     return ProjectRecord(
         name=name,
         root_path=root,
-        worktree_base_dir=wt,
         default_model=ModelName.CLAUDE,
         enabled=True,
         bot_token=SecretStr(token),

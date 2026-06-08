@@ -9,6 +9,16 @@ from app.projects.registry import ProjectRegistry
 from app.telegram.conversation import SQLiteConversationStore
 
 
+@pytest.fixture(autouse=True)
+def isolate_remote_coder_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    # ProjectRecord/Settings derive worktree + state paths from remote_coder_home();
+    # pin it to a tmp dir so tests never touch the real ~/.remote-coder.
+    home = tmp_path / "remote-coder-home"
+    home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("REMOTE_CODER_HOME", str(home))
+    return home
+
+
 @pytest.fixture
 def test_settings(tmp_path: Path) -> Settings:
     return Settings(
@@ -19,7 +29,6 @@ def test_settings(tmp_path: Path) -> Settings:
         default_model="claude",
         default_project="remote-coder",
         project_root=tmp_path,
-        worktree_base_dir=tmp_path / "worktrees",
         job_timeout_seconds=10,
         keep_worktree_on_success=True,
     )

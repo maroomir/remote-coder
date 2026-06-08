@@ -96,13 +96,10 @@ def _make_app_two_projects(project_registry, *, job_store, notifiers_by_project:
 def test_natural_message_routes_to_bound_project_and_notifier(project_registry, tmp_path):
     root_b = tmp_path / "svc_b_repo"
     root_b.mkdir()
-    wt_b = tmp_path / "svc_b_wt"
-    wt_b.mkdir()
     project_registry.add_project(
         ProjectRecord(
             name="svc-b",
             root_path=root_b,
-            worktree_base_dir=wt_b,
             default_model=ModelName.CLAUDE,
             enabled=True,
             bot_token="777:svc-b-bot-token-unique",
@@ -140,13 +137,10 @@ def test_natural_message_routes_to_bound_project_and_notifier(project_registry, 
 def test_webhook_posts_do_not_cross_notify_between_bots(project_registry, tmp_path):
     root_b = tmp_path / "svc_b2_repo"
     root_b.mkdir()
-    wt_b = tmp_path / "svc_b2_wt"
-    wt_b.mkdir()
     project_registry.add_project(
         ProjectRecord(
             name="svc-b2",
             root_path=root_b,
-            worktree_base_dir=wt_b,
             default_model=ModelName.CLAUDE,
             enabled=True,
             bot_token="888:svc-b2-bot-token",

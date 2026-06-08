@@ -139,15 +139,12 @@ def test_admin_api_projects_post_and_delete(test_settings, project_registry, adv
 
     root = test_settings.project_root / "new_repo"
     root.mkdir()
-    wt = test_settings.project_root / "new_wt"
-    wt.mkdir()
 
     response = client.post(
         "/api/projects",
         json={
             "name": "extra",
             "root_path": str(root),
-            "worktree_base_dir": str(wt),
             "default_model": "codex",
             "enabled": True,
             "bot_token": "123456:ABC-extra-bot",
@@ -196,15 +193,12 @@ def test_admin_api_projects_syncs_bot_instance_manager(
 
     root = test_settings.project_root / "bim_repo"
     root.mkdir()
-    wt = test_settings.project_root / "bim_wt"
-    wt.mkdir()
 
     client.post(
         "/api/projects",
         json={
             "name": "bimproj",
             "root_path": str(root),
-            "worktree_base_dir": str(wt),
             "default_model": "claude",
             "enabled": True,
             "bot_token": "888888:AA-bim-bot-test",
@@ -228,7 +222,6 @@ def test_admin_api_projects_syncs_bot_instance_manager(
         json={
             "name": "bimproj",
             "root_path": str(root),
-            "worktree_base_dir": str(wt),
             "default_model": "claude",
             "enabled": False,
             "allowed_chat_ids": [9],
@@ -245,7 +238,6 @@ def test_admin_api_projects_syncs_bot_instance_manager(
         json={
             "name": "bimproj",
             "root_path": str(root),
-            "worktree_base_dir": str(wt),
             "default_model": "claude",
             "enabled": True,
             "allowed_chat_ids": [9],
@@ -275,15 +267,12 @@ def test_admin_api_projects_put_omitted_webhook_secret_preserves(
 
     root = test_settings.project_root / "wh_omit_repo"
     root.mkdir()
-    wt = test_settings.project_root / "wh_omit_wt"
-    wt.mkdir()
 
     create = client.post(
         "/api/projects",
         json={
             "name": "wh-omit",
             "root_path": str(root),
-            "worktree_base_dir": str(wt),
             "default_model": "claude",
             "enabled": True,
             "bot_token": "777777:AA-wh-omit-bot",
@@ -299,7 +288,6 @@ def test_admin_api_projects_put_omitted_webhook_secret_preserves(
         json={
             "name": "wh-omit",
             "root_path": str(root),
-            "worktree_base_dir": str(wt),
             "default_model": "claude",
             "enabled": True,
             "allowed_chat_ids": [3],
@@ -328,15 +316,12 @@ def test_admin_api_projects_put_empty_webhook_secret_clears(
 
     root = test_settings.project_root / "wh_clear_repo"
     root.mkdir()
-    wt = test_settings.project_root / "wh_clear_wt"
-    wt.mkdir()
 
     create = client.post(
         "/api/projects",
         json={
             "name": "wh-clear",
             "root_path": str(root),
-            "worktree_base_dir": str(wt),
             "default_model": "claude",
             "enabled": True,
             "bot_token": "666666:AA-wh-clear-bot",
@@ -352,7 +337,6 @@ def test_admin_api_projects_put_empty_webhook_secret_clears(
         json={
             "name": "wh-clear",
             "root_path": str(root),
-            "worktree_base_dir": str(wt),
             "default_model": "claude",
             "enabled": True,
             "allowed_chat_ids": [4],
@@ -382,7 +366,6 @@ def test_admin_api_projects_put_updates(test_settings, project_registry, advance
         json={
             "name": "remote-coder",
             "root_path": str(entry.root_path),
-            "worktree_base_dir": str(entry.worktree_base_dir),
             "default_model": "codex",
             "enabled": True,
             "allowed_chat_ids": entry.allowed_chat_ids,

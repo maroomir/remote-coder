@@ -7,6 +7,7 @@ from typing import Self
 
 from pydantic import BaseModel, model_validator
 
+from app.config import resolve_state_path
 from app.models import UiLanguage
 
 
@@ -49,7 +50,7 @@ class AdvancedSettings(BaseModel):
 
 
 def advanced_settings_path_for_project_root(project_root: Path) -> Path:
-    return (project_root.expanduser().resolve() / ".remote-coder" / "advanced_settings.json").resolve()
+    return resolve_state_path("advanced_settings.json", project_root.expanduser())
 
 
 class FileAdvancedSettingsStore:

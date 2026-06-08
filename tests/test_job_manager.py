@@ -65,7 +65,7 @@ def test_job_manager_submit_and_run_success(test_settings, project_registry):
     )
     call = git_service.prepare_detached_worktree.call_args
     assert call.args[0] == test_settings.project_root
-    assert call.kwargs.get("worktree_base_dir") == test_settings.worktree_base_dir
+    assert call.kwargs.get("worktree_base_dir") == project_registry.get("remote-coder").worktree_base_dir
     assert call.kwargs.get("base_branch") is None
 
 
@@ -560,7 +560,7 @@ def test_job_manager_uses_detached_worktree_when_requested_branch_is_checked_out
     git_service.prepare_detached_worktree.assert_called_once_with(
         test_settings.project_root,
         job.id,
-        worktree_base_dir=test_settings.worktree_base_dir,
+        worktree_base_dir=project_registry.get("remote-coder").worktree_base_dir,
         base_branch="main",
     )
     git_service.create_branch_in_worktree.assert_called_once_with(Path("/tmp/wt"), "remote-test")
@@ -710,7 +710,7 @@ def test_job_manager_auto_merge_to_main_calls_rebase_after_push(test_settings, p
     assert args[0] == test_settings.project_root
     assert args[1] == "remote-test"
     assert args[2] == test_settings.git_remote_name
-    assert args[3] == test_settings.worktree_base_dir / "_rebase_ops"
+    assert args[3] == project_registry.get("remote-coder").worktree_base_dir / "_rebase_ops"
 
 
 def test_job_manager_auto_merge_failure_sets_integrate_stage(test_settings, project_registry):

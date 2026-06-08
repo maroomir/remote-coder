@@ -379,13 +379,10 @@ def test_monitor_project_lists_registry(project_registry: ProjectRegistry):
 def test_init_command_resets_project_model_and_pending(project_registry: ProjectRegistry):
     root = project_registry.config_path.parent / "init_other_repo"
     root.mkdir()
-    wt = project_registry.config_path.parent / "init_other_wt"
-    wt.mkdir()
     project_registry.add_project(
         ProjectRecord(
             name="other",
             root_path=root,
-            worktree_base_dir=wt,
             default_model=ModelName.CODEX,
             enabled=True,
             bot_token="123:other",
@@ -732,13 +729,10 @@ def test_clear_worktrees_confirmation_executes_cleanup(project_registry: Project
 def test_clear_branch_only_targets_bot_bound_project(project_registry: ProjectRegistry, tmp_path: Path):
     root_b = tmp_path / "proj_b_root"
     root_b.mkdir()
-    wt_b = tmp_path / "proj_b_wt"
-    wt_b.mkdir()
     project_registry.add_project(
         ProjectRecord(
             name="proj-b",
             root_path=root_b,
-            worktree_base_dir=wt_b,
             default_model=ModelName.CLAUDE,
             enabled=True,
             bot_token="456:b",
@@ -761,13 +755,10 @@ def test_clear_branch_only_targets_bot_bound_project(project_registry: ProjectRe
 def test_clear_worktrees_only_targets_bot_bound_project(project_registry: ProjectRegistry, tmp_path: Path):
     root_b = tmp_path / "proj_b_root2"
     root_b.mkdir()
-    wt_b = tmp_path / "proj_b_wt2"
-    wt_b.mkdir()
     project_registry.add_project(
         ProjectRecord(
             name="proj-b",
             root_path=root_b,
-            worktree_base_dir=wt_b,
             default_model=ModelName.CLAUDE,
             enabled=True,
             bot_token="789:b",
@@ -959,7 +950,6 @@ def test_monitor_code_counts_lines(project_registry: ProjectRegistry, tmp_path):
         ProjectRecord(
             name="countproj",
             root_path=root,
-            worktree_base_dir=tmp_path / "wt",
             enabled=True,
             bot_token="123:countproj",
             allowed_chat_ids=[123],

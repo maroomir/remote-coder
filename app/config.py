@@ -13,12 +13,30 @@ def remote_coder_home() -> Path:
     """Stable per-user config/state home so the CLI works from any directory.
 
     Overridable with REMOTE_CODER_HOME; defaults to ~/.remote-coder. Holds the
-    project registry and the optional global `.env` seed.
+    project registry, state files, worktrees, and the optional global `.env` seed.
     """
     raw = os.environ.get("REMOTE_CODER_HOME", "").strip()
     if raw:
         return Path(raw).expanduser()
     return Path.home() / ".remote-coder"
+
+
+def worktrees_root() -> Path:
+    return (remote_coder_home() / "worktrees").resolve()
+
+
+def default_worktree_base_dir(project_name: str) -> Path:
+    return (worktrees_root() / project_name).resolve()
+
+
+def resolve_state_path(filename: str, legacy_project_root: Path) -> Path:
+    new_path = (remote_coder_home() / filename).resolve()
+    if new_path.exists():
+        return new_path
+    legacy = (legacy_project_root / ".remote-coder" / filename).resolve()
+    if legacy.exists():
+        return legacy
+    return new_path
 
 
 class Settings(BaseSettings):
@@ -54,15 +72,16 @@ class Settings(BaseSettings):
     default_model: ModelName = ModelName.CLAUDE
     default_project: str = "remote-coder"
     project_root: Path = Field(default_factory=remote_coder_home)
-    worktree_base_dir: Path = Field(default_factory=lambda: remote_coder_home() / "worktrees")
     job_timeout_seconds: int = 1800
     keep_worktree_on_success: bool = True
     projects_config_path: Path | None = None
     git_remote_name: str = "origin"
 
-    # 프로젝트+채팅별 대화 기억(SQLite). 미설정 시 PROJECT_ROOT/.remote-coder/conversations.sqlite3
+    # 프로젝트+채팅별 대화 기억(SQLite). 미설정 시 ~/.remote-coder/conversations.sqlite3
+    # (기존 PROJECT_ROOT/.remote-coder/conversations.sqlite3 가 있으면 하위호환 폴백)
     conversation_db_path: Path | None = None
-    # 작업 메타데이터(SQLite). 미설정 시 PROJECT_ROOT/.remote-coder/jobs.sqlite3
+    # 작업 메타데이터(SQLite). 미설정 시 ~/.remote-coder/jobs.sqlite3
+    # (기존 PROJECT_ROOT/.remote-coder/jobs.sqlite3 가 있으면 하위호환 폴백)
     job_db_path: Path | None = None
     conversation_recent_limit: int = 10
 
@@ -85,13 +104,13 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _default_conversation_db_path(self) -> Self:
         if self.conversation_db_path is None:
-            self.conversation_db_path = (self.project_root / ".remote-coder" / "conversations.sqlite3").resolve()
+            self.conversation_db_path = resolve_state_path("conversations.sqlite3", self.project_root)
         return self
 
     @model_validator(mode="after")
     def _default_job_db_path(self) -> Self:
         if self.job_db_path is None:
-            self.job_db_path = (self.project_root / ".remote-coder" / "jobs.sqlite3").resolve()
+            self.job_db_path = resolve_state_path("jobs.sqlite3", self.project_root)
         return self
 
     @field_validator("telegram_allowed_chat_ids", mode="before")

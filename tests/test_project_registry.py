@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from app.config import Settings
+from app.config import Settings, default_worktree_base_dir, remote_coder_home
 from app.models import ModelName
 from app.projects.registry import (
     ProjectRecord,
@@ -24,9 +24,9 @@ def test_projects_config_path_explicit(tmp_path: Path) -> None:
     assert resolved == explicit.resolve()
 
 
-def test_projects_config_path_default_under_project_root(tmp_path: Path) -> None:
+def test_projects_config_path_default_under_remote_coder_home(tmp_path: Path) -> None:
     resolved = projects_config_path_for_settings(tmp_path, None)
-    assert resolved == (tmp_path / ".remote-coder" / "projects.json").resolve()
+    assert resolved == (remote_coder_home() / "projects.json").resolve()
 
 
 def test_ensure_seeded_empty_file_with_token_writes_seed(tmp_path: Path) -> None:
@@ -35,8 +35,6 @@ def test_ensure_seeded_empty_file_with_token_writes_seed(tmp_path: Path) -> None
     path.write_text('{"default_project": "", "projects": []}\n', encoding="utf-8")
     root = tmp_path / "repo"
     root.mkdir()
-    wt = tmp_path / "wt"
-    wt.mkdir()
     settings = Settings(
         telegram_bot_token="seed-token",
         telegram_allowed_chat_ids=[42],
@@ -45,7 +43,6 @@ def test_ensure_seeded_empty_file_with_token_writes_seed(tmp_path: Path) -> None
         default_project="seed-proj",
         default_model="claude",
         project_root=root,
-        worktree_base_dir=wt,
     )
     reg = ProjectRegistry(path)
     reg.ensure_seeded_from_settings(settings)
@@ -64,14 +61,11 @@ def test_ensure_seeded_without_token_writes_empty_projects(tmp_path: Path) -> No
     path = tmp_path / ".remote-coder" / "projects.json"
     root = tmp_path / "repo"
     root.mkdir()
-    wt = tmp_path / "wt"
-    wt.mkdir()
     settings = Settings(
         telegram_bot_token=None,
         default_project="p1",
         default_model="claude",
         project_root=root,
-        worktree_base_dir=wt,
     )
     reg = ProjectRegistry(path)
     assert not path.exists()
@@ -92,6 +86,19 @@ def test_ensure_seeded_creates_file(test_settings: Settings) -> None:
     assert reg.get("remote-coder") is not None
 
 
+def test_worktree_base_dir_is_derived_and_not_persisted(test_settings: Settings) -> None:
+    path = test_settings.project_root / "wt-derive.json"
+    reg = ProjectRegistry(path)
+    reg.ensure_seeded_from_settings(test_settings)
+
+    entry = reg.get("remote-coder")
+    assert entry is not None
+    assert entry.worktree_base_dir == default_worktree_base_dir("remote-coder")
+
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert "worktree_base_dir" not in raw["projects"][0]
+
+
 def test_add_duplicate_project_raises(test_settings: Settings) -> None:
     path = test_settings.project_root / "dup.json"
     reg = ProjectRegistry(path)
@@ -101,7 +108,6 @@ def test_add_duplicate_project_raises(test_settings: Settings) -> None:
             ProjectRecord(
                 name="remote-coder",
                 root_path=test_settings.project_root,
-                worktree_base_dir=test_settings.worktree_base_dir,
                 default_model=ModelName.CLAUDE,
                 enabled=True,
                 bot_token="another-token",
@@ -120,7 +126,6 @@ def test_add_project_invalid_root_raises(test_settings: Settings) -> None:
             ProjectRecord(
                 name="newproj",
                 root_path=missing,
-                worktree_base_dir=test_settings.worktree_base_dir,
                 default_model=ModelName.CLAUDE,
                 enabled=True,
                 bot_token="newproj-token",
@@ -132,8 +137,6 @@ def test_add_project_invalid_root_raises(test_settings: Settings) -> None:
 def test_yaml_config_roundtrip(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir()
-    wt = tmp_path / "wt"
-    wt.mkdir()
     path = tmp_path / "cfg.yaml"
     settings = Settings(
         telegram_bot_token="t",
@@ -141,7 +144,6 @@ def test_yaml_config_roundtrip(tmp_path: Path) -> None:
         default_project="p1",
         default_model="claude",
         project_root=root,
-        worktree_base_dir=wt,
     )
     reg = ProjectRegistry(path)
     reg.ensure_seeded_from_settings(settings)
@@ -205,15 +207,12 @@ def test_add_project_rejects_webhook_prefix_collision(test_settings: Settings) -
     assert existing is not None
     root2 = test_settings.project_root / "repo2"
     root2.mkdir()
-    wt2 = test_settings.worktree_base_dir / "wt2"
-    wt2.mkdir(parents=True)
 
     with pytest.raises(ValueError, match="prefix collision"):
         reg.add_project(
             ProjectRecord(
                 name="other",
                 root_path=root2,
-                worktree_base_dir=wt2,
                 default_model=ModelName.CLAUDE,
                 enabled=True,
                 bot_token=SecretStr(existing.bot_token.get_secret_value()),
@@ -230,16 +229,11 @@ def test_update_project_rejects_webhook_prefix_collision(test_settings: Settings
     root_a.mkdir()
     root_b = test_settings.project_root / "repo_b"
     root_b.mkdir()
-    wt_a = test_settings.worktree_base_dir / "wta"
-    wt_a.mkdir(parents=True)
-    wt_b = test_settings.worktree_base_dir / "wtb"
-    wt_b.mkdir(parents=True)
 
     reg.add_project(
         ProjectRecord(
             name="proj-a",
             root_path=root_a,
-            worktree_base_dir=wt_a,
             default_model=ModelName.CLAUDE,
             enabled=True,
             bot_token=SecretStr("token-a-only"),
@@ -250,7 +244,6 @@ def test_update_project_rejects_webhook_prefix_collision(test_settings: Settings
         ProjectRecord(
             name="proj-b",
             root_path=root_b,
-            worktree_base_dir=wt_b,
             default_model=ModelName.CLAUDE,
             enabled=True,
             bot_token=SecretStr("token-b-only"),
@@ -265,7 +258,6 @@ def test_update_project_rejects_webhook_prefix_collision(test_settings: Settings
             ProjectRecord(
                 name="proj-b",
                 root_path=root_b,
-                worktree_base_dir=wt_b,
                 default_model=ModelName.CLAUDE,
                 enabled=True,
                 bot_token=SecretStr(proj_a.bot_token.get_secret_value()),

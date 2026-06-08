@@ -96,13 +96,10 @@ def test_parse_natural_explicit_provider_drops_detailed_preference(project_regis
 def test_parse_natural_model_preference_scoped_by_project_same_chat_id(project_registry: ProjectRegistry):
     root = project_registry.config_path.parent / "scoped_pref_repo"
     root.mkdir()
-    wt = project_registry.config_path.parent / "scoped_pref_wt"
-    wt.mkdir()
     project_registry.add_project(
         ProjectRecord(
             name="scoped-pref-proj",
             root_path=root,
-            worktree_base_dir=wt,
             default_model=ModelName.GEMINI,
             enabled=True,
             bot_token="123:scoped_pref",
@@ -144,13 +141,10 @@ def test_parse_natural_parses_gemini_model(project_registry: ProjectRegistry):
 def test_parse_natural_no_model_preferences_uses_project_default(project_registry: ProjectRegistry):
     root = project_registry.config_path.parent / "codex_only_repo"
     root.mkdir()
-    wt = project_registry.config_path.parent / "codex_only_wt"
-    wt.mkdir()
     project_registry.add_project(
         ProjectRecord(
             name="special",
             root_path=root,
-            worktree_base_dir=wt,
             default_model=ModelName.CODEX,
             enabled=True,
             bot_token="123:special",
@@ -171,13 +165,10 @@ def test_parse_natural_without_explicit_model_preference_uses_project_default(
 ):
     root = project_registry.config_path.parent / "project_default_repo"
     root.mkdir()
-    wt = project_registry.config_path.parent / "project_default_wt"
-    wt.mkdir()
     project_registry.add_project(
         ProjectRecord(
             name="project_default",
             root_path=root,
-            worktree_base_dir=wt,
             default_model=ModelName.CODEX,
             enabled=True,
             bot_token="123:project_default",

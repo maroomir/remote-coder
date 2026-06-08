@@ -124,11 +124,12 @@ Fill in the following values in `.env`:
 - Optional (initial seed): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TELEGRAM_ALLOWED_USER_IDS`, `TELEGRAM_WEBHOOK_SECRET` — used only to create the first project when the registry is empty. Production settings prefer the **per-project** fields in the admin UI or `projects.json`.
 - Optional: `GIT_REMOTE_NAME` (default `origin`) — used for push after commit and for `/rebase`, `/pr`, `/clear`
 - Optional: `PROJECTS_CONFIG_PATH` — path to the registry file (JSON or `.yaml`) for multiple Git projects
-- Optional: `CONVERSATION_DB_PATH` — SQLite path for per-project + per-chat conversation memory (defaults to `PROJECT_ROOT/.remote-coder/conversations.sqlite3`)
+- Optional: `CONVERSATION_DB_PATH` — SQLite path for per-project + per-chat conversation memory (defaults to `~/.remote-coder/conversations.sqlite3`)
 - Optional: `CONVERSATION_RECENT_LIMIT` — number of recent records appended to the runner for ambiguous follow-ups (default `10`)
 - Optional: `CODEX_SANDBOX` — the Codex `codex exec --sandbox` value (`read-only`, `workspace-write`, `danger-full-access`). Default `workspace-write` (files can be edited in the Job worktree)
 - Optional: to use Gemini, install the Gemini CLI with `npm install -g @google/gemini-cli` and make sure `gemini` is on your PATH
-- Initial seed (one-time): `DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`
+- Initial seed (one-time): `DEFAULT_PROJECT`, `PROJECT_ROOT`
+- Worktrees are created automatically under `~/.remote-coder/worktrees/<project>/`; there is no worktree path to configure
 
 If you were using a single `.env` before → move each project's `bot_token`/allowlist into the admin UI, or clean sensitive values from `.env` after the seed is created. See the migration section in [`docs/multi-bot-setup.md`](docs/multi-bot-setup.md).
 
@@ -142,8 +143,8 @@ After starting the server, open it in a browser **on the same machine**.
 - Server logs: `http://127.0.0.1:8000/logs` (in-memory ring buffer for the `app` logger; auto-refresh, category and `chat_id`/`job_id` filters)
 - Data browser: `http://127.0.0.1:8000/database` (browse the conversation-memory SQLite tables, export CSV)
 - The natural-language task target is **bound to its bot**. The `project:` token is not supported.
-- If `PROJECTS_CONFIG_PATH` is unset, the default path `PROJECT_ROOT/.remote-coder/projects.json` is used.
-- If the registry file is missing, it is created automatically from the `.env` seed values (`DEFAULT_PROJECT`, `PROJECT_ROOT`, `WORKTREE_BASE_DIR`).
+- If `PROJECTS_CONFIG_PATH` is unset, the default path `~/.remote-coder/projects.json` is used (an existing `PROJECT_ROOT/.remote-coder/projects.json` is still read for backward compatibility).
+- If the registry file is missing, it is created automatically from the `.env` seed values (`DEFAULT_PROJECT`, `PROJECT_ROOT`).
 
 ### Server log (event) logger naming convention
 
@@ -163,7 +164,7 @@ Structured fields (`category`, `chat_id`, `user_id`, `project`, `job_id`) can be
 
 ### Advanced settings (dangerous options)
 
-On the admin UI **Advanced settings** page (`http://127.0.0.1:8000/advanced`) you can read and save the global settings file `PROJECT_ROOT/.remote-coder/advanced_settings.json`. **Interface language** (`ui_language`): the default is **English**, and it governs not only the Telegram bot's messages and button labels but the **entire admin UI** (`/`, `/projects`, `/advanced`, `/logs`, `/database`). Switching to **Korean**, saving, and refreshing renders both the admin UI and Telegram responses in Korean. (The admin UI renders English by default and overlays Korean on the client.)
+On the admin UI **Advanced settings** page (`http://127.0.0.1:8000/advanced`) you can read and save the global settings file `~/.remote-coder/advanced_settings.json`. **Interface language** (`ui_language`): the default is **English**, and it governs not only the Telegram bot's messages and button labels but the **entire admin UI** (`/`, `/projects`, `/advanced`, `/logs`, `/database`). Switching to **Korean**, saving, and refreshing renders both the admin UI and Telegram responses in Korean. (The admin UI renders English by default and overlays Korean on the client.)
 
 Defaults differ per option (e.g. server-lifecycle Telegram notifications are on by default; `git pull` on server start is off by default); an option left off behaves as if that feature is disabled. Keys used only by older versions are ignored on load (e.g. the removed `auto_pull_on_project_switch`).
 
@@ -269,7 +270,7 @@ Notes:
 - You can pass a recent display count, like `/reports 7`. The allowed range is `1–10`, default `5`.
 - Writability is checked right after worktree creation. If the AI output contains expressions like read-only/cannot-modify and there is no Git change, it is treated as a **failure**, not a success.
 - Task completion/failure messages include a summary of the AI execution result (`stdout`/`stderr`).
-- The full raw output is available in the worktree log file (`WORKTREE_BASE_DIR/_logs/<job_id>.log`).
+- The full raw output is available in the worktree log file (`~/.remote-coder/worktrees/<project>/_logs/<job_id>.log`).
 
 ## 5) Per-model usage guides
 

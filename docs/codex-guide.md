@@ -90,14 +90,14 @@ model: codex README에 테스트 문구 한 줄 추가해줘 no commit
 
 ### Telegram 작업이 runner 단계에서 실패
 
-- 작업 로그 확인: `<WORKTREE_BASE_DIR>/_logs/<job_id>.log`
+- 작업 로그 확인: `~/.remote-coder/worktrees/<project>/_logs/<job_id>.log`
 - CLI 단독 테스트(`codex exec ...`)가 먼저 성공하는지 점검
 - Telegram 메시지에는 요약본만 표시되며, 상세 원문(stdout/stderr)은 로그 파일에서 확인
 
 ### worktree 읽기 전용·수정 불가 메시지
 
 - 서버는 worktree 경로에 임시 파일을 써서 쓰기 가능 여부를 먼저 확인합니다. 실패 시 `git_worktree` 단계에서 끝납니다.
-- 종료 코드가 0이어도 출력에 `read-only` / `readonly` / `읽기 전용` / `수정 불가`가 있고 Git 변경이 없으면 **실패**로 처리됩니다. `WORKTREE_BASE_DIR` 권한과 마운트 옵션을 확인하세요.
+- 종료 코드가 0이어도 출력에 `read-only` / `readonly` / `읽기 전용` / `수정 불가`가 있고 Git 변경이 없으면 **실패**로 처리됩니다. 워크트리 베이스(`~/.remote-coder/worktrees/`) 권한과 마운트 옵션을 확인하세요.
 - 단계별 점검은 [read-only 워크스페이스 가이드](read-only-workspace.md)를 참고하세요.
 
 ### 프로젝트 기본값과 실제 동작 모델이 다름

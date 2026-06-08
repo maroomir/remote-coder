@@ -558,10 +558,6 @@
         <p class="hint" style="margin:0.35rem 0 0" data-i18n="projects.gitRootHint">Absolute path. The directory must exist to save.</p>
         <input id="f-root" name="root_path" required autocomplete="off" />
 
-        <label class="field" for="f-wt" data-i18n="projects.worktreeBaseDir">Worktree base directory</label>
-        <p class="hint" style="margin:0.35rem 0 0" data-i18n="projects.worktreeHint">Created if missing.</p>
-        <input id="f-wt" name="worktree_base_dir" required autocomplete="off" />
-
         <label class="field" for="f-model" data-i18n="common.defaultModel">Default model</label>
         <select id="f-model" name="default_model">
           <option value="claude">claude</option>
@@ -792,7 +788,6 @@
         const f = $("#proj-form");
         f.name.value = p.name;
         f.root_path.value = p.root_path;
-        f.worktree_base_dir.value = p.worktree_base_dir;
         f.default_model.value = p.default_model;
         f.enabled.checked = !!p.enabled;
         $("#f-bot-token").value = "";
@@ -837,7 +832,6 @@
       const body = {
         name: f.name.value.trim(),
         root_path: f.root_path.value.trim(),
-        worktree_base_dir: f.worktree_base_dir.value.trim(),
         default_model: f.default_model.value,
         enabled: f.enabled.checked,
         allowed_chat_ids,

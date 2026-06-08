@@ -124,8 +124,6 @@
       en: "Absolute path. The directory must exist to save.",
       ko: "절대 경로. 디렉터리가 존재해야 저장됩니다.",
     },
-    "projects.worktreeBaseDir": { en: "Worktree base directory", ko: "워크트리 베이스 디렉터리" },
-    "projects.worktreeHint": { en: "Created if missing.", ko: "없으면 생성됩니다." },
     "projects.botToken": { en: "Bot token", ko: "봇 토큰" },
     "projects.botTokenHint": {
       en: "API token from Telegram BotFather after <code>/newbot</code>. The plaintext is stored only in the registry file; lists and APIs show a masked value.",
