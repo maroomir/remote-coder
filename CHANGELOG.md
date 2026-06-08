@@ -8,6 +8,22 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-06-09
+
+### Added
+
+- **First-time setup in the admin UI**: When no projects are registered, the admin home screen now shows a setup card with prerequisite checks and a direct path to adding the first project.
+- **Shared prerequisite diagnostics**: Added a reusable diagnostics module and `/api/prerequisites` endpoint for checking ngrok configuration and installed AI CLIs.
+
+### Changed
+
+- **Simplified setup flow**: Removed the interactive `remote-coder init` command. New installations now start with `remote-coder up`, then complete project registration in the local admin UI.
+- **Documentation cleanup**: Updated English and Korean setup docs to explain that the project registry is the source of truth, while `.env` is optional seed configuration.
+
+### Fixed
+
+- `remote-coder up` now gives a first-project setup prompt instead of treating an empty registry as a webhook registration failure.
+
 ## [0.4.1] — 2026-06-07
 
 ### Added
