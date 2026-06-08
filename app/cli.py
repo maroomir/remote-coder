@@ -99,11 +99,9 @@ def run_up(*, host: str, port: int, reload: bool, log_level: str, tunnel: bool =
 
 
 def _has_enabled_projects(settings) -> bool:
-    from app.projects.registry import ProjectRegistry, projects_config_path_for_settings
+    from app.projects.registry import ProjectRegistry, projects_config_path
 
-    config_path = projects_config_path_for_settings(
-        settings.project_root, settings.projects_config_path
-    )
+    config_path = projects_config_path(settings.projects_config_path)
     registry = ProjectRegistry(config_path)
     registry.load()
     return any(project.enabled for project in registry.list_projects())

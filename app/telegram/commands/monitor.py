@@ -11,6 +11,7 @@ from app.telegram.commands.base import (
     TelegramCommand,
     TelegramMessage,
     _cmd_evt,
+    effective_git_remote_name,
     effective_model_for_chat,
     effective_project_name_for_chat,
 )
@@ -59,7 +60,7 @@ class MonitorCommand(TelegramCommand):
             return self._view_memory(message, ctx, project_name)
         if sub == "branch":
             return format_branch_monitor(
-                ctx.git_service, entry.root_path, ctx.git_remote_name, project_name
+                ctx.git_service, entry.root_path, effective_git_remote_name(ctx), project_name
             )
         if sub == "worktrees":
             return format_worktree_monitor(

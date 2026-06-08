@@ -12,6 +12,7 @@ from app.telegram.commands.base import (
     _cmd_evt,
     _confirmation_buttons_enabled,
     _job_button_label,
+    effective_git_remote_name,
     effective_project_name_for_chat,
 )
 from app.telegram.confirmations import PendingConfirmation
@@ -117,17 +118,17 @@ class ClearCommand(ConfirmableCommand):
         try:
             ctx.git_service.checkout_integrate_branch(p.root_path)
             remote_branches = ctx.git_service.list_remote_branches_matching(
-                p.root_path, ctx.git_remote_name, "remote-"
+                p.root_path, effective_git_remote_name(ctx), "remote-"
             )
             local_branches = ctx.git_service.list_local_branches_matching(p.root_path, "remote-")
             if remote_branches:
-                ctx.git_service.delete_remote_branches(p.root_path, ctx.git_remote_name, remote_branches)
+                ctx.git_service.delete_remote_branches(p.root_path, effective_git_remote_name(ctx), remote_branches)
             if local_branches:
                 ctx.git_service.remove_linked_worktrees_for_branches(p.root_path, local_branches)
                 ctx.git_service.delete_local_branches(p.root_path, local_branches)
             return (
                 f"{p.name}: remote {len(remote_branches)}, local {len(local_branches)} deleted "
-                f"({ctx.git_remote_name})"
+                f"({effective_git_remote_name(ctx)})"
             )
         except RuntimeError as exc:
             return f"{p.name}: failed - {exc}"

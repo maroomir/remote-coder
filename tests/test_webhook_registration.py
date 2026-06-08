@@ -105,13 +105,7 @@ def test_webhook_registrar_skips_disabled_project(tmp_path):
 
 def _settings_with_registry(tmp_path) -> Settings:
     config_path = tmp_path / "projects.json"
-    return Settings(
-        default_project="enabled-proj",
-        default_model="claude",
-        project_root=tmp_path,
-        projects_config_path=config_path,
-        _env_file=None,
-    )
+    return Settings(projects_config_path=config_path)
 
 
 @respx.mock

@@ -17,8 +17,8 @@
 
 ## 공개/보안 안내
 
-- `TELEGRAM_BOT_TOKEN`(시드용 선택), 레지스트리의 `bot_token`, Chat/User ID, webhook secret, AI API key, 개인 경로는 코드나 문서에 커밋하지 마세요.
-- `.env`, `.remote-coder/`(특히 `projects.json`), worktree, 로그, SQLite 대화 기억 파일은 로컬 전용 데이터입니다. 이 저장소의 `.gitignore`는 기본적으로 이 파일들을 제외합니다.
+- 레지스트리의 `bot_token`, Chat/User ID, webhook secret, AI API key, 개인 경로는 코드나 문서에 커밋하지 마세요.
+- `~/.remote-coder/`(특히 `projects.json`, `advanced_settings.json`), worktree, 로그, SQLite 대화 기억 파일은 로컬 전용 데이터입니다. 이 저장소의 `.gitignore`는 기본적으로 이 파일들을 제외합니다.
 - 관리 UI(`/`, `/projects`, `/advanced`, `/logs`, `/database`)는 localhost 전용으로 설계되어 있습니다. reverse proxy, ngrok, 포트포워딩 등으로 외부에 공개하지 마세요.
 - Claude `--dangerously-skip-permissions`, Gemini `--approval-mode yolo`, Codex `danger-full-access` 같은 옵션은 로컬 파일을 수정할 수 있으므로 허용 프로젝트와 신뢰 사용자 범위를 제한한 뒤 사용하세요.
 - 대화 기억 SQLite에는 사용자의 Telegram 요청과 Job 요약이 저장될 수 있습니다. 민감한 코드를 메시지에 붙여넣지 말고, 필요 시 `/clear memory` 또는 관리 UI 고급 설정으로 정리하세요.
@@ -54,7 +54,7 @@ remote-coder up     # ngrok 터널 + Telegram webhook 등록 + 서버 실행을 
 ```
 
 - 등록된 프로젝트가 없는 첫 실행에서는 로컬 관리 UI **http://127.0.0.1:8000/** 를 열고 **최초 설정** 카드에서 첫 프로젝트(봇 토큰·허용 Chat ID·대상 저장소 경로)를 추가하세요. 저장하는 즉시 봇이 연결됩니다.
-- 진짜 설정값의 소스는 프로젝트 레지스트리(`REMOTE_CODER_HOME`(기본 `~/.remote-coder`)의 `projects.json`)이며, 관리 UI가 여기에 기록합니다. 전역 `REMOTE_CODER_HOME/.env`는 선택이며 첫 프로젝트 시드용으로만 쓰입니다.
+- 설정의 소스는 `REMOTE_CODER_HOME`(기본 `~/.remote-coder`) 아래 `projects.json`(프로젝트·봇)과 `advanced_settings.json`(전역 동작)이며, 관리 UI가 여기에 기록합니다.
 - 전제조건: `ngrok`(설치 후 `ngrok config add-authtoken <token>`)과 AI CLI(`claude`/`codex`/`gemini`) 중 1개 이상. `remote-coder doctor` 또는 설정 카드에서 점검할 수 있습니다.
 - 터널 없이 서버만 띄우려면 `remote-coder up --no-tunnel`.
 
@@ -117,25 +117,19 @@ conda activate remote-coder
 
 ## 2) 설정
 
-관리 UI 대신 설정을 수동으로 다룰 때만 아래처럼 이 `.env`를 복사·편집하세요. `.env`는 선택이며 레지스트리가 비어 있을 때 첫 프로젝트 시드로만 쓰입니다. (전역 실행 시에는 `REMOTE_CODER_HOME/.env`가, 저장소 내 개발 시에는 현재 디렉터리의 `.env`가 우선됩니다.)
+평소에는 관리 UI만 사용하면 됩니다. 수동으로 다룰 때는 아래 파일을 직접 편집합니다.
 
-```bash
-cp .env.example .env
-```
+- `~/.remote-coder/projects.json` — 프로젝트별 `bot_token`, allowlist, `root_path`, `default_model`
+- `~/.remote-coder/advanced_settings.json` — `job_timeout_seconds`, `git_remote_name`, `codex_sandbox`, `keep_worktree_on_success`, `conversation_recent_limit` 등 전역 동작
+- 워크트리는 `~/.remote-coder/worktrees/<project>/` 아래에 자동 생성됩니다.
 
-`.env`에 다음 값을 채웁니다.
+선택적 OS 환경변수:
 
-- 선택(초기 시드): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TELEGRAM_ALLOWED_USER_IDS`, `TELEGRAM_WEBHOOK_SECRET` — 레지스트리가 비어 있을 때 첫 프로젝트 생성에만 쓰일 수 있습니다. 운영 설정은 관리 UI 또는 `projects.json`의 **프로젝트별** 필드를 우선합니다.
-- 선택: `GIT_REMOTE_NAME` (기본 `origin`) — 커밋 후 push 및 `/rebase`, `/pr`, `/clear` 시 사용
-- 선택: `PROJECTS_CONFIG_PATH` — 여러 Git 프로젝트 등록 파일(JSON 또는 `.yaml`) 경로
-- 선택: `CONVERSATION_DB_PATH` — 프로젝트+채팅별 대화 기억 SQLite 경로 (미설정 시 `~/.remote-coder/conversations.sqlite3`)
-- 선택: `CONVERSATION_RECENT_LIMIT` — 모호한 후속 요청 시 runner에 붙이는 최근 기록 개수 (기본 `10`)
-- 선택: `CODEX_SANDBOX` — Codex `codex exec --sandbox` 값 (`read-only`, `workspace-write`, `danger-full-access`). 기본 `workspace-write`(Job worktree에서 파일 수정 가능)
-- 선택: Gemini 사용 시 `npm install -g @google/gemini-cli`로 Gemini CLI를 설치하고 `gemini` 명령이 PATH에 잡히도록 설정
-- 초기 시드(1회용): `DEFAULT_PROJECT`, `PROJECT_ROOT`
-- 워크트리는 `~/.remote-coder/worktrees/<project>/` 아래에 자동 생성되므로 워크트리 경로를 따로 설정할 필요가 없습니다
+- `REMOTE_CODER_HOME` — 설정/상태 디렉터리 (기본 `~/.remote-coder`)
+- `PROJECTS_CONFIG_PATH` — 레지스트리 파일 경로 오버라이드
+- `CONVERSATION_DB_PATH`, `JOB_DB_PATH` — SQLite 경로 오버라이드
 
-기존 단일 `.env`만 쓰던 경우 → 관리 UI에서 각 프로젝트에 `bot_token`·allowlist를 옮기거나, 시드 생성 후 `.env`의 민감 값을 정리하는 것을 권장합니다. [`docs/multi-bot-setup.md`](docs/multi-bot-setup.md) 마이그레이션 절을 참고하세요.
+기존 `.env` 사용자는 [`docs/multi-bot-setup.md`](docs/multi-bot-setup.md) 마이그레이션 절을 참고하세요.
 
 ## 2.5) 로컬 관리 UI (프로젝트 등록)
 
@@ -147,8 +141,8 @@ cp .env.example .env
 - 서버 로그: `http://127.0.0.1:8000/logs` (`app` 로거 기준 인메모리 링 버퍼, 자동 새로고침·카테고리·`chat_id`/`job_id` 필터)
 - 데이터 조회: `http://127.0.0.1:8000/database` (대화 기억 SQLite 테이블 조회·CSV보내기)
 - 자연어 작업 대상 프로젝트는 **해당 봇에 고정**되어 있습니다. `project:` 토큰은 지원하지 않습니다.
-- `PROJECTS_CONFIG_PATH`가 없으면 기본 경로 `~/.remote-coder/projects.json`을 사용합니다(기존 `PROJECT_ROOT/.remote-coder/projects.json`이 있으면 하위호환으로 계속 읽습니다).
-- 레지스트리 파일이 없으면 `.env`의 초기 시드 값(`DEFAULT_PROJECT`, `PROJECT_ROOT`)으로 자동 생성됩니다.
+- `PROJECTS_CONFIG_PATH`가 없으면 기본 경로 `~/.remote-coder/projects.json`을 사용합니다.
+- 레지스트리가 비어 있으면 관리 UI **최초 설정** 카드에서 첫 프로젝트를 추가하세요.
 
 ### 서버 로그(이벤트) 로거 네임 규약
 

@@ -27,22 +27,17 @@
     var list = projectsPayload.projects || [];
     var enabled = list.filter(function (p) { return p.enabled; }).length;
     var defName = projectsPayload.default_project || window.i18n.t("common.none");
-    var envModel = settings.default_model_env || "—";
-    var timeout = settings.job_timeout_seconds_env != null
-      ? String(settings.job_timeout_seconds_env) + window.i18n.t("common.secondsSuffix")
+    var timeout = settings.job_timeout_seconds != null
+      ? String(settings.job_timeout_seconds) + window.i18n.t("common.secondsSuffix")
       : "—";
-    var tokenOk = settings.telegram_bot_token_masked &&
-      settings.telegram_bot_token_masked !== "(not set)";
+    var gitRemote = settings.git_remote_name || "—";
 
     grid.innerHTML =
       '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("summary.registered")) + '</p><p class="value">' + list.length + "</p></div>" +
       '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("summary.active")) + '</p><p class="value">' + enabled + "</p></div>" +
       '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("common.fallbackDefault")) + '</p><p class="value" style="font-size:1rem">' + _escapeHtml(defName) + "</p></div>" +
-      '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("summary.envModel")) + '</p><p class="value" style="font-size:1rem">' + _escapeHtml(envModel) + "</p></div>" +
-      '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("summary.envTimeout")) + '</p><p class="value" style="font-size:1rem">' + _escapeHtml(timeout) + "</p></div>" +
-      '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("summary.botToken")) + '</p><p class="value" style="font-size:0.95rem">' +
-        (tokenOk ? _escapeHtml(window.i18n.t("common.set")) : _escapeHtml(window.i18n.t("common.unset"))) +
-      '</p><p class="sub">' + _escapeHtml(window.i18n.tv(settings.telegram_bot_token_masked || "")) + "</p></div>";
+      '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("summary.jobTimeout")) + '</p><p class="value" style="font-size:1rem">' + _escapeHtml(timeout) + "</p></div>" +
+      '<div class="stat-card"><p class="label">' + _escapeHtml(window.i18n.t("summary.gitRemote")) + '</p><p class="value" style="font-size:1rem">' + _escapeHtml(gitRemote) + "</p></div>";
   }
 
   async function loadSummaryGrid(onError) {

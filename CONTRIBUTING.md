@@ -25,7 +25,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 conda run -n remote-coder pytest -q -p pytest_a
 - [ ] Telegram allowlist, webhook secret, 관리 UI localhost 제한 같은 보안 경계를 약화하지 않았습니다.
 - [ ] Job은 기본 작업 트리가 아니라 요청별 Git worktree에서 실행되는 정책을 유지합니다.
 - [ ] 변경된 동작에 대한 테스트를 추가하거나 갱신했습니다.
-- [ ] 새 환경 변수나 명령어가 있으면 README, `.env.example`, 관련 docs를 업데이트했습니다.
+- [ ] 새 환경 변수·파일 기반 설정이나 명령어가 있으면 README와 관련 docs를 업데이트했습니다.
 - [ ] 개발 규칙이나 작업 절차가 바뀌면 `.clinerules/`, `.cursor/rules/`, `AGENTS.md` 동기화 필요성을 검토했습니다.
 
 ## 코드 스타일과 구조

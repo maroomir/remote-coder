@@ -60,11 +60,10 @@ def test_job_manager_submit_and_run_success(test_settings, project_registry):
         CommitMessageFormatter.format(job.id, request.instruction, ["a.py"]),
     )
     assert git_service.commit_all.call_args.args[1].endswith(f"committed by remote-coder: {job.id}")
-    git_service.push_branch.assert_called_once_with(
-        test_settings.project_root, test_settings.git_remote_name, "remote-test"
-    )
+    project_root = project_registry.get("remote-coder").root_path
+    git_service.push_branch.assert_called_once_with(project_root, "origin", "remote-test")
     call = git_service.prepare_detached_worktree.call_args
-    assert call.args[0] == test_settings.project_root
+    assert call.args[0] == project_root
     assert call.kwargs.get("worktree_base_dir") == project_registry.get("remote-coder").worktree_base_dir
     assert call.kwargs.get("base_branch") is None
 
@@ -290,8 +289,6 @@ def test_job_manager_plan_success_cleans_worktree_despite_keep_flag(test_setting
     factory.create.return_value = runner
     branch_strategy = Mock()
     notifier = Mock()
-    assert test_settings.keep_worktree_on_success is True
-
     manager = JobManager(
         test_settings,
         store,
@@ -312,7 +309,8 @@ def test_job_manager_plan_success_cleans_worktree_despite_keep_flag(test_setting
     job = manager.submit(request)
     manager.run(job.id)
 
-    git_service.cleanup_worktree.assert_called_once_with(test_settings.project_root, Path("/tmp/wt-plan2"))
+    project_root = project_registry.get("remote-coder").root_path
+    git_service.cleanup_worktree.assert_called_once_with(project_root, Path("/tmp/wt-plan2"))
 
 
 def test_job_manager_no_changes_skips_branch_commit_push(test_settings, project_registry):
@@ -557,8 +555,9 @@ def test_job_manager_uses_detached_worktree_when_requested_branch_is_checked_out
     assert final_job.status.value == "succeeded"
     assert final_job.branch == "remote-test"
     git_service.prepare_branch_worktree.assert_not_called()
+    project_root = project_registry.get("remote-coder").root_path
     git_service.prepare_detached_worktree.assert_called_once_with(
-        test_settings.project_root,
+        project_root,
         job.id,
         worktree_base_dir=project_registry.get("remote-coder").worktree_base_dir,
         base_branch="main",
@@ -707,9 +706,10 @@ def test_job_manager_auto_merge_to_main_calls_rebase_after_push(test_settings, p
     assert final_job.status.value == "succeeded"
     git_service.rebase_branch_onto_main_and_merge.assert_called_once()
     args, kwargs = git_service.rebase_branch_onto_main_and_merge.call_args
-    assert args[0] == test_settings.project_root
+    project_root = project_registry.get("remote-coder").root_path
+    assert args[0] == project_root
     assert args[1] == "remote-test"
-    assert args[2] == test_settings.git_remote_name
+    assert args[2] == "origin"
     assert args[3] == project_registry.get("remote-coder").worktree_base_dir / "_rebase_ops"
 
 
@@ -1032,8 +1032,9 @@ def test_execute_fix_job_commit_uses_prepared_message_and_force_lease(
     assert final.commit_hash == "def5678"
     assert final.branch == parent.branch
     git_service.amend_commit.assert_called_once_with(Path("/tmp/wt-fix"), prepared)
+    project_root = project_registry.get("remote-coder").root_path
     git_service.push_branch_force_with_lease.assert_called_once_with(
-        test_settings.project_root, test_settings.git_remote_name, parent.branch
+        project_root, "origin", parent.branch
     )
     # Runner should not be invoked for commit-only mode
     factory.create.assert_not_called()

@@ -6,7 +6,7 @@
 - FastAPI.
 - Uvicorn.
 - pytest.
-- `python-dotenv` or `pydantic-settings`.
+- `pydantic-settings`.
 - `pyproject.toml` based packaging.
 - Telegram Bot API calls through a small adapter or a stable Telegram library.
 - Git CLI based worktree management.
@@ -25,7 +25,7 @@
 - Centralize environment variables in `config.py` or a settings object.
 - Support project-specific settings through YAML/JSON configuration when needed.
 - Use safe defaults.
-- Document new environment variables in `.env.example` and README.
+- Document new OS environment variables and file-based settings in README and admin UI docs.
 - Before running tests or the server, use the `remote-coder` Conda environment.
 - If activation is difficult in an automated context, use `conda run -n remote-coder ...`.
 

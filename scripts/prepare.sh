@@ -81,29 +81,14 @@ setup_ai_cli_tools() {
     install_npm_cli_if_missing "gemini" "@google/gemini-cli" "Gemini CLI"
 }
 
-prepare_env_file() {
-    echo "📄 환경 변수 파일 확인 중..."
-    if [ -f .env ]; then
-        echo "✅ .env 파일이 이미 존재합니다."
-        return
-    fi
-
-    if [ -f .env.example ]; then
-        cp .env.example .env
-        echo "✅ .env.example 파일을 복사하여 .env 파일을 생성했습니다."
-        echo "⚠️ 스크립트 완료 후 반드시 .env 파일을 열어 올바른 값으로 수정해주세요."
-    else
-        echo "⚠️ .env.example 파일을 찾을 수 없습니다."
-    fi
-}
-
 print_next_steps() {
     echo ""
     echo "✨ 준비가 완료되었습니다!"
     echo "다음 명령어를 실행하여 가상 환경을 활성화하세요:"
     echo "conda activate remote-coder"
     echo ""
-    echo "이후 remote-coder up 을 통해 서버를 실행할 수 있습니다."
+    echo "이후 remote-coder up 을 통해 서버를 실행하고,"
+    echo "브라우저에서 http://127.0.0.1:8000/ 를 열어 첫 프로젝트를 등록하세요."
 }
 
 main() {
@@ -112,7 +97,6 @@ main() {
     setup_conda_env
     ensure_ngrok
     setup_ai_cli_tools
-    prepare_env_file
     print_next_steps
 }
 

@@ -15,8 +15,8 @@ An MVP that runs AI coding tasks on your local development machine through Teleg
 
 ## Publishing / security notes
 
-- Never commit `TELEGRAM_BOT_TOKEN` (optional seed), the registry `bot_token`, Chat/User IDs, webhook secrets, AI API keys, or personal paths to code or docs.
-- `.env`, `.remote-coder/` (especially `projects.json`), worktrees, logs, and the SQLite conversation-memory file are local-only data. This repository's `.gitignore` excludes them by default.
+- Never commit registry `bot_token` values, Chat/User IDs, webhook secrets, AI API keys, or personal paths to code or docs.
+- `~/.remote-coder/` (especially `projects.json`, `advanced_settings.json`), worktrees, logs, and the SQLite conversation-memory file are local-only data. This repository's `.gitignore` excludes them by default.
 - The admin UI (`/`, `/projects`, `/advanced`, `/logs`, `/database`) is designed for localhost only. Do not expose it externally via reverse proxy, ngrok, port forwarding, etc.
 - Options such as Claude `--dangerously-skip-permissions`, Gemini `--approval-mode yolo`, and Codex `danger-full-access` can modify local files. Use them only after restricting the allowed projects and trusted users.
 - The conversation-memory SQLite may store users' Telegram requests and Job summaries. Do not paste sensitive code into messages, and clean up with `/clear memory` or the admin UI advanced settings when needed.
@@ -52,7 +52,7 @@ remote-coder up     # ngrok tunnel + Telegram webhook registration + server, all
 ```
 
 - On the first run (no projects yet), open the local admin UI at **http://127.0.0.1:8000/** and use the **First-time setup** card to add your first project (bot token, allowed Chat IDs, target repo path). The bot goes live as soon as the project is saved.
-- The project registry (`projects.json` under `REMOTE_CODER_HOME`, default `~/.remote-coder`) is the source of truth; the admin UI writes to it. A global `REMOTE_CODER_HOME/.env` is optional and used only to seed the first project.
+- Configuration lives under `REMOTE_CODER_HOME` (default `~/.remote-coder`): `projects.json` for per-project bots and `advanced_settings.json` for global behavior. The admin UI writes to both.
 - Prerequisites: `ngrok` (after installing, run `ngrok config add-authtoken <token>`) and at least one AI CLI (`claude`/`codex`/`gemini`). Check them with `remote-coder doctor` or in the setup card.
 - To run the server only, without a tunnel: `remote-coder up --no-tunnel`.
 
@@ -115,25 +115,19 @@ conda activate remote-coder
 
 ## 2) Configuration
 
-Copy and edit this `.env` only when configuring manually instead of using the admin UI. The `.env` is optional and seeds the first project when the registry is empty. (When running globally, `REMOTE_CODER_HOME/.env` takes precedence; when developing inside the repo, the current directory's `.env` takes precedence.)
+Use the admin UI for day-to-day setup. To edit files directly:
 
-```bash
-cp .env.example .env
-```
+- `~/.remote-coder/projects.json` — per-project `bot_token`, allowlists, `root_path`, `default_model`
+- `~/.remote-coder/advanced_settings.json` — global behavior such as `job_timeout_seconds`, `git_remote_name`, `codex_sandbox`, `keep_worktree_on_success`, `conversation_recent_limit`
+- Worktrees are created automatically under `~/.remote-coder/worktrees/<project>/`.
 
-Fill in the following values in `.env`:
+Optional OS environment variables:
 
-- Optional (initial seed): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`, `TELEGRAM_ALLOWED_USER_IDS`, `TELEGRAM_WEBHOOK_SECRET` — used only to create the first project when the registry is empty. Production settings prefer the **per-project** fields in the admin UI or `projects.json`.
-- Optional: `GIT_REMOTE_NAME` (default `origin`) — used for push after commit and for `/rebase`, `/pr`, `/clear`
-- Optional: `PROJECTS_CONFIG_PATH` — path to the registry file (JSON or `.yaml`) for multiple Git projects
-- Optional: `CONVERSATION_DB_PATH` — SQLite path for per-project + per-chat conversation memory (defaults to `~/.remote-coder/conversations.sqlite3`)
-- Optional: `CONVERSATION_RECENT_LIMIT` — number of recent records appended to the runner for ambiguous follow-ups (default `10`)
-- Optional: `CODEX_SANDBOX` — the Codex `codex exec --sandbox` value (`read-only`, `workspace-write`, `danger-full-access`). Default `workspace-write` (files can be edited in the Job worktree)
-- Optional: to use Gemini, install the Gemini CLI with `npm install -g @google/gemini-cli` and make sure `gemini` is on your PATH
-- Initial seed (one-time): `DEFAULT_PROJECT`, `PROJECT_ROOT`
-- Worktrees are created automatically under `~/.remote-coder/worktrees/<project>/`; there is no worktree path to configure
+- `REMOTE_CODER_HOME` — config/state directory (default `~/.remote-coder`)
+- `PROJECTS_CONFIG_PATH` — override registry file path
+- `CONVERSATION_DB_PATH`, `JOB_DB_PATH` — override SQLite paths
 
-If you were using a single `.env` before → move each project's `bot_token`/allowlist into the admin UI, or clean sensitive values from `.env` after the seed is created. See the migration section in [`docs/multi-bot-setup.md`](docs/multi-bot-setup.md).
+If you were using `.env` before, see the migration section in [`docs/multi-bot-setup.md`](docs/multi-bot-setup.md).
 
 ## 2.5) Local admin UI (project registration)
 
@@ -145,8 +139,8 @@ After starting the server, open it in a browser **on the same machine**.
 - Server logs: `http://127.0.0.1:8000/logs` (in-memory ring buffer for the `app` logger; auto-refresh, category and `chat_id`/`job_id` filters)
 - Data browser: `http://127.0.0.1:8000/database` (browse the conversation-memory SQLite tables, export CSV)
 - The natural-language task target is **bound to its bot**. The `project:` token is not supported.
-- If `PROJECTS_CONFIG_PATH` is unset, the default path `~/.remote-coder/projects.json` is used (an existing `PROJECT_ROOT/.remote-coder/projects.json` is still read for backward compatibility).
-- If the registry file is missing, it is created automatically from the `.env` seed values (`DEFAULT_PROJECT`, `PROJECT_ROOT`).
+- If `PROJECTS_CONFIG_PATH` is unset, the default path `~/.remote-coder/projects.json` is used.
+- If the registry is empty, add the first project from the admin UI **First-time setup** card.
 
 ### Server log (event) logger naming convention
 

@@ -2,11 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.admin.advanced_settings import (
-    AdvancedSettings,
-    FileAdvancedSettingsStore,
-    advanced_settings_path_for_project_root,
-)
+from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsStore
 from app.models import UiLanguage
 from app.telegram.conversation import (
     ConversationContextBuilder,
@@ -269,7 +265,7 @@ def test_reply_to_recorded_bot_message_resolves_job_context(tmp_path: Path):
 
 
 def test_sqlite_memory_limit_prunes_oldest_rows_globally(tmp_path: Path):
-    adv = FileAdvancedSettingsStore(advanced_settings_path_for_project_root(tmp_path))
+    adv = FileAdvancedSettingsStore(tmp_path / "advanced_settings.json")
     adv.save(
         AdvancedSettings(
             conversation_memory_limit_enabled=True,
@@ -287,7 +283,7 @@ def test_sqlite_memory_limit_prunes_oldest_rows_globally(tmp_path: Path):
 
 
 def test_sqlite_memory_limit_cleans_orphan_branch_links(tmp_path: Path):
-    adv = FileAdvancedSettingsStore(advanced_settings_path_for_project_root(tmp_path))
+    adv = FileAdvancedSettingsStore(tmp_path / "advanced_settings.json")
     adv.save(
         AdvancedSettings(
             conversation_memory_limit_enabled=True,

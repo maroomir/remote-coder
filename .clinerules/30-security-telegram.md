@@ -3,7 +3,7 @@
 ## Security Rules
 
 - Never hard-code bot tokens, API keys, private paths, personal Chat IDs, or credentials.
-- Store secrets in `.env` or local configuration files (optional seeds). Primary bot tokens and per-project allowlists live in the projects registry (**tokens are plain text in that file**); treat that file like a secret—restrict permissions and never commit tokens. Commit only examples such as `.env.example`.
+- Store secrets in local configuration files under `REMOTE_CODER_HOME` (default `~/.remote-coder`). Primary bot tokens and per-project allowlists live in `projects.json` (**tokens are plain text in that file**); treat that file like a secret—restrict permissions and never commit tokens.
 - Validate Telegram Chat ID/User ID allowlists before processing any command or natural-language job request. Allowlists are per registered project / bot instance.
 - Never run Git or AI work outside registered project paths.
 - Never execute user messages directly as shell commands.

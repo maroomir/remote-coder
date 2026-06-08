@@ -10,8 +10,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -27,8 +25,6 @@ def main() -> None:
     if not public_url.startswith("https://"):
         print("에러: URL은 반드시 https:// 로 시작해야 합니다.")
         sys.exit(1)
-
-    load_dotenv()
 
     from app.config import get_settings
     from app.telegram.webhook_registration import register_all_enabled_projects

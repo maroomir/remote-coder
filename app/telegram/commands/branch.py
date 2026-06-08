@@ -10,6 +10,7 @@ from app.telegram.commands.base import (
     TelegramMessage,
     _button_rows,
     _cmd_evt,
+    effective_git_remote_name,
     effective_project_name_for_chat,
     format_usage,
 )
@@ -111,7 +112,7 @@ class RebaseCommand(TelegramCommand):
         if not entry or not entry.enabled:
             return f"Project not found or disabled: {project_name}"
 
-        inflight_key = (str(entry.root_path.resolve()), ctx.git_remote_name, branch)
+        inflight_key = (str(entry.root_path.resolve()), effective_git_remote_name(ctx), branch)
         if not self._mark_inflight(inflight_key):
             return f"`{branch}` rebase/merge is already running. Wait for the completion message."
 
@@ -119,19 +120,19 @@ class RebaseCommand(TelegramCommand):
         try:
             if not self._remote_branch_exists(entry.root_path, branch, ctx):
                 return (
-                    f"`{branch}` remote branch was not found on `{ctx.git_remote_name}`. "
+                    f"`{branch}` remote branch was not found on `{effective_git_remote_name(ctx)}`. "
                     "It may have already been rebased/merged and deleted, or not pushed yet."
                 )
             summary = ctx.git_service.rebase_branch_onto_main_and_merge(
                 entry.root_path,
                 branch,
-                ctx.git_remote_name,
+                effective_git_remote_name(ctx),
                 ops_base,
             )
             if self._delete_rebased_branch_enabled(ctx):
-                ctx.git_service.delete_remote_branches(entry.root_path, ctx.git_remote_name, [branch])
+                ctx.git_service.delete_remote_branches(entry.root_path, effective_git_remote_name(ctx), [branch])
                 ctx.git_service.delete_local_branches(entry.root_path, [branch])
-                summary += f"\nDeleted branch `{branch}` locally and from `{ctx.git_remote_name}`."
+                summary += f"\nDeleted branch `{branch}` locally and from `{effective_git_remote_name(ctx)}`."
             return summary
         except RuntimeError as exc:
             return f"/rebase failed: {exc}"
@@ -184,7 +185,7 @@ class RebaseCommand(TelegramCommand):
         if not isinstance(branches, list):
             return []
         try:
-            remote_branch_list = ctx.git_service.list_remote_branches_matching(entry.root_path, ctx.git_remote_name, "")
+            remote_branch_list = ctx.git_service.list_remote_branches_matching(entry.root_path, effective_git_remote_name(ctx), "")
         except RuntimeError:
             return []
         if not isinstance(remote_branch_list, list):
@@ -195,7 +196,7 @@ class RebaseCommand(TelegramCommand):
 
     def _remote_branch_exists(self, root_path, branch: str, ctx: CommandContext) -> bool:
         try:
-            remote_branches = ctx.git_service.list_remote_branches_matching(root_path, ctx.git_remote_name, "")
+            remote_branches = ctx.git_service.list_remote_branches_matching(root_path, effective_git_remote_name(ctx), "")
         except RuntimeError:
             return False
         if not isinstance(remote_branches, list):
@@ -236,7 +237,7 @@ class PullCommand(TelegramCommand):
             return f"Project not found or disabled: {project_name}"
 
         try:
-            summary = ctx.git_service.pull_repository(entry.root_path, ctx.git_remote_name)
+            summary = ctx.git_service.pull_repository(entry.root_path, effective_git_remote_name(ctx))
             _cmd_evt.info("pull success project=%s", project_name, chat_id=message.chat_id)
             return f"✅ {project_name}: {summary}"
         except RuntimeError as exc:

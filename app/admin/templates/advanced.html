@@ -423,9 +423,21 @@
         <h2 id="section-job" data-i18n="advanced.secJob">Job Execution</h2>
         <p class="lead" data-i18n="advanced.secJobLead">Configure AI job execution limits.</p>
 
-        <label class="field" for="adv-job-timeout" data-i18n="advanced.jobTimeoutLabel">AI job timeout (seconds, blank uses environment default)</label>
-        <p class="hint" data-i18n="advanced.jobTimeoutHint">If a Claude/Codex/Gemini runner does not finish within this time, the job fails.</p>
+        <label class="field" for="adv-job-timeout" data-i18n="advanced.jobTimeoutLabel">AI job timeout (seconds)</label>
+        <p class="hint" data-i18n="advanced.jobTimeoutHint">If a Claude/Codex/Gemini runner does not finish within this time, the job fails. Default: 1800.</p>
         <input type="number" id="adv-job-timeout" name="job_timeout_seconds" min="1" step="1" placeholder="Example: 3600" data-i18n-placeholder="advanced.phTimeout" autocomplete="off" />
+
+        <label class="field" for="adv-conversation-recent" data-i18n="advanced.conversationRecentLabel">Recent conversation entries for ambiguous follow-ups</label>
+        <p class="hint" data-i18n="advanced.conversationRecentHint">How many recent SQLite conversation rows to include when parsing ambiguous follow-ups. Default: 10.</p>
+        <input type="number" id="adv-conversation-recent" name="conversation_recent_limit" min="1" step="1" placeholder="Example: 10" autocomplete="off" />
+
+        <label class="field" for="adv-codex-sandbox" data-i18n="advanced.codexSandboxLabel">Codex sandbox mode</label>
+        <p class="hint" data-i18n="advanced.codexSandboxHint">Codex exec --sandbox value. Default: workspace-write.</p>
+        <select id="adv-codex-sandbox" name="codex_sandbox">
+          <option value="workspace-write">workspace-write</option>
+          <option value="read-only">read-only</option>
+          <option value="danger-full-access">danger-full-access</option>
+        </select>
       </section>
 
       <!-- Git integration -->
@@ -457,6 +469,18 @@
         </label>
         <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.deleteRebasedHint">
           Default: on. When disabled, <code>/rebase</code> only merges into main/master and pushes; the target branch remains.
+        </p>
+
+        <label class="field" for="adv-git-remote" style="margin-top:1.1rem" data-i18n="advanced.gitRemoteLabel">Git remote name</label>
+        <p class="hint" data-i18n="advanced.gitRemoteHint">Remote used for push, /rebase, /pr, and /clear. Default: origin.</p>
+        <input type="text" id="adv-git-remote" name="git_remote_name" placeholder="origin" autocomplete="off" />
+
+        <label class="checkbox" style="margin-top:1.1rem">
+          <input type="checkbox" id="adv-keep-worktree" name="keep_worktree_on_success" />
+          <span data-i18n="advanced.keepWorktreeLabel">Keep worktrees after successful jobs</span>
+        </label>
+        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n="advanced.keepWorktreeHint">
+          Default: on. When disabled, successful job worktrees are cleaned up automatically.
         </p>
       </section>
 
@@ -560,7 +584,12 @@
       $("#adv-status-job-limit").value =
         d.status_recent_job_limit != null ? String(d.status_recent_job_limit) : "10";
       $("#adv-job-timeout").value =
-        d.job_timeout_seconds != null ? String(d.job_timeout_seconds) : "";
+        d.job_timeout_seconds != null ? String(d.job_timeout_seconds) : "1800";
+      $("#adv-conversation-recent").value =
+        d.conversation_recent_limit != null ? String(d.conversation_recent_limit) : "10";
+      $("#adv-codex-sandbox").value = d.codex_sandbox || "workspace-write";
+      $("#adv-git-remote").value = d.git_remote_name || "origin";
+      $("#adv-keep-worktree").checked = d.keep_worktree_on_success !== false;
       $("#adv-lifecycle-notify").checked = d.server_lifecycle_notify_enabled !== false;
       $("#adv-startup-pull").checked = !!d.pull_projects_on_server_startup_enabled;
       $("#adv-merge-main").checked = !!d.auto_merge_to_main_enabled;
@@ -595,10 +624,17 @@
       e.preventDefault();
       if (busy) return;
       const jobLimitRaw = parseInt($("#adv-status-job-limit").value, 10);
+      const jobTimeoutRaw = parseInt($("#adv-job-timeout").value, 10);
+      const conversationRecentRaw = parseInt($("#adv-conversation-recent").value, 10);
       const body = {
         status_recent_job_limit: Number.isFinite(jobLimitRaw) && jobLimitRaw >= 1 ? jobLimitRaw : 10,
         ui_language: $("#adv-ui-language").value === "ko" ? "ko" : "en",
-        job_timeout_seconds: parseOptionalPositiveInt($("#adv-job-timeout").value),
+        job_timeout_seconds: Number.isFinite(jobTimeoutRaw) && jobTimeoutRaw >= 1 ? jobTimeoutRaw : 1800,
+        conversation_recent_limit:
+          Number.isFinite(conversationRecentRaw) && conversationRecentRaw >= 1 ? conversationRecentRaw : 10,
+        codex_sandbox: $("#adv-codex-sandbox").value || "workspace-write",
+        git_remote_name: ($("#adv-git-remote").value || "origin").trim() || "origin",
+        keep_worktree_on_success: $("#adv-keep-worktree").checked,
         server_lifecycle_notify_enabled: $("#adv-lifecycle-notify").checked,
         pull_projects_on_server_startup_enabled: $("#adv-startup-pull").checked,
         auto_merge_to_main_enabled: $("#adv-merge-main").checked,

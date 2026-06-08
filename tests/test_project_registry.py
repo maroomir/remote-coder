@@ -1,11 +1,10 @@
 import json
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from app.config import Settings, default_worktree_base_dir, remote_coder_home
+from app.config import default_worktree_base_dir, remote_coder_home
 from app.models import ModelName
 from app.projects.registry import (
     ProjectRecord,
@@ -14,82 +13,51 @@ from app.projects.registry import (
     compute_token_hash,
     compute_token_hash_prefix,
     mask_bot_token,
-    projects_config_path_for_settings,
+    projects_config_path,
 )
+
+
+def _seed_registry(path: Path, root: Path, name: str = "remote-coder") -> ProjectRegistry:
+    reg = ProjectRegistry(path)
+    reg.add_project(
+        ProjectRecord(
+            name=name,
+            root_path=root,
+            default_model=ModelName.CLAUDE,
+            enabled=True,
+            bot_token=SecretStr("token"),
+            allowed_chat_ids=[123],
+            allowed_user_ids=[],
+        )
+    )
+    return reg
 
 
 def test_projects_config_path_explicit(tmp_path: Path) -> None:
     explicit = tmp_path / "custom" / "p.json"
-    resolved = projects_config_path_for_settings(tmp_path, explicit)
+    resolved = projects_config_path(explicit)
     assert resolved == explicit.resolve()
 
 
-def test_projects_config_path_default_under_remote_coder_home(tmp_path: Path) -> None:
-    resolved = projects_config_path_for_settings(tmp_path, None)
+def test_projects_config_path_default_under_remote_coder_home() -> None:
+    resolved = projects_config_path(None)
     assert resolved == (remote_coder_home() / "projects.json").resolve()
 
 
-def test_ensure_seeded_empty_file_with_token_writes_seed(tmp_path: Path) -> None:
-    path = tmp_path / ".remote-coder" / "projects.json"
-    path.parent.mkdir(parents=True)
-    path.write_text('{"default_project": "", "projects": []}\n', encoding="utf-8")
-    root = tmp_path / "repo"
-    root.mkdir()
-    settings = Settings(
-        telegram_bot_token="seed-token",
-        telegram_allowed_chat_ids=[42],
-        telegram_allowed_user_ids=[7],
-        telegram_webhook_secret="whsec",
-        default_project="seed-proj",
-        default_model="claude",
-        project_root=root,
-    )
+def test_ensure_empty_registry_file_creates_empty_payload(tmp_path: Path) -> None:
+    path = tmp_path / "projects.json"
     reg = ProjectRegistry(path)
-    reg.ensure_seeded_from_settings(settings)
-    reg.load()
-    assert reg.get_default_project_name() == "seed-proj"
-    proj = reg.get("seed-proj")
-    assert proj is not None
-    assert proj.bot_token.get_secret_value() == "seed-token"
-    assert proj.webhook_secret is not None
-    assert proj.webhook_secret.get_secret_value() == "whsec"
-    assert proj.allowed_chat_ids == [42]
-    assert proj.allowed_user_ids == [7]
-
-
-def test_ensure_seeded_without_token_writes_empty_projects(tmp_path: Path) -> None:
-    path = tmp_path / ".remote-coder" / "projects.json"
-    root = tmp_path / "repo"
-    root.mkdir()
-    settings = Settings(
-        telegram_bot_token=None,
-        default_project="p1",
-        default_model="claude",
-        project_root=root,
-    )
-    reg = ProjectRegistry(path)
-    assert not path.exists()
-    reg.ensure_seeded_from_settings(settings)
+    reg.ensure_empty_registry_file()
     assert path.exists()
     reg.load()
     assert reg.list_projects() == []
 
 
-def test_ensure_seeded_creates_file(test_settings: Settings) -> None:
-    path = test_settings.project_root / "seed.json"
-    reg = ProjectRegistry(path)
-    assert not path.exists()
-    reg.ensure_seeded_from_settings(test_settings)
-    assert path.exists()
-    reg.load()
-    assert reg.get_default_project_name() == "remote-coder"
-    assert reg.get("remote-coder") is not None
-
-
-def test_worktree_base_dir_is_derived_and_not_persisted(test_settings: Settings) -> None:
-    path = test_settings.project_root / "wt-derive.json"
-    reg = ProjectRegistry(path)
-    reg.ensure_seeded_from_settings(test_settings)
+def test_worktree_base_dir_is_derived_and_not_persisted(isolate_remote_coder_home: Path, tmp_path: Path) -> None:
+    path = isolate_remote_coder_home / "wt-derive.json"
+    root = tmp_path / "repo"
+    root.mkdir(parents=True)
+    reg = _seed_registry(path, root)
 
     entry = reg.get("remote-coder")
     assert entry is not None
@@ -99,28 +67,30 @@ def test_worktree_base_dir_is_derived_and_not_persisted(test_settings: Settings)
     assert "worktree_base_dir" not in raw["projects"][0]
 
 
-def test_add_duplicate_project_raises(test_settings: Settings) -> None:
-    path = test_settings.project_root / "dup.json"
-    reg = ProjectRegistry(path)
-    reg.ensure_seeded_from_settings(test_settings)
+def test_add_duplicate_project_raises(isolate_remote_coder_home: Path, tmp_path: Path) -> None:
+    path = isolate_remote_coder_home / "dup.json"
+    root = tmp_path / "repo"
+    root.mkdir(parents=True)
+    reg = _seed_registry(path, root)
     with pytest.raises(ValueError, match="already exists"):
         reg.add_project(
             ProjectRecord(
                 name="remote-coder",
-                root_path=test_settings.project_root,
+                root_path=root,
                 default_model=ModelName.CLAUDE,
                 enabled=True,
-                bot_token="another-token",
+                bot_token=SecretStr("another-token"),
                 allowed_chat_ids=[123],
             )
         )
 
 
-def test_add_project_invalid_root_raises(test_settings: Settings) -> None:
-    path = test_settings.project_root / "inv.json"
-    reg = ProjectRegistry(path)
-    reg.ensure_seeded_from_settings(test_settings)
-    missing = test_settings.project_root / "does_not_exist"
+def test_add_project_invalid_root_raises(isolate_remote_coder_home: Path, tmp_path: Path) -> None:
+    path = isolate_remote_coder_home / "inv.json"
+    root = tmp_path / "repo"
+    root.mkdir(parents=True)
+    reg = _seed_registry(path, root)
+    missing = tmp_path / "does_not_exist"
     with pytest.raises(ValueError, match="does not exist"):
         reg.add_project(
             ProjectRecord(
@@ -128,25 +98,27 @@ def test_add_project_invalid_root_raises(test_settings: Settings) -> None:
                 root_path=missing,
                 default_model=ModelName.CLAUDE,
                 enabled=True,
-                bot_token="newproj-token",
+                bot_token=SecretStr("newproj-token"),
                 allowed_chat_ids=[123],
             )
         )
 
 
-def test_yaml_config_roundtrip(tmp_path: Path) -> None:
+def test_yaml_config_roundtrip(isolate_remote_coder_home: Path, tmp_path: Path) -> None:
     root = tmp_path / "repo"
-    root.mkdir()
-    path = tmp_path / "cfg.yaml"
-    settings = Settings(
-        telegram_bot_token="t",
-        telegram_allowed_chat_ids=[1],
-        default_project="p1",
-        default_model="claude",
-        project_root=root,
-    )
+    root.mkdir(parents=True)
+    path = isolate_remote_coder_home / "cfg.yaml"
     reg = ProjectRegistry(path)
-    reg.ensure_seeded_from_settings(settings)
+    reg.add_project(
+        ProjectRecord(
+            name="p1",
+            root_path=root,
+            default_model=ModelName.CLAUDE,
+            enabled=True,
+            bot_token=SecretStr("t"),
+            allowed_chat_ids=[1],
+        )
+    )
     reg2 = ProjectRegistry(path)
     reg2.load()
     assert reg2.get_default_project_name() == "p1"
@@ -158,13 +130,10 @@ def test_compute_token_hash_returns_sha256_hex() -> None:
     assert token_hash == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 
 
-def test_to_public_dict_masks_bot_token_and_omits_secrets(test_settings: Settings) -> None:
-    path = test_settings.project_root / "pub.json"
-    reg = ProjectRegistry(path)
-    reg.ensure_seeded_from_settings(test_settings)
-    public = reg.to_public_dict()
+def test_to_public_dict_masks_bot_token_and_omits_secrets(project_registry: ProjectRegistry) -> None:
+    public = project_registry.to_public_dict()
     proj = next(p for p in public["projects"] if p["name"] == "remote-coder")
-    token_plain = reg.get("remote-coder")
+    token_plain = project_registry.get("remote-coder")
     assert token_plain is not None
     assert proj["bot_token_masked"] == mask_bot_token(token_plain.bot_token.get_secret_value())
     prefix = compute_token_hash_prefix(token_plain.bot_token.get_secret_value())
@@ -174,38 +143,32 @@ def test_to_public_dict_masks_bot_token_and_omits_secrets(test_settings: Setting
     assert "webhook_secret" not in proj
 
 
-def test_get_by_token_hash_exact_prefix_match(test_settings: Settings) -> None:
-    path = test_settings.project_root / "hash.json"
-    reg = ProjectRegistry(path)
-    reg.ensure_seeded_from_settings(test_settings)
-
-    project = reg.get("remote-coder")
+def test_get_by_token_hash_exact_prefix_match(project_registry: ProjectRegistry) -> None:
+    project = project_registry.get("remote-coder")
     assert project is not None
     token_hash_prefix = compute_token_hash_prefix(project.bot_token.get_secret_value())
 
-    matched = reg.get_by_token_hash(token_hash_prefix)
+    matched = project_registry.get_by_token_hash(token_hash_prefix)
     assert matched is not None
     assert matched.name == "remote-coder"
 
 
-def test_get_by_token_hash_rejects_non_normalized_segment(test_settings: Settings) -> None:
-    path = test_settings.project_root / "hashnorm.json"
-    reg = ProjectRegistry(path)
-    reg.ensure_seeded_from_settings(test_settings)
-    project = reg.get("remote-coder")
+def test_get_by_token_hash_rejects_non_normalized_segment(project_registry: ProjectRegistry) -> None:
+    project = project_registry.get("remote-coder")
     assert project is not None
     full = compute_token_hash(project.bot_token.get_secret_value())
-    assert reg.get_by_token_hash(full) is None
-    assert reg.get_by_token_hash(full[:15]) is None
+    assert project_registry.get_by_token_hash(full) is None
+    assert project_registry.get_by_token_hash(full[:15]) is None
 
 
-def test_add_project_rejects_webhook_prefix_collision(test_settings: Settings) -> None:
-    path = test_settings.project_root / "coll_add.json"
-    reg = ProjectRegistry(path)
-    reg.ensure_seeded_from_settings(test_settings)
+def test_add_project_rejects_webhook_prefix_collision(isolate_remote_coder_home: Path, tmp_path: Path) -> None:
+    path = isolate_remote_coder_home / "coll_add.json"
+    root = tmp_path / "repo"
+    root.mkdir(parents=True)
+    reg = _seed_registry(path, root)
     existing = reg.get("remote-coder")
     assert existing is not None
-    root2 = test_settings.project_root / "repo2"
+    root2 = tmp_path / "repo2"
     root2.mkdir()
 
     with pytest.raises(ValueError, match="prefix collision"):
@@ -221,15 +184,13 @@ def test_add_project_rejects_webhook_prefix_collision(test_settings: Settings) -
         )
 
 
-def test_update_project_rejects_webhook_prefix_collision(test_settings: Settings) -> None:
-    path = test_settings.project_root / "coll_upd.json"
-    reg = ProjectRegistry(path)
-    reg.ensure_seeded_from_settings(test_settings)
-    root_a = test_settings.project_root / "repo_a"
+def test_update_project_rejects_webhook_prefix_collision(isolate_remote_coder_home: Path, tmp_path: Path) -> None:
+    path = isolate_remote_coder_home / "coll_upd.json"
+    root_a = tmp_path / "repo_a"
     root_a.mkdir()
-    root_b = test_settings.project_root / "repo_b"
+    root_b = tmp_path / "repo_b"
     root_b.mkdir()
-
+    reg = ProjectRegistry(path)
     reg.add_project(
         ProjectRecord(
             name="proj-a",
@@ -276,72 +237,16 @@ def test_build_public_webhook_url_matches_registry_webhook_path(project_registry
     assert build_public_webhook_url("https://example.com/", token) == "https://example.com" + row["webhook_path"]
 
 
-def test_load_legacy_projects_json_fills_bot_and_allowlist_from_env(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.chdir(tmp_path)
+def test_load_incomplete_projects_json_fails_validation(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir()
-    wt = tmp_path / "wt"
-    wt.mkdir()
-    path = tmp_path / ".remote-coder" / "projects.json"
-    path.parent.mkdir(parents=True)
-    legacy = {
-        "default_project": "remote-coder",
-        "projects": [
-            {
-                "name": "remote-coder",
-                "root_path": str(root),
-                "worktree_base_dir": str(wt),
-                "default_model": "claude",
-                "enabled": True,
-            },
-            {
-                "name": "storyboard",
-                "root_path": str(root),
-                "worktree_base_dir": str(wt),
-                "default_model": "codex",
-                "enabled": True,
-            },
-        ],
-    }
-    path.write_text(json.dumps(legacy), encoding="utf-8")
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "legacy-bot-token")
-    monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "111,222")
-
-    reg = ProjectRegistry(path)
-    reg.load()
-
-    a = reg.get("remote-coder")
-    b = reg.get("storyboard")
-    assert a is not None and b is not None
-    assert a.bot_token.get_secret_value() == "legacy-bot-token"
-    assert b.bot_token.get_secret_value() == "legacy-bot-token"
-    assert a.allowed_chat_ids == [111, 222]
-    assert b.allowed_chat_ids == [111, 222]
-
-
-def test_load_legacy_projects_json_without_env_still_fails(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
-    monkeypatch.delenv("TELEGRAM_ALLOWED_CHAT_IDS", raising=False)
-    monkeypatch.delenv("TELEGRAM_ALLOWED_USER_IDS", raising=False)
-    monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
-    root = tmp_path / "repo"
-    root.mkdir()
-    wt = tmp_path / "wt"
-    wt.mkdir()
-    path = tmp_path / ".remote-coder" / "projects.json"
-    path.parent.mkdir(parents=True)
+    path = tmp_path / "projects.json"
     legacy = {
         "default_project": "p",
         "projects": [
             {
                 "name": "p",
                 "root_path": str(root),
-                "worktree_base_dir": str(wt),
                 "default_model": "claude",
                 "enabled": True,
             },
@@ -349,6 +254,5 @@ def test_load_legacy_projects_json_without_env_still_fails(
     }
     path.write_text(json.dumps(legacy), encoding="utf-8")
     reg = ProjectRegistry(path)
-    with patch("dotenv.load_dotenv"):
-        with pytest.raises(ValidationError):
-            reg.load()
+    with pytest.raises(ValidationError):
+        reg.load()

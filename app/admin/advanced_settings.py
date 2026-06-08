@@ -8,7 +8,7 @@ from typing import Self
 from pydantic import BaseModel, model_validator
 
 from app.config import resolve_state_path
-from app.models import UiLanguage
+from app.models import CodexSandboxMode, UiLanguage
 
 
 class AdvancedSettings(BaseModel):
@@ -24,7 +24,11 @@ class AdvancedSettings(BaseModel):
     conversation_memory_max_rows: int | None = None
     conversation_memory_max_bytes: int | None = None
     status_recent_job_limit: int = 10
-    job_timeout_seconds: int | None = None
+    job_timeout_seconds: int = 1800
+    git_remote_name: str = "origin"
+    keep_worktree_on_success: bool = True
+    codex_sandbox: CodexSandboxMode = CodexSandboxMode.WORKSPACE_WRITE
+    conversation_recent_limit: int = 10
 
     @model_validator(mode="after")
     def _validate_memory_limits(self) -> Self:
@@ -44,13 +48,15 @@ class AdvancedSettings(BaseModel):
             raise ValueError("conversation_memory_max_bytes must be positive or blank.")
         if self.status_recent_job_limit < 1:
             raise ValueError("status_recent_job_limit must be at least 1.")
-        if self.job_timeout_seconds is not None and self.job_timeout_seconds <= 0:
-            raise ValueError("job_timeout_seconds must be positive or blank.")
+        if self.job_timeout_seconds <= 0:
+            raise ValueError("job_timeout_seconds must be positive.")
+        if self.conversation_recent_limit < 1:
+            raise ValueError("conversation_recent_limit must be at least 1.")
         return self
 
 
-def advanced_settings_path_for_project_root(project_root: Path) -> Path:
-    return resolve_state_path("advanced_settings.json", project_root.expanduser())
+def advanced_settings_path() -> Path:
+    return resolve_state_path("advanced_settings.json")
 
 
 class FileAdvancedSettingsStore:

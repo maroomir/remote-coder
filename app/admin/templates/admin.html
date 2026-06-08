@@ -485,8 +485,8 @@
     </section>
 
     <section class="card" aria-labelledby="settings-heading">
-      <h2 id="settings-heading" data-i18n="admin.envSummary">Environment summary</h2>
-      <p class="lead" data-i18n="admin.envLead">Registry file path and Telegram-related settings (masked). Webhooks are registered via script.</p>
+      <h2 id="settings-heading" data-i18n="admin.configSummary">Configuration files</h2>
+      <p class="lead" data-i18n="admin.configLead">Registry and advanced settings file paths. Project bots and allowlists live in the registry.</p>
       <dl class="settings-meta" id="settings-meta"></dl>
     </section>
   </div>
@@ -564,15 +564,11 @@
 
     function renderSettings(settings) {
       const dl = $("#settings-meta");
-      const none = i18n.t("common.none");
-      const chats = (settings.telegram_allowed_chat_ids || []).join(", ") || none;
-      const users = (settings.telegram_allowed_user_ids || []).join(", ") || none;
       dl.innerHTML = `
         <div><dt>${escapeHtml(i18n.t("admin.projectsConfigFile"))}</dt><dd class="mono">${escapeHtml(settings.projects_config_path || "")}</dd></div>
-        <div><dt>${escapeHtml(i18n.t("admin.botTokenMasked"))}</dt><dd class="mono">${escapeHtml(i18n.tv(settings.telegram_bot_token_masked || ""))}</dd></div>
-        <div><dt>${escapeHtml(i18n.t("common.allowedChatIds"))}</dt><dd>${escapeHtml(chats)}</dd></div>
-        <div><dt>${escapeHtml(i18n.t("common.allowedUserIds"))}</dt><dd>${escapeHtml(users)}</dd></div>
-        <div><dt>${escapeHtml(i18n.t("admin.webhookSecret"))}</dt><dd>${settings.telegram_webhook_secret_set ? escapeHtml(i18n.t("common.set")) : escapeHtml(i18n.t("common.unset"))}</dd></div>
+        <div><dt>${escapeHtml(i18n.t("admin.advancedSettingsFile"))}</dt><dd class="mono">${escapeHtml(settings.advanced_settings_path || "")}</dd></div>
+        <div><dt>${escapeHtml(i18n.t("admin.gitRemoteName"))}</dt><dd class="mono">${escapeHtml(settings.git_remote_name || "")}</dd></div>
+        <div><dt>${escapeHtml(i18n.t("admin.codexSandbox"))}</dt><dd class="mono">${escapeHtml(settings.codex_sandbox || "")}</dd></div>
         <div><dt>${escapeHtml(i18n.t("admin.webhookHintLabel"))}</dt><dd>${escapeHtml(i18n.tv(settings.webhook_hint || ""))}</dd></div>
       `;
     }

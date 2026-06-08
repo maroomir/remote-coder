@@ -101,7 +101,7 @@ def test_admin_icon_svg_served_for_localhost(test_settings, project_registry, ad
     assert bad.status_code == 404
 
 
-def test_admin_api_settings_masks_short_token(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):
+def test_admin_api_settings_returns_file_based_config(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):
     app = FastAPI()
     app.include_router(create_admin_router(
         test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
@@ -110,7 +110,10 @@ def test_admin_api_settings_masks_short_token(test_settings, project_registry, a
     response = client.get("/api/settings")
     assert response.status_code == 200
     data = response.json()
-    assert data["telegram_bot_token_masked"] == "***"
+    assert data["projects_config_path"]
+    assert data["advanced_settings_path"]
+    assert data["job_timeout_seconds"] == 1800
+    assert data["git_remote_name"] == "origin"
 
 
 def test_admin_api_settings_includes_webhook_operations_metadata(
@@ -130,14 +133,14 @@ def test_admin_api_settings_includes_webhook_operations_metadata(
     assert data["webhook_deleted_disabled_note"]
 
 
-def test_admin_api_projects_post_and_delete(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):
+def test_admin_api_projects_post_and_delete(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store, tmp_path):
     app = FastAPI()
     app.include_router(create_admin_router(
         test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
     ))
     client = TestClient(app)
 
-    root = test_settings.project_root / "new_repo"
+    root = tmp_path / "new_repo"
     root.mkdir()
 
     response = client.post(
@@ -172,7 +175,7 @@ def test_admin_api_projects_post_and_delete(test_settings, project_registry, adv
 
 
 def test_admin_api_projects_syncs_bot_instance_manager(
-    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store, tmp_path
 ):
     bot_mgr = MagicMock()
     webhook_registrar = MagicMock()
@@ -191,7 +194,7 @@ def test_admin_api_projects_syncs_bot_instance_manager(
     )
     client = TestClient(app)
 
-    root = test_settings.project_root / "bim_repo"
+    root = tmp_path / "bim_repo"
     root.mkdir()
 
     client.post(
@@ -255,7 +258,7 @@ def test_admin_api_projects_syncs_bot_instance_manager(
 
 
 def test_admin_api_projects_put_omitted_webhook_secret_preserves(
-    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store, tmp_path
 ):
     app = FastAPI()
     app.include_router(
@@ -265,7 +268,7 @@ def test_admin_api_projects_put_omitted_webhook_secret_preserves(
     )
     client = TestClient(app)
 
-    root = test_settings.project_root / "wh_omit_repo"
+    root = tmp_path / "wh_omit_repo"
     root.mkdir()
 
     create = client.post(
@@ -304,7 +307,7 @@ def test_admin_api_projects_put_omitted_webhook_secret_preserves(
 
 
 def test_admin_api_projects_put_empty_webhook_secret_clears(
-    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store, tmp_path
 ):
     app = FastAPI()
     app.include_router(
@@ -314,7 +317,7 @@ def test_admin_api_projects_put_empty_webhook_secret_clears(
     )
     client = TestClient(app)
 
-    root = test_settings.project_root / "wh_clear_repo"
+    root = tmp_path / "wh_clear_repo"
     root.mkdir()
 
     create = client.post(
@@ -400,7 +403,11 @@ def test_admin_api_advanced_settings_get_default(test_settings, project_registry
     assert data["delete_rebased_branch_enabled"] is True
     assert data["natural_job_confirmation_buttons_enabled"] is False
     assert data["conversation_memory_limit_enabled"] is False
-    assert data["job_timeout_seconds"] is None
+    assert data["job_timeout_seconds"] == 1800
+    assert data["git_remote_name"] == "origin"
+    assert data["codex_sandbox"] == "workspace-write"
+    assert data["conversation_recent_limit"] == 10
+    assert data["keep_worktree_on_success"] is True
 
 
 def test_admin_api_advanced_settings_put_and_persist(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):
@@ -421,6 +428,10 @@ def test_admin_api_advanced_settings_put_and_persist(test_settings, project_regi
         "conversation_memory_max_bytes": None,
         "status_recent_job_limit": 7,
         "job_timeout_seconds": 3600,
+        "git_remote_name": "upstream",
+        "keep_worktree_on_success": False,
+        "codex_sandbox": "read-only",
+        "conversation_recent_limit": 5,
     }
     put = client.put("/api/advanced-settings", json=body)
     assert put.status_code == 200

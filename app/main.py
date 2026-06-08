@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from fastapi import FastAPI, Request
 
-from app.admin.advanced_settings import FileAdvancedSettingsStore, advanced_settings_path_for_project_root
+from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsStore, advanced_settings_path
 from app.admin.router import create_admin_router
 from app.ai.factory import AiRunnerFactory
 from app.config import get_settings, worktrees_root
@@ -17,10 +17,11 @@ from app.jobs.manager import JobManager
 from app.jobs.store import SQLiteJobStore
 from app.monitoring.log_buffer import InMemoryLogBuffer, attach_app_memory_log_handler
 from app.monitoring.events import EventLogger
+from app.models import ModelName
 from app.projects.registry import (
     ProjectRegistry,
     compute_token_hash_prefix,
-    projects_config_path_for_settings,
+    projects_config_path,
 )
 from app.security.auth import AllowlistAuthService
 from app.system_startup import run_startup_project_pulls
@@ -41,12 +42,12 @@ from app.telegram.webhook import create_webhook_router
 from app.telegram.webhook_registration import TelegramWebhookRegistrar
 
 settings = get_settings()
-_projects_path = projects_config_path_for_settings(settings.project_root, settings.projects_config_path)
+_projects_path = projects_config_path(settings.projects_config_path)
 project_registry = ProjectRegistry(_projects_path)
-project_registry.ensure_seeded_from_settings(settings)
-_advanced_settings_path = advanced_settings_path_for_project_root(settings.project_root)
-advanced_settings_store = FileAdvancedSettingsStore(_advanced_settings_path)
+project_registry.ensure_empty_registry_file()
+advanced_settings_store = FileAdvancedSettingsStore(advanced_settings_path())
 advanced_settings_store.load()
+_adv: AdvancedSettings = advanced_settings_store.get()
 
 log_buffer = InMemoryLogBuffer(max_entries=2000)
 attach_app_memory_log_handler(log_buffer)
@@ -57,7 +58,7 @@ _systemlog = EventLogger("app.system", "system.lifecycle")
 _httplog = EventLogger("app.http", "http.request")
 
 job_store = SQLiteJobStore(settings.job_db_path)
-model_preferences = InMemoryModelPreferenceStore(default_model=settings.default_model)
+model_preferences = InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE)
 confirmation_store = InMemoryConfirmationStore()
 conversation_store = SQLiteConversationStore(
     settings.conversation_db_path,
@@ -65,27 +66,27 @@ conversation_store = SQLiteConversationStore(
 )
 parser = CommandParser(
     project_registry=project_registry,
-    default_model=settings.default_model,
+    default_model=ModelName.CLAUDE,
     model_preferences=model_preferences,
     conversation_store=conversation_store,
-    conversation_recent_limit=settings.conversation_recent_limit,
+    conversation_recent_limit=_adv.conversation_recent_limit,
     advanced_settings_store=advanced_settings_store,
 )
 command_registry = CommandRegistry(commands=build_default_commands())
 git_service = GitWorktreeService(base_dir=worktrees_root())
 command_context = CommandContext(
     job_store=job_store,
-    default_model=settings.default_model,
+    default_model=ModelName.CLAUDE,
     project_registry=project_registry,
     model_preferences=model_preferences,
     project_name=None,
     git_service=git_service,
-    git_remote_name=settings.git_remote_name,
+    git_remote_name=_adv.git_remote_name,
     conversation_store=conversation_store,
     confirmation_store=confirmation_store,
     advanced_settings_store=advanced_settings_store,
 )
-runner_factory = AiRunnerFactory(codex_sandbox=settings.codex_sandbox)
+runner_factory = AiRunnerFactory(advanced_settings_store=advanced_settings_store)
 branch_strategy = TimestampSlugStrategy()
 
 
@@ -145,7 +146,7 @@ async def lifespan(_app: FastAPI):
         "lifespan startup notifying allowed chats count=%d projects=%d default_model=%s",
         startup_chat_total,
         len(project_registry.list_projects()),
-        settings.default_model.value,
+        ModelName.CLAUDE.value,
     )
     adv = advanced_settings_store.get()
     await asyncio.to_thread(
@@ -153,7 +154,7 @@ async def lifespan(_app: FastAPI):
         pull_projects_on_server_startup_enabled=adv.pull_projects_on_server_startup_enabled,
         project_registry=project_registry,
         git_service=git_service,
-        remote=settings.git_remote_name,
+        remote=adv.git_remote_name,
         system_log=_systemlog,
     )
     if adv.server_lifecycle_notify_enabled:

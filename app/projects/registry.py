@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from hashlib import sha256
 from pathlib import Path
@@ -9,7 +8,7 @@ from threading import Lock
 import yaml
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
-from app.config import Settings, default_worktree_base_dir, resolve_state_path
+from app.config import default_worktree_base_dir, resolve_state_path
 from app.models import ModelName
 
 _NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -39,72 +38,6 @@ def normalize_webhook_token_hash_path_segment(segment: str) -> str | None:
     return s if _WEBHOOK_TOKEN_HASH_PREFIX_RE.fullmatch(s) else None
 
 
-def _parse_env_int_id_list(var_name: str) -> list[int]:
-    raw = os.getenv(var_name)
-    if raw is None or not str(raw).strip():
-        return []
-    parts = [item.strip() for item in str(raw).split(",") if item.strip()]
-    return [int(v) for v in parts]
-
-
-def _legacy_projects_need_env_fill(projects: object) -> bool:
-    if not isinstance(projects, list):
-        return False
-    for p in projects:
-        if not isinstance(p, dict):
-            continue
-        token = p.get("bot_token")
-        if token is None or (isinstance(token, str) and not token.strip()):
-            return True
-        chats = p.get("allowed_chat_ids")
-        if chats is None or (isinstance(chats, list) and len(chats) == 0):
-            return True
-    return False
-
-
-def _fill_legacy_projects_payload_from_env(data: dict) -> dict:
-    projects = data.get("projects")
-    if not isinstance(projects, list) or not _legacy_projects_need_env_fill(projects):
-        return data
-
-    from dotenv import load_dotenv
-
-    load_dotenv()
-
-    env_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
-    env_chats = _parse_env_int_id_list("TELEGRAM_ALLOWED_CHAT_IDS")
-    env_users = _parse_env_int_id_list("TELEGRAM_ALLOWED_USER_IDS")
-    wh_raw = os.getenv("TELEGRAM_WEBHOOK_SECRET")
-    env_wh = wh_raw.strip() if wh_raw and str(wh_raw).strip() else None
-
-    new_projects: list[object] = []
-    for p in projects:
-        if not isinstance(p, dict):
-            new_projects.append(p)
-            continue
-        row = dict(p)
-        bt = row.get("bot_token")
-        if bt is None or (isinstance(bt, str) and not bt.strip()):
-            if env_token:
-                row["bot_token"] = env_token
-        ac = row.get("allowed_chat_ids")
-        if ac is None or (isinstance(ac, list) and len(ac) == 0):
-            if env_chats:
-                row["allowed_chat_ids"] = env_chats
-        if row.get("allowed_user_ids") is None:
-            row["allowed_user_ids"] = env_users
-        if (
-            row.get("webhook_secret") in (None, "")
-            and env_wh is not None
-        ):
-            row["webhook_secret"] = env_wh
-        new_projects.append(row)
-
-    out = dict(data)
-    out["projects"] = new_projects
-    return out
-
-
 def mask_bot_token(token: str) -> str:
     if not token:
         return "(not set)"
@@ -113,10 +46,10 @@ def mask_bot_token(token: str) -> str:
     return f"***…{token[-4:]}"
 
 
-def projects_config_path_for_settings(project_root: Path, explicit: Path | None) -> Path:
+def projects_config_path(explicit: Path | None = None) -> Path:
     if explicit is not None:
         return explicit.expanduser().resolve()
-    return resolve_state_path("projects.json", project_root)
+    return resolve_state_path("projects.json")
 
 
 class ProjectRecord(BaseModel):
@@ -178,44 +111,15 @@ class ProjectRegistry:
         with self._lock:
             self._payload = self._read_file_unlocked()
 
-    def ensure_seeded_from_settings(self, settings: Settings) -> None:
-        # TELEGRAM_* 는 레지스트리에 프로젝트가 없을 때만 시드에 사용합니다. 런타임 인증은 레지스트리의
-        # allowed_chat_ids / allowed_user_ids 와 각 봇 AllowlistAuthService 가 담당합니다.
+    def ensure_empty_registry_file(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        file_existed = self._path.exists()
-        if file_existed:
-            self.load()
-
-        token = settings.telegram_bot_token
-        if token is None:
-            if not file_existed:
-                empty = ProjectsFilePayload(default_project="", projects=[])
-                with self._lock:
-                    self._payload = empty
-                    self._write_file_unlocked(empty)
+        if not self._path.exists():
+            empty = ProjectsFilePayload(default_project="", projects=[])
+            with self._lock:
+                self._payload = empty
+                self._write_file_unlocked(empty)
             return
-
-        if self._payload.projects:
-            return
-
-        seed = ProjectsFilePayload(
-            default_project=settings.default_project,
-            projects=[
-                ProjectRecord(
-                    name=settings.default_project,
-                    root_path=settings.project_root,
-                    default_model=settings.default_model,
-                    enabled=True,
-                    bot_token=token,
-                    webhook_secret=settings.telegram_webhook_secret,
-                    allowed_chat_ids=list(settings.telegram_allowed_chat_ids),
-                    allowed_user_ids=list(settings.telegram_allowed_user_ids),
-                )
-            ],
-        )
-        with self._lock:
-            self._payload = seed
-            self._write_file_unlocked(seed)
+        self.load()
 
     def save(self) -> None:
         with self._lock:
@@ -348,8 +252,6 @@ class ProjectRegistry:
             data = yaml.safe_load(raw) or {}
         else:
             data = json.loads(raw) if raw.strip() else {}
-        if isinstance(data, dict):
-            data = _fill_legacy_projects_payload_from_env(data)
         return ProjectsFilePayload.model_validate(data)
 
     def _write_file_unlocked(self, payload: ProjectsFilePayload) -> None:

@@ -142,13 +142,10 @@ def register_all_enabled_projects(public_base_url: str, settings: "Settings") ->
     Shared by `remote-coder up` and `scripts/set_webhook.py`. Returns True only
     when every enabled project synced successfully; missing/empty registry is a failure.
     """
-    from app.projects.registry import ProjectRegistry, projects_config_path_for_settings
+    from app.projects.registry import ProjectRegistry, projects_config_path
     from app.telegram.commands import default_telegram_bot_commands
 
-    config_path = projects_config_path_for_settings(
-        settings.project_root,
-        settings.projects_config_path,
-    )
+    config_path = projects_config_path(settings.projects_config_path)
     registry = ProjectRegistry(config_path)
     registry.load()
 

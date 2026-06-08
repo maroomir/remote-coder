@@ -19,7 +19,6 @@ from app.projects.registry import (
     WEBHOOK_TOKEN_HASH_PREFIX_LENGTH,
     ProjectRecord,
     ProjectRegistry,
-    mask_bot_token,
 )
 from app.telegram.bot_instances import BotInstanceManager
 from app.telegram.conversation import SQLiteConversationStore
@@ -324,26 +323,21 @@ def create_admin_router(
 
     @router.get("/api/settings")
     def api_settings(_: LocalhostOnly) -> dict:
-        token = (
-            settings.telegram_bot_token.get_secret_value()
-            if settings.telegram_bot_token is not None
-            else ""
-        )
+        adv = advanced_settings_store.get()
         _adminlog.info(
-            "settings queried env_allowlist_chats=%d env_allowlist_users=%d webhook_secret_set=%s default_model=%s",
-            len(settings.telegram_allowed_chat_ids),
-            len(settings.telegram_allowed_user_ids),
-            bool(settings.telegram_webhook_secret),
-            settings.default_model.value,
+            "settings queried projects_config=%s job_timeout=%d git_remote=%s",
+            registry.config_path,
+            adv.job_timeout_seconds,
+            adv.git_remote_name,
         )
         return {
-            "telegram_bot_token_masked": mask_bot_token(token),
-            "telegram_allowed_chat_ids": settings.telegram_allowed_chat_ids,
-            "telegram_allowed_user_ids": settings.telegram_allowed_user_ids,
-            "telegram_webhook_secret_set": bool(settings.telegram_webhook_secret),
-            "default_model_env": settings.default_model.value,
-            "job_timeout_seconds_env": settings.job_timeout_seconds,
             "projects_config_path": str(registry.config_path),
+            "advanced_settings_path": str(advanced_settings_store.path),
+            "job_timeout_seconds": adv.job_timeout_seconds,
+            "git_remote_name": adv.git_remote_name,
+            "codex_sandbox": adv.codex_sandbox.value,
+            "conversation_recent_limit": adv.conversation_recent_limit,
+            "keep_worktree_on_success": adv.keep_worktree_on_success,
             "webhook_token_hash_prefix_length": WEBHOOK_TOKEN_HASH_PREFIX_LENGTH,
             "webhook_route_template": "/telegram/webhook/{token_hash_prefix}",
             "webhook_public_url_rule": "<public HTTPS Base URL> + each project's webhook_path",

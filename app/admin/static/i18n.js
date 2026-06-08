@@ -47,9 +47,8 @@
     // summary cards (summary.js)
     "summary.registered": { en: "Registered projects", ko: "등록 프로젝트" },
     "summary.active": { en: "Active", ko: "활성" },
-    "summary.envModel": { en: "Env default model", ko: "환경 기본 모델" },
-    "summary.envTimeout": { en: "Env timeout", ko: "환경 타임아웃" },
-    "summary.botToken": { en: "Bot token", ko: "봇 토큰" },
+    "summary.jobTimeout": { en: "Job timeout", ko: "작업 타임아웃" },
+    "summary.gitRemote": { en: "Git remote", ko: "Git 원격" },
 
     // page titles
     "title.admin": { en: "Remote AI Coder - Admin", ko: "Remote AI Coder - 관리" },
@@ -66,17 +65,19 @@
       en: "Only enabled projects are shown. Add, disable, or delete them on the Projects page.",
       ko: "활성화된 프로젝트만 표시합니다. 추가·비활성·삭제는 프로젝트 등록 화면에서 할 수 있습니다.",
     },
-    "admin.envSummary": { en: "Environment summary", ko: "환경 요약" },
-    "admin.envLead": {
-      en: "Registry file path and Telegram-related settings (masked). Webhooks are registered via script.",
-      ko: "등록 파일 경로와 텔레그램 관련 설정(마스킹)입니다. Webhook은 스크립트로 등록합니다.",
+    "admin.configSummary": { en: "Configuration files", ko: "설정 파일" },
+    "admin.configLead": {
+      en: "Registry and advanced settings file paths. Project bots and allowlists live in the registry.",
+      ko: "레지스트리와 고급 설정 파일 경로입니다. 봇·allowlist는 레지스트리에 저장됩니다.",
     },
     "admin.noActiveHtml": {
       en: 'No active projects. Add or enable one on the <a href="/projects" class="link-manage">Projects</a> page.',
       ko: '활성화된 프로젝트가 없습니다. <a href="/projects" class="link-manage">프로젝트 등록</a>에서 추가·활성화할 수 있습니다.',
     },
     "admin.projectsConfigFile": { en: "Projects config file", ko: "프로젝트 설정 파일" },
-    "admin.botTokenMasked": { en: "Bot token (masked)", ko: "봇 토큰 (마스킹)" },
+    "admin.advancedSettingsFile": { en: "Advanced settings file", ko: "고급 설정 파일" },
+    "admin.gitRemoteName": { en: "Git remote name", ko: "Git 원격 이름" },
+    "admin.codexSandbox": { en: "Codex sandbox", ko: "Codex 샌드박스" },
     "admin.webhookSecret": { en: "Webhook secret", ko: "Webhook 시크릿" },
     "admin.webhookHintLabel": { en: "Webhook guide", ko: "Webhook 안내" },
 
@@ -221,12 +222,38 @@
     "advanced.secJob": { en: "Job Execution", ko: "작업 실행" },
     "advanced.secJobLead": { en: "Configure AI job execution limits.", ko: "AI 작업 실행 제한을 설정합니다." },
     "advanced.jobTimeoutLabel": {
-      en: "AI job timeout (seconds, blank uses environment default)",
-      ko: "AI 작업 타임아웃 (초, 비우면 환경 기본값 사용)",
+      en: "AI job timeout (seconds)",
+      ko: "AI 작업 타임아웃 (초)",
     },
     "advanced.jobTimeoutHint": {
-      en: "If a Claude/Codex/Gemini runner does not finish within this time, the job fails.",
-      ko: "Claude/Codex/Gemini 러너가 이 시간 내에 끝나지 않으면 작업이 실패합니다.",
+      en: "If a Claude/Codex/Gemini runner does not finish within this time, the job fails. Default: 1800.",
+      ko: "Claude/Codex/Gemini 러너가 이 시간 내에 끝나지 않으면 작업이 실패합니다. 기본값: 1800.",
+    },
+    "advanced.gitRemoteLabel": { en: "Git remote name", ko: "Git 원격 이름" },
+    "advanced.gitRemoteHint": {
+      en: "Remote used for push, /rebase, /pr, and /clear. Default: origin.",
+      ko: "push, /rebase, /pr, /clear 에 사용하는 원격입니다. 기본값: origin.",
+    },
+    "advanced.keepWorktreeLabel": {
+      en: "Keep worktrees after successful jobs",
+      ko: "성공한 작업 후 worktree 유지",
+    },
+    "advanced.keepWorktreeHint": {
+      en: "Default: on. When disabled, successful job worktrees are cleaned up automatically.",
+      ko: "기본값: 켜짐. 끄면 성공한 작업의 worktree를 자동으로 정리합니다.",
+    },
+    "advanced.codexSandboxLabel": { en: "Codex sandbox mode", ko: "Codex 샌드박스 모드" },
+    "advanced.codexSandboxHint": {
+      en: "Codex exec --sandbox value. Default: workspace-write.",
+      ko: "Codex exec --sandbox 값입니다. 기본값: workspace-write.",
+    },
+    "advanced.conversationRecentLabel": {
+      en: "Recent conversation entries for ambiguous follow-ups",
+      ko: "모호한 후속 요청에 붙이는 최근 대화 개수",
+    },
+    "advanced.conversationRecentHint": {
+      en: "How many recent SQLite conversation rows to include when parsing ambiguous follow-ups. Default: 10.",
+      ko: "모호한 후속 요청 파싱 시 포함할 최근 SQLite 대화 행 수입니다. 기본값: 10.",
     },
     "advanced.secGit": { en: "Git Integration", ko: "Git 통합" },
     "advanced.secGitLead": {

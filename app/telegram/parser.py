@@ -72,6 +72,11 @@ class CommandParser:
         self._conversation_recent_limit = conversation_recent_limit
         self._advanced_settings_store = advanced_settings_store
 
+    def _effective_conversation_recent_limit(self) -> int:
+        if self._advanced_settings_store is not None:
+            return self._advanced_settings_store.get().conversation_recent_limit
+        return self._conversation_recent_limit
+
     @staticmethod
     def _extract_options(
         text: str,
@@ -230,7 +235,7 @@ class CommandParser:
             entries = self._conversation_store.list_recent(
                 project_name,
                 chat_id,
-                self._conversation_recent_limit,
+                self._effective_conversation_recent_limit(),
             )
             filtered = [
                 e

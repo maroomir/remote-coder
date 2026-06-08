@@ -162,6 +162,12 @@ def _confirmation_buttons_enabled(ctx: CommandContext) -> bool:
     return ctx.advanced_settings_store.get().natural_job_confirmation_buttons_enabled
 
 
+def effective_git_remote_name(ctx: CommandContext) -> str:
+    if ctx.advanced_settings_store is not None:
+        return ctx.advanced_settings_store.get().git_remote_name
+    return ctx.git_remote_name
+
+
 def effective_project_name_for_chat(ctx: CommandContext, chat_id: int) -> str | None:
     _ = chat_id
     return ctx.project_name

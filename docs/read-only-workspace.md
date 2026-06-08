@@ -35,7 +35,7 @@ Remote AI Coder는 AI 작업을 **Git detached worktree** 안에서 실행합니
 - 절차는 모델별 가이드를 따릅니다.
   - [Claude 가이드](claude-guide.md) — CLI 설치, 로그인, `claude -p ...` 단독 테스트
   - [Codex 가이드](codex-guide.md) — `codex exec ...` 단독 테스트, **`--sandbox workspace-write`** 등 샌드박스 옵션
-- **Codex만 해당**: 터미널에 `sandbox: read-only`가 나오면 Codex CLI의 샌드박스 모드일 수 있습니다. Remote AI Coder는 기본으로 `workspace-write`를 넘기지만, `.env`의 `CODEX_SANDBOX`를 `read-only`로 두었는지 확인하세요.
+- **Codex만 해당**: 터미널에 `sandbox: read-only`가 나오면 Codex CLI의 샌드박스 모드일 수 있습니다. Remote AI Coder는 기본으로 `workspace-write`를 넘기지만, 관리 UI 고급 설정의 `codex_sandbox`가 `read-only`인지 확인하세요.
 - 로그인 누락, PATH, CLI 버전·정책 차이를 의심합니다. 가이드의 “자주 발생하는 문제” 절도 함께 참고하세요.
 
 ## 4. 설정으로 바꿀 수 있는 것

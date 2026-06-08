@@ -236,7 +236,7 @@ class JobManager:
         worktree_path: Path | None = None
         created_worktree_for_job = False
         failed_stage: str | None = None
-        remote = self._settings.git_remote_name
+        remote = self._effective_git_remote_name()
         read_only_job = job.request.mode in (JobMode.PLAN, JobMode.ASK)
         try:
             job.mark_running()
@@ -417,7 +417,7 @@ class JobManager:
             read_only_succeeded = (
                 job.request.mode in (JobMode.PLAN, JobMode.ASK) and job.status.value == "succeeded"
             )
-            cleanup_on_success = read_only_succeeded or not self._settings.keep_worktree_on_success
+            cleanup_on_success = read_only_succeeded or not self._effective_keep_worktree_on_success()
             _joblog.info(
                 "job finalizing status=%s created_worktree=%s cleanup_on_success=%s",
                 job.status.value,
@@ -543,7 +543,7 @@ class JobManager:
 
         project_path = entry.root_path
         worktree_base = entry.worktree_base_dir
-        remote = self._settings.git_remote_name
+        remote = self._effective_git_remote_name()
         worktree_path: Path | None = None
         created_worktree_for_job = False
         failed_stage: str | None = None
@@ -681,7 +681,7 @@ class JobManager:
                 worktree_path is not None
                 and created_worktree_for_job
                 and job.status.value == "succeeded"
-                and not self._settings.keep_worktree_on_success
+                and not self._effective_keep_worktree_on_success()
             ):
                 try:
                     self._git_service.cleanup_worktree(project_path, worktree_path)
@@ -701,9 +701,18 @@ class JobManager:
 
     def _effective_job_timeout_seconds(self) -> int:
         if self._advanced_settings_store is None:
-            return self._settings.job_timeout_seconds
-        advanced_timeout = self._advanced_settings_store.get().job_timeout_seconds
-        return advanced_timeout or self._settings.job_timeout_seconds
+            return 1800
+        return self._advanced_settings_store.get().job_timeout_seconds
+
+    def _effective_git_remote_name(self) -> str:
+        if self._advanced_settings_store is None:
+            return "origin"
+        return self._advanced_settings_store.get().git_remote_name
+
+    def _effective_keep_worktree_on_success(self) -> bool:
+        if self._advanced_settings_store is None:
+            return True
+        return self._advanced_settings_store.get().keep_worktree_on_success
 
     def _save_runner_log(self, job: Job, runner_result, worktree_base: Path) -> None:
         log_dir = worktree_base / "_logs"
