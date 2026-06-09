@@ -234,6 +234,7 @@ def _normalize_token_dict(raw: object) -> dict[str, int]:
         "output_tokens": "output",
         "reasoning_output_tokens": "reasoning",
         "total_tokens": "total",
+        "candidates": "output",
         "input": "input",
         "output": "output",
         "cached": "cached",
@@ -553,7 +554,7 @@ class GeminiUsageProvider(ModelUsageProvider):
         else:
             lines.append(f"Version check failed (exit {proc.returncode}).")
 
-        lines.extend(self._footer())
+        lines.extend(self._model_probe(timeout_seconds))
         return "\n".join(lines)
 
     @staticmethod
@@ -562,6 +563,49 @@ class GeminiUsageProvider(ModelUsageProvider):
             "",
             "Install: npm install -g @google/gemini-cli",
         ]
+
+    @staticmethod
+    def _model_probe(timeout_seconds: int) -> list[str]:
+        lines = ["", "Live model probe (--output-format json):"]
+        try:
+            proc = subprocess.run(
+                [
+                    "gemini",
+                    "--skip-trust",
+                    "--output-format",
+                    "json",
+                    "-p",
+                    "Reply with ok only.",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                shell=False,
+            )
+        except subprocess.TimeoutExpired:
+            return [*lines, "- Probe timed out before Gemini returned JSON stats."]
+        except FileNotFoundError:
+            return [*lines, "- Probe skipped because `gemini` is not available on PATH."]
+
+        raw = (proc.stdout or "").strip()
+        if proc.returncode != 0:
+            message = (proc.stderr or raw or "no output").strip()
+            return [*lines, f"- Probe failed (exit {proc.returncode}): {message[:400]}"]
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return [*lines, "- Probe returned non-JSON output.", raw[:400]]
+
+        model, tokens = _gemini_model_stats(data)
+        if model:
+            lines.append(f"- Observed detailed model: {model}")
+        if tokens:
+            formatted = format_token_usage(tokens)
+            if formatted:
+                lines.append(f"- Observed tokens: {formatted}")
+        if len(lines) == 2:
+            lines.append("- No model stats found in Gemini JSON output.")
+        return lines
 
     def read_local_usage(self) -> LocalUsageSnapshot | None:
         root = Path(os.environ.get("GEMINI_HOME", Path.home() / ".gemini"))
@@ -589,6 +633,19 @@ class GeminiUsageProvider(ModelUsageProvider):
             requests_today=requests_today,
             remaining_note="Gemini local chat logs include requests/tokens but not account remaining quota snapshots.",
         )
+
+
+def _gemini_model_stats(data: dict[str, Any]) -> tuple[str | None, dict[str, int]]:
+    stats = data.get("stats") if isinstance(data.get("stats"), dict) else {}
+    models = stats.get("models") if isinstance(stats.get("models"), dict) else {}
+    if not models:
+        return None, {}
+
+    model_name = next(iter(models))
+    model_stats = models.get(model_name)
+    if not isinstance(model_stats, dict):
+        return str(model_name), {}
+    return str(model_name), _normalize_token_dict(model_stats.get("tokens"))
 
 
 _USAGE_PROVIDERS: dict[ModelName, ModelUsageProvider] = {

@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from app.jobs.schemas import Job, JobRequest, JobStatus
 from app.monitoring.code import ProjectCodeStats, count_project_code
@@ -44,7 +45,8 @@ def test_format_model_monitor_codex_not_installed():
 
 
 def test_format_model_monitor_gemini_not_installed():
-    text = format_model_monitor(ModelName.GEMINI, timeout_seconds=2)
+    with patch("app.monitoring.model.subprocess.run", side_effect=FileNotFoundError):
+        text = format_model_monitor(ModelName.GEMINI, timeout_seconds=2)
     assert "[Gemini]" in text
 
 
@@ -148,6 +150,42 @@ def test_format_model_monitor_includes_codex_local_rate_limits(tmp_path: Path, m
     assert "Observed tokens: 125" in text
 
 
+def test_format_model_monitor_includes_gemini_live_model_probe(tmp_path: Path, monkeypatch):
+    gemini_home = tmp_path / ".gemini"
+    gemini_home.mkdir()
+    monkeypatch.setenv("GEMINI_HOME", str(gemini_home))
+    probe = {
+        "session_id": "session-1",
+        "response": "ok",
+        "stats": {
+            "models": {
+                "gemini-3-flash-preview": {
+                    "tokens": {
+                        "input": 100,
+                        "candidates": 2,
+                        "thoughts": 3,
+                        "tool": 0,
+                        "total": 105,
+                    }
+                }
+            }
+        },
+    }
+
+    with patch("app.monitoring.model.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout="0.45.2\n", stderr=""),
+            Mock(returncode=0, stdout=json.dumps(probe), stderr=""),
+        ]
+        text = format_model_monitor(ModelName.GEMINI, timeout_seconds=2)
+
+    assert "CLI version:\n0.45.2" in text
+    assert "Live model probe (--output-format json):" in text
+    assert "Observed detailed model: gemini-3-flash-preview" in text
+    assert "Observed tokens: 105" in text
+    assert "output=2" in text
+
+
 def test_format_model_monitor_includes_claude_local_transcript_usage(tmp_path: Path, monkeypatch):
     claude_home = tmp_path / ".claude"
     project_dir = claude_home / "projects" / "example"
@@ -202,7 +240,12 @@ def test_format_model_monitor_includes_gemini_local_chat_usage(tmp_path: Path, m
     )
     monkeypatch.setenv("GEMINI_HOME", str(gemini_home))
 
-    text = format_model_monitor(ModelName.GEMINI, timeout_seconds=2)
+    with patch("app.monitoring.model.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout="0.45.2\n", stderr=""),
+            Mock(returncode=0, stdout=json.dumps({"stats": {"models": {}}}), stderr=""),
+        ]
+        text = format_model_monitor(ModelName.GEMINI, timeout_seconds=2)
 
     assert "Local usage/quota snapshot" in text
     assert "Observed detailed model: gemini-3-flash-preview" in text
