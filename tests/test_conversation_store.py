@@ -53,14 +53,62 @@ def test_context_builder_includes_sections():
     assert "작업 시작해줘" in text
 
 
-@pytest.mark.parametrize("size", [900, 1200])
-def test_context_builder_truncates_long_entry(size: int):
+@pytest.mark.parametrize("size", [900, 2500])
+def test_context_builder_keeps_entries_within_default_limit(size: int):
     long_text = "x" * size
     entries = [
         ConversationEntry(id=1, project="p", chat_id=1, role="user", text=long_text, job_id=None),
     ]
     out = ConversationContextBuilder.build(entries, "go", UiLanguage.KOREAN)
+    assert "...(truncated)" not in out
+
+
+def test_context_builder_truncates_long_entry():
+    long_text = "x" * 3500
+    entries = [
+        ConversationEntry(id=1, project="p", chat_id=1, role="user", text=long_text, job_id=None),
+    ]
+    out = ConversationContextBuilder.build(entries, "go", UiLanguage.KOREAN)
     assert "...(truncated)" in out
+
+
+def test_context_builder_respects_custom_snippet_limit(tmp_path: Path):
+    long_text = "x" * 1500
+    entries = [
+        ConversationEntry(id=1, project="p", chat_id=1, role="user", text=long_text, job_id=None),
+    ]
+    out = ConversationContextBuilder.build(entries, "go", UiLanguage.KOREAN, snippet_max_chars=1000)
+    assert "...(truncated)" in out
+
+
+def test_format_job_context_truncates_long_text_with_advanced_setting(tmp_path: Path):
+    adv = FileAdvancedSettingsStore(tmp_path / "advanced_settings.json")
+    adv.save(AdvancedSettings(conversation_reply_snippet_max_chars=500))
+    db = tmp_path / "job_context_trunc.sqlite3"
+    store = SQLiteConversationStore(db, advanced_settings_store=adv)
+    long_user = "u" * 800
+    long_result = "r" * 800
+    store.append(
+        project="p1",
+        chat_id=7,
+        role="user",
+        text=long_user,
+        job_id="job-long",
+        message_id=10,
+    )
+    store.append(
+        project="p1",
+        chat_id=7,
+        role="job_result",
+        text=long_result,
+        job_id="job-long",
+    )
+
+    ctx = store.format_job_context("p1", 7, "job-long", UiLanguage.ENGLISH)
+
+    assert "...(truncated)" in ctx
+    assert long_user not in ctx
+    assert long_result not in ctx
 
 
 def test_projects_isolated_by_name(tmp_path: Path):

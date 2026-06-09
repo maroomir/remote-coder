@@ -351,6 +351,34 @@ def test_parse_natural_reply_includes_unstored_reply_text(project_registry: Proj
     assert "이 응답 기준으로 이어서 수정해줘" in req.instruction
 
 
+def test_parse_natural_reply_fallback_truncates_long_unstored_reply_text(project_registry: ProjectRegistry):
+    db = project_registry.config_path.parent / "parser_reply_text_long.sqlite3"
+    store = SQLiteConversationStore(db)
+    store_mock = Mock()
+    store_mock.get.return_value = AdvancedSettings(conversation_reply_snippet_max_chars=500)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=store,
+        advanced_settings_store=store_mock,
+    )
+    long_reply = "z" * 900
+
+    req = parser.parse_natural(
+        "이 응답 기준으로 이어서 수정해줘",
+        "remote-coder",
+        chat_id=5,
+        user_id=1,
+        message_id=31,
+        reply_to_message_id=30,
+        reply_to_text=long_reply,
+    )
+
+    assert "[Reply message context]" in req.instruction
+    assert "...(truncated)" in req.instruction
+    assert long_reply not in req.instruction
+
+
 def test_parse_natural_reply_to_bot_job_result_expands_job_context(project_registry: ProjectRegistry):
     db = project_registry.config_path.parent / "parser_reply_job_context.sqlite3"
     store = SQLiteConversationStore(db)

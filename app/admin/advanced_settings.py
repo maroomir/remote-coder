@@ -10,6 +10,10 @@ from pydantic import BaseModel, model_validator
 from app.config import resolve_state_path
 from app.models import CodexSandboxMode, UiLanguage
 
+CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT = 3000
+CONVERSATION_REPLY_SNIPPET_MAX_CHARS_MIN = 200
+CONVERSATION_REPLY_SNIPPET_MAX_CHARS_MAX = 20000
+
 
 class AdvancedSettings(BaseModel):
     model_config = {"extra": "forbid"}
@@ -29,6 +33,7 @@ class AdvancedSettings(BaseModel):
     keep_worktree_on_success: bool = True
     codex_sandbox: CodexSandboxMode = CodexSandboxMode.WORKSPACE_WRITE
     conversation_recent_limit: int = 10
+    conversation_reply_snippet_max_chars: int = CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT
 
     @model_validator(mode="after")
     def _validate_memory_limits(self) -> Self:
@@ -52,6 +57,16 @@ class AdvancedSettings(BaseModel):
             raise ValueError("job_timeout_seconds must be positive.")
         if self.conversation_recent_limit < 1:
             raise ValueError("conversation_recent_limit must be at least 1.")
+        if not (
+            CONVERSATION_REPLY_SNIPPET_MAX_CHARS_MIN
+            <= self.conversation_reply_snippet_max_chars
+            <= CONVERSATION_REPLY_SNIPPET_MAX_CHARS_MAX
+        ):
+            raise ValueError(
+                "conversation_reply_snippet_max_chars must be between "
+                f"{CONVERSATION_REPLY_SNIPPET_MAX_CHARS_MIN} and "
+                f"{CONVERSATION_REPLY_SNIPPET_MAX_CHARS_MAX}.",
+            )
         return self
 
 

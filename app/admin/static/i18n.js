@@ -255,6 +255,14 @@
       en: "How many recent SQLite conversation rows to include when parsing ambiguous follow-ups. Default: 10.",
       ko: "모호한 후속 요청 파싱 시 포함할 최근 SQLite 대화 행 수입니다. 기본값: 10.",
     },
+    "advanced.replySnippetMaxLabel": {
+      en: "Reply/context snippet max length (characters)",
+      ko: "Reply/맥락 스니펫 최대 길이(문자)",
+    },
+    "advanced.replySnippetMaxHint": {
+      en: "Maximum characters per reply chain, job result, or fallback reply message included in AI instructions. Default: 3000. Range: 200–20000.",
+      ko: "AI 지시문에 포함되는 reply 체인·Job 결과·fallback reply 메시지당 최대 문자 수입니다. 기본값: 3000. 범위: 200–20000.",
+    },
     "advanced.secGit": { en: "Git Integration", ko: "Git 통합" },
     "advanced.secGitLead": {
       en: "These options can broadly affect repositories. Use them only when you understand the impact.",

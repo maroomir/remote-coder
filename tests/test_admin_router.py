@@ -407,6 +407,7 @@ def test_admin_api_advanced_settings_get_default(test_settings, project_registry
     assert data["git_remote_name"] == "origin"
     assert data["codex_sandbox"] == "workspace-write"
     assert data["conversation_recent_limit"] == 10
+    assert data["conversation_reply_snippet_max_chars"] == 3000
     assert data["keep_worktree_on_success"] is True
 
 
@@ -432,6 +433,7 @@ def test_admin_api_advanced_settings_put_and_persist(test_settings, project_regi
         "keep_worktree_on_success": False,
         "codex_sandbox": "read-only",
         "conversation_recent_limit": 5,
+        "conversation_reply_snippet_max_chars": 1200,
     }
     put = client.put("/api/advanced-settings", json=body)
     assert put.status_code == 200
@@ -441,6 +443,7 @@ def test_admin_api_advanced_settings_put_and_persist(test_settings, project_regi
     assert put.json()["delete_rebased_branch_enabled"] is False
     assert put.json()["natural_job_confirmation_buttons_enabled"] is True
     assert put.json()["job_timeout_seconds"] == 3600
+    assert put.json()["conversation_reply_snippet_max_chars"] == 1200
     get = client.get("/api/advanced-settings")
     assert get.json()["server_lifecycle_notify_enabled"] is False
     assert get.json()["pull_projects_on_server_startup_enabled"] is True
@@ -448,6 +451,27 @@ def test_admin_api_advanced_settings_put_and_persist(test_settings, project_regi
     assert get.json()["delete_rebased_branch_enabled"] is False
     assert get.json()["natural_job_confirmation_buttons_enabled"] is True
     assert get.json()["status_recent_job_limit"] == 7
+    assert get.json()["conversation_reply_snippet_max_chars"] == 1200
+
+
+def test_admin_api_advanced_settings_put_invalid_snippet_returns_422(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    app = FastAPI()
+    app.include_router(create_admin_router(
+        test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    ))
+    client = TestClient(app)
+    r = client.put(
+        "/api/advanced-settings",
+        json={
+            "auto_merge_to_main_enabled": False,
+            "delete_rebased_branch_enabled": True,
+            "natural_job_confirmation_buttons_enabled": False,
+            "conversation_reply_snippet_max_chars": 100,
+        },
+    )
+    assert r.status_code == 422
 
 
 def test_admin_api_advanced_settings_put_invalid_memory_returns_422(

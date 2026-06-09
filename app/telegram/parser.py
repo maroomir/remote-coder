@@ -6,10 +6,12 @@ from app.git.service import GitWorktreeService
 from app.jobs.schemas import JobMode, JobRequest
 from app.models import ModelName
 from app.projects.registry import ProjectRegistry
+from app.admin.advanced_settings import CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT
 from app.telegram.conversation import (
     ConversationContextBuilder,
     SQLiteConversationStore,
     is_ambiguous_followup,
+    truncate_snippet,
 )
 from app.telegram.i18n import (
     command_parse_error_disabled_project,
@@ -76,6 +78,13 @@ class CommandParser:
         if self._advanced_settings_store is not None:
             return self._advanced_settings_store.get().conversation_recent_limit
         return self._conversation_recent_limit
+
+    def _effective_reply_snippet_max_chars(self) -> int:
+        if self._advanced_settings_store is not None:
+            return self._advanced_settings_store.get().conversation_reply_snippet_max_chars
+        if self._conversation_store is not None:
+            return self._conversation_store.snippet_max_chars()
+        return CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT
 
     @staticmethod
     def _extract_options(
@@ -186,6 +195,7 @@ class CommandParser:
                 raise CommandParseError(localize_git_branch_validation_message(branch_err, lang))
 
         instruction_body = remaining.strip()
+        snippet_limit = self._effective_reply_snippet_max_chars()
         reply_prefix = ""
         if reply_to_message_id is not None and self._conversation_store is not None:
             reply_prefix = self._conversation_store.format_reply_context(
@@ -210,7 +220,7 @@ class CommandParser:
                     [
                         frame.reply_message_open,
                         f"message_id={reply_to_message_id}:",
-                        f"  text: {reply_to_text.strip()}",
+                        f"  text: {truncate_snippet(reply_to_text, snippet_limit)}",
                         frame.reply_message_close,
                     ]
                 )
@@ -239,7 +249,12 @@ class CommandParser:
                     raise CommandParseError(command_parse_error_no_previous_job_context(lang))
                 instruction = f"{reply_prefix}\n\n{instruction_body}".strip()
             else:
-                inner = ConversationContextBuilder.build(filtered, instruction_body, lang)
+                inner = ConversationContextBuilder.build(
+                    filtered,
+                    instruction_body,
+                    lang,
+                    snippet_limit,
+                )
                 instruction = f"{reply_prefix}\n\n{inner}".strip() if reply_prefix else inner
         elif reply_prefix:
             instruction = f"{reply_prefix}\n\n{instruction_body}".strip()

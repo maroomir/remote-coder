@@ -431,6 +431,10 @@
         <p class="hint" data-i18n="advanced.conversationRecentHint">How many recent SQLite conversation rows to include when parsing ambiguous follow-ups. Default: 10.</p>
         <input type="number" id="adv-conversation-recent" name="conversation_recent_limit" min="1" step="1" placeholder="Example: 10" autocomplete="off" />
 
+        <label class="field" for="adv-reply-snippet-max" data-i18n="advanced.replySnippetMaxLabel">Reply/context snippet max length (characters)</label>
+        <p class="hint" data-i18n="advanced.replySnippetMaxHint">Maximum characters per reply chain, job result, or fallback reply message included in AI instructions. Default: 3000. Range: 200–20000.</p>
+        <input type="number" id="adv-reply-snippet-max" name="conversation_reply_snippet_max_chars" min="200" max="20000" step="1" placeholder="Example: 3000" autocomplete="off" />
+
         <label class="field" for="adv-codex-sandbox" data-i18n="advanced.codexSandboxLabel">Codex sandbox mode</label>
         <p class="hint" data-i18n="advanced.codexSandboxHint">Codex exec --sandbox value. Default: workspace-write.</p>
         <select id="adv-codex-sandbox" name="codex_sandbox">
@@ -587,6 +591,10 @@
         d.job_timeout_seconds != null ? String(d.job_timeout_seconds) : "1800";
       $("#adv-conversation-recent").value =
         d.conversation_recent_limit != null ? String(d.conversation_recent_limit) : "10";
+      $("#adv-reply-snippet-max").value =
+        d.conversation_reply_snippet_max_chars != null
+          ? String(d.conversation_reply_snippet_max_chars)
+          : "3000";
       $("#adv-codex-sandbox").value = d.codex_sandbox || "workspace-write";
       $("#adv-git-remote").value = d.git_remote_name || "origin";
       $("#adv-keep-worktree").checked = d.keep_worktree_on_success !== false;
@@ -626,12 +634,17 @@
       const jobLimitRaw = parseInt($("#adv-status-job-limit").value, 10);
       const jobTimeoutRaw = parseInt($("#adv-job-timeout").value, 10);
       const conversationRecentRaw = parseInt($("#adv-conversation-recent").value, 10);
+      const replySnippetMaxRaw = parseInt($("#adv-reply-snippet-max").value, 10);
       const body = {
         status_recent_job_limit: Number.isFinite(jobLimitRaw) && jobLimitRaw >= 1 ? jobLimitRaw : 10,
         ui_language: $("#adv-ui-language").value === "ko" ? "ko" : "en",
         job_timeout_seconds: Number.isFinite(jobTimeoutRaw) && jobTimeoutRaw >= 1 ? jobTimeoutRaw : 1800,
         conversation_recent_limit:
           Number.isFinite(conversationRecentRaw) && conversationRecentRaw >= 1 ? conversationRecentRaw : 10,
+        conversation_reply_snippet_max_chars:
+          Number.isFinite(replySnippetMaxRaw) && replySnippetMaxRaw >= 200 && replySnippetMaxRaw <= 20000
+            ? replySnippetMaxRaw
+            : 3000,
         codex_sandbox: $("#adv-codex-sandbox").value || "workspace-write",
         git_remote_name: ($("#adv-git-remote").value || "origin").trim() || "origin",
         keep_worktree_on_success: $("#adv-keep-worktree").checked,

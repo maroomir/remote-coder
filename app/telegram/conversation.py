@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
-from app.admin.advanced_settings import FileAdvancedSettingsStore
+from app.admin.advanced_settings import (
+    CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT,
+    FileAdvancedSettingsStore,
+)
 from app.models import UiLanguage
 from app.telegram.i18n import instruction_frame_labels
 
@@ -16,7 +19,6 @@ _AMBIGUOUS_FOLLOWUP = re.compile(
     re.UNICODE | re.IGNORECASE,
 )
 
-_REPLY_SNIPPET_MAX = 800
 # 순환 reply 체인 방지 상한.
 _REPLY_CHAIN_MAX_DEPTH = 32
 
@@ -25,7 +27,7 @@ def is_ambiguous_followup(text: str) -> bool:
     return bool(_AMBIGUOUS_FOLLOWUP.match(text.strip()))
 
 
-def _truncate_snippet(text: str, limit: int = _REPLY_SNIPPET_MAX) -> str:
+def truncate_snippet(text: str, limit: int = CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT) -> str:
     snippet = text.strip().replace("\r\n", "\n").replace("\r", "\n")
     if len(snippet) > limit:
         return snippet[:limit].rstrip() + "...(truncated)"
@@ -100,6 +102,11 @@ class SQLiteConversationStore:
     @property
     def db_path(self) -> Path:
         return self._db_path
+
+    def snippet_max_chars(self) -> int:
+        if self._advanced_settings_store is not None:
+            return self._advanced_settings_store.get().conversation_reply_snippet_max_chars
+        return CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT
 
     def ensure_schema(self) -> None:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -449,17 +456,18 @@ class SQLiteConversationStore:
         if user_row is None and result_row is None and not history_rows:
             return ""
 
+        snippet_limit = self.snippet_max_chars()
         labels = instruction_frame_labels(language)
         lines = [labels.reply_job_open, f"job_id={job_id}:"]
         if user_row is not None:
             user_entry = _row_to_entry(user_row)
             if user_entry.message_id is not None:
                 lines.append(f"  original_message_id: {user_entry.message_id}")
-            lines.append(f"  original_user: {_truncate_snippet(user_entry.text)}")
+            lines.append(f"  original_user: {truncate_snippet(user_entry.text, snippet_limit)}")
         else:
             lines.append(f"  original_user: {labels.none_absent}")
         if result_row is not None:
-            lines.append(f"  job_result: {_truncate_snippet(str(result_row[0]))}")
+            lines.append(f"  job_result: {truncate_snippet(str(result_row[0]), snippet_limit)}")
         else:
             lines.append(f"  job_result: {labels.none_absent}")
         if history_rows:
@@ -467,7 +475,9 @@ class SQLiteConversationStore:
             for row in history_rows:
                 entry = _row_to_entry(row)
                 message_part = f" message_id={entry.message_id}" if entry.message_id is not None else ""
-                lines.append(f"    - {entry.role}{message_part}: {_truncate_snippet(entry.text)}")
+                lines.append(
+                    f"    - {entry.role}{message_part}: {truncate_snippet(entry.text, snippet_limit)}"
+                )
         lines.append(labels.reply_job_close)
         return "\n".join(lines)
 
@@ -523,16 +533,17 @@ class SQLiteConversationStore:
         newest_first = self.get_reply_chain_user_entries_newest_first(project, chat_id, reply_to_message_id)
         if not newest_first:
             return ""
+        snippet_limit = self.snippet_max_chars()
         labels = instruction_frame_labels(language)
         ordered = list(reversed(newest_first))
         lines: list[str] = [labels.reply_chain_open]
         for e in ordered:
             mid = e.message_id
             lines.append(f"message_id={mid}:")
-            lines.append(f"  user: {_truncate_snippet(e.text)}")
+            lines.append(f"  user: {truncate_snippet(e.text, snippet_limit)}")
             job_text = self.get_latest_job_result_text_for_user_message(project, chat_id, mid) if mid else None
             if job_text:
-                lines.append(f"  job_result: {_truncate_snippet(job_text)}")
+                lines.append(f"  job_result: {truncate_snippet(job_text, snippet_limit)}")
             else:
                 lines.append(f"  job_result: {labels.none_absent}")
         lines.append(labels.reply_chain_close)
@@ -766,7 +777,12 @@ def _row_to_entry(r: tuple[object, ...]) -> ConversationEntry:
 
 class ConversationContextBuilder:
     @staticmethod
-    def build(entries: list[ConversationEntry], current_user_line: str, language: UiLanguage = UiLanguage.ENGLISH) -> str:
+    def build(
+        entries: list[ConversationEntry],
+        current_user_line: str,
+        language: UiLanguage = UiLanguage.ENGLISH,
+        snippet_max_chars: int = CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT,
+    ) -> str:
         labels = instruction_frame_labels(language)
         lines: list[str] = [
             labels.prev_context_open,
@@ -775,7 +791,7 @@ class ConversationContextBuilder:
             label = e.role
             if e.job_id:
                 label = f"{e.role} (job_id={e.job_id})"
-            snippet = _truncate_snippet(e.text, 800)
+            snippet = truncate_snippet(e.text, snippet_max_chars)
             lines.append(f"{label}: {snippet}")
         lines.extend(
             [
