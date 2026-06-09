@@ -21,7 +21,7 @@ def ensure_ngrok_available() -> str:
     path = shutil.which("ngrok")
     if path is None:
         raise TunnelError(
-            "ngrok 실행 파일을 찾을 수 없습니다. https://ngrok.com/download 에서 설치하세요."
+            "ngrok executable not found. Install from https://ngrok.com/download"
         )
     return path
 
@@ -35,13 +35,13 @@ def ensure_ngrok_configured() -> None:
             timeout=15,
         )
     except (subprocess.SubprocessError, OSError) as exc:
-        raise TunnelError(f"ngrok 설정 확인에 실패했습니다: {exc}") from exc
+        raise TunnelError(f"Failed to verify ngrok configuration: {exc}") from exc
 
     combined = f"{result.stdout}\n{result.stderr}"
     if "Valid configuration" not in combined:
         raise TunnelError(
-            "ngrok AuthToken이 설정되지 않았습니다. https://dashboard.ngrok.com 에서 토큰을 발급받아 "
-            "`ngrok config add-authtoken <token>` 을 실행하세요."
+            "ngrok AuthToken is not configured. Get a token from https://dashboard.ngrok.com "
+            "and run `ngrok config add-authtoken <token>`."
         )
 
 
@@ -77,7 +77,7 @@ class NgrokTunnel:
         if url is None:
             self.stop()
             raise TunnelError(
-                "ngrok 공개 URL을 가져오지 못했습니다. 다른 ngrok 세션이 실행 중인지 확인하세요."
+                "Failed to get ngrok public URL. Check whether another ngrok session is already running."
             )
         self.public_url = url
         _tunnellog.info("ngrok tunnel started url=%s port=%d", url, self._port)

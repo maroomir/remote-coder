@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# 에러 발생 시 스크립트 중단
 set -e
 
 AI_CLI_INSTALL_COMMANDS=(
@@ -15,35 +14,35 @@ command_exists() {
 
 ensure_conda_available() {
     if ! command_exists conda; then
-        echo "❌ Conda가 설치되어 있지 않거나 PATH에 없습니다. Miniconda 또는 Anaconda를 먼저 설치해주세요."
+        echo "❌ Conda is not installed or not on PATH. Install Miniconda or Anaconda first."
         exit 1
     fi
 }
 
 setup_conda_env() {
-    echo "📦 Conda 환경 'remote-coder' 설정 중..."
+    echo "📦 Setting up Conda environment 'remote-coder'..."
     if conda info --envs | grep -q "^remote-coder "; then
-        echo "환경이 이미 존재합니다. 업데이트를 진행합니다..."
+        echo "Environment already exists. Updating..."
         conda env update -f environment.yml
     else
-        echo "새로운 'remote-coder' 환경을 생성합니다..."
+        echo "Creating new 'remote-coder' environment..."
         conda env create -f environment.yml
     fi
 }
 
 ensure_ngrok() {
-    echo "📦 ngrok 확인 중..."
+    echo "📦 Checking ngrok..."
     if command_exists ngrok; then
-        echo "✅ ngrok이 이미 설치되어 있습니다."
+        echo "✅ ngrok is already installed."
         return
     fi
 
-    echo "ngrok이 설치되어 있지 않습니다."
+    echo "ngrok is not installed."
     if command_exists npm; then
-        echo "npm을 통해 ngrok을 설치합니다..."
+        echo "Installing ngrok via npm..."
         npm install -g ngrok
     else
-        echo "⚠️ npm을 찾을 수 없습니다. ngrok 홈페이지에서 수동으로 설치해주세요."
+        echo "⚠️ npm not found. Install ngrok manually from the ngrok website."
     fi
 }
 
@@ -53,25 +52,25 @@ install_npm_cli_if_missing() {
     local display_name="$3"
 
     if command_exists "$executable"; then
-        echo "✅ ${display_name}가 이미 설치되어 있습니다."
+        echo "✅ ${display_name} is already installed."
         return
     fi
 
-    echo "${display_name}를 설치합니다..."
+    echo "Installing ${display_name}..."
     npm install -g "$package_name"
 }
 
 print_manual_ai_cli_install_commands() {
-    echo "Node.js 및 npm 설치 후 다음 명령어들을 수동으로 실행하세요:"
+    echo "After installing Node.js and npm, run these commands manually:"
     for install_command in "${AI_CLI_INSTALL_COMMANDS[@]}"; do
         echo "$install_command"
     done
 }
 
 setup_ai_cli_tools() {
-    echo "📦 AI CLI 도구(Claude, Codex, Gemini) 확인 중..."
+    echo "📦 Checking AI CLI tools (Claude, Codex, Gemini)..."
     if ! command_exists npm; then
-        echo "⚠️ npm이 설치되어 있지 않아 AI CLI 도구 설치를 건너뜁니다."
+        echo "⚠️ npm is not installed; skipping AI CLI tool installation."
         print_manual_ai_cli_install_commands
         return
     fi
@@ -83,16 +82,16 @@ setup_ai_cli_tools() {
 
 print_next_steps() {
     echo ""
-    echo "✨ 준비가 완료되었습니다!"
-    echo "다음 명령어를 실행하여 가상 환경을 활성화하세요:"
+    echo "✨ Setup complete!"
+    echo "Activate the environment:"
     echo "conda activate remote-coder"
     echo ""
-    echo "이후 remote-coder up 을 통해 서버를 실행하고,"
-    echo "브라우저에서 http://127.0.0.1:8000/ 를 열어 첫 프로젝트를 등록하세요."
+    echo "Then run remote-coder up to start the server,"
+    echo "and open http://127.0.0.1:8000/ in a browser to register your first project."
 }
 
 main() {
-    echo "🚀 Remote AI Coder 환경 준비를 시작합니다..."
+    echo "🚀 Starting Remote AI Coder environment setup..."
     ensure_conda_available
     setup_conda_env
     ensure_ngrok

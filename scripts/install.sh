@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# PyPI 공개 전에는 git 소스에서 설치합니다. 공개 후에는 REMOTE_CODER_REPO 를 패키지명으로 바꾸세요.
+# Before PyPI release: install from git source. After release, set REMOTE_CODER_REPO to the package name.
 REPO_URL="${REMOTE_CODER_REPO:-git+https://github.com/maroomir/remote-coder.git}"
 
 info() { printf '\033[0;34m%s\033[0m\n' "$*"; }
@@ -13,44 +13,44 @@ command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 ensure_uv() {
     if command_exists uv; then
-        ok "✅ uv 발견"
+        ok "✅ uv found"
         return
     fi
-    info "📦 uv 설치 중..."
+    info "📦 Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.local/bin:$PATH"
     if ! command_exists uv; then
-        err "uv 설치에 실패했습니다. https://docs.astral.sh/uv/ 를 참고해 수동 설치하세요."
+        err "Failed to install uv. See https://docs.astral.sh/uv/ for manual installation."
         exit 1
     fi
 }
 
 install_remote_coder() {
-    info "📦 remote-coder 설치 중... ($REPO_URL)"
+    info "📦 Installing remote-coder... ($REPO_URL)"
     uv tool install --force "$REPO_URL"
 }
 
 ensure_path_hint() {
     case ":$PATH:" in
         *":$HOME/.local/bin:"*) ;;
-        *) warn "⚠️ \$HOME/.local/bin 이 PATH에 없습니다. 셸 설정에 추가하세요: export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
+        *) warn "⚠️ \$HOME/.local/bin is not on PATH. Add to your shell config: export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
     esac
 }
 
 verify() {
     if command_exists remote-coder; then
-        ok "✅ 설치 완료: $(remote-coder --version)"
+        ok "✅ Installed: $(remote-coder --version)"
     else
-        warn "⚠️ remote-coder 명령을 PATH에서 찾지 못했습니다. 새 터미널을 열거나 PATH를 갱신하세요."
+        warn "⚠️ remote-coder not found on PATH. Open a new terminal or refresh PATH."
     fi
 }
 
 check_prereqs() {
-    info "🔎 전제조건 점검:"
+    info "🔎 Prerequisite checks:"
     if command_exists ngrok; then
         ok "  ✅ ngrok"
     else
-        warn "  ⚠️ ngrok 미설치 — https://ngrok.com/download (설치 후 ngrok config add-authtoken <token>)"
+        warn "  ⚠️ ngrok not installed — https://ngrok.com/download (then ngrok config add-authtoken <token>)"
     fi
 
     local found=""
@@ -62,14 +62,14 @@ check_prereqs() {
     if [ -n "$found" ]; then
         ok "  ✅ AI CLI:$found"
     else
-        warn "  ⚠️ AI CLI 미설치 — 최소 1개 필요 (예: npm install -g @anthropic-ai/claude-code)"
+        warn "  ⚠️ AI CLI not installed — at least one required (e.g. npm install -g @anthropic-ai/claude-code)"
     fi
 }
 
 main() {
-    info "🚀 Remote AI Coder 설치를 시작합니다..."
+    info "🚀 Starting Remote AI Coder installation..."
     if ! command_exists curl; then
-        err "curl 이 필요합니다."
+        err "curl is required."
         exit 1
     fi
     ensure_uv
@@ -79,9 +79,9 @@ main() {
     check_prereqs
 
     echo
-    ok "다음 단계:"
-    echo "  1) remote-coder up                 # 터널 + webhook + 서버 실행"
-    echo "  2) http://127.0.0.1:8000/ 접속      # 최초 설정 카드에서 첫 프로젝트 등록"
+    ok "Next steps:"
+    echo "  1) remote-coder up                 # tunnel + webhook + server"
+    echo "  2) open http://127.0.0.1:8000/     # register your first project in the setup card"
 }
 
 main "$@"

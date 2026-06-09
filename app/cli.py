@@ -55,7 +55,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 def _run_server(*, host: str, port: int, reload: bool, log_level: str) -> None:
-    print("🚀 서버를 시작합니다... (종료: Ctrl+C)")
+    print("🚀 Starting server... (press Ctrl+C to stop)")
     uvicorn.run("app.main:app", host=host, port=port, reload=reload, log_level=log_level)
 
 
@@ -70,32 +70,35 @@ def run_up(*, host: str, port: int, reload: bool, log_level: str, tunnel: bool =
 
     ngrok = NgrokTunnel(port)
     try:
-        print("🌐 ngrok 터널을 시작합니다...")
+        print("🌐 Starting ngrok tunnel...")
         public_url = ngrok.start()
     except TunnelError as exc:
         print(f"❌ {exc}")
         raise SystemExit(1) from exc
 
-    print(f"🔗 공개 HTTPS 주소: {public_url}")
+    print(f"🔗 Public HTTPS URL: {public_url}")
     os.environ["TELEGRAM_WEBHOOK_PUBLIC_BASE_URL"] = public_url
     get_settings.cache_clear()
     settings = get_settings()
 
-    print("📨 Telegram webhook/명령어 메뉴를 등록합니다...")
+    print("📨 Registering Telegram webhooks and command menu...")
     if not register_all_enabled_projects(public_url, settings):
         if _has_enabled_projects(settings):
-            print("⚠️ 일부 프로젝트 webhook 등록에 실패했습니다. 기존 등록이 유효하면 계속 동작할 수 있습니다.")
+            print(
+                "⚠️ Some project webhook registrations failed. "
+                "If existing registrations are valid, the service may still work."
+            )
         else:
             print(
-                f"🛠️ 아직 등록된 프로젝트가 없습니다. 브라우저에서 http://127.0.0.1:{port}/ 를 열어 "
-                "첫 프로젝트(봇 토큰·저장소·허용 Chat ID)를 등록하세요."
+                f"🛠️ No projects registered yet. Open http://127.0.0.1:{port}/ in a browser and "
+                "register your first project (bot token, repository, allowed Chat IDs)."
             )
 
     try:
         _run_server(host=host, port=port, reload=reload, log_level=log_level)
     finally:
         ngrok.stop()
-        print("🛑 ngrok 터널을 종료했습니다.")
+        print("🛑 ngrok tunnel stopped.")
 
 
 def _has_enabled_projects(settings) -> bool:
@@ -111,9 +114,9 @@ def run_doctor() -> None:
     from app.diagnostics import check_prerequisites
 
     report = check_prerequisites()
-    print("전제조건 점검:")
+    print("Prerequisite checks:")
     if report.ngrok_ok:
-        print("  ✅ ngrok: 설치 및 AuthToken 설정 완료")
+        print("  ✅ ngrok: installed and AuthToken configured")
     else:
         print(f"  ⚠️ ngrok: {report.ngrok_detail}")
 
@@ -122,8 +125,8 @@ def run_doctor() -> None:
         print(f"  ✅ AI CLI: {', '.join(installed)}")
     else:
         print(
-            "  ⚠️ AI CLI(claude/codex/gemini)를 찾지 못했습니다. 최소 1개를 설치하세요. "
-            "(예: npm install -g @anthropic-ai/claude-code)"
+            "  ⚠️ AI CLI (claude/codex/gemini) not found. Install at least one. "
+            "(e.g. npm install -g @anthropic-ai/claude-code)"
         )
 
 

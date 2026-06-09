@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-"""공개 HTTPS Base URL 하나로 활성 프로젝트마다 Telegram setWebhook/setMyCommands 를 호출합니다.
+"""Register Telegram setWebhook/setMyCommands for each enabled project from one public HTTPS base URL.
 
-`remote-coder up` 과 동일한 등록 로직(`register_all_enabled_projects`)을 공유합니다. 비활성·삭제된
-프로젝트는 대상에서 빠집니다. Telegram에 예전 URL이 남은 봇은 Bot API deleteWebhook 또는 이 스크립트
-재실행으로 정리합니다.
+Shares the same registration logic as `remote-coder up` (`register_all_enabled_projects`).
+Disabled or deleted projects are skipped. Bots with stale URLs on Telegram can be cleared via
+Bot API deleteWebhook or by re-running this script.
 """
 
 import sys
@@ -17,25 +17,25 @@ if str(_ROOT) not in sys.path:
 
 def main() -> None:
     if len(sys.argv) < 2:
-        print("사용법: python scripts/set_webhook.py <PUBLIC_HTTPS_URL>")
-        print("예시: python scripts/set_webhook.py https://abcd-1234.ngrok-free.app")
+        print("Usage: python scripts/set_webhook.py <PUBLIC_HTTPS_URL>")
+        print("Example: python scripts/set_webhook.py https://abcd-1234.ngrok-free.app")
         sys.exit(1)
 
     public_url = sys.argv[1].rstrip("/")
     if not public_url.startswith("https://"):
-        print("에러: URL은 반드시 https:// 로 시작해야 합니다.")
+        print("Error: URL must start with https://")
         sys.exit(1)
 
     from app.config import get_settings
     from app.telegram.webhook_registration import register_all_enabled_projects
 
     settings = get_settings()
-    print(f"공개 URL: {public_url}")
-    print("활성 프로젝트의 Telegram webhook/명령어 메뉴를 등록합니다...")
+    print(f"Public URL: {public_url}")
+    print("Registering Telegram webhooks and command menu for enabled projects...")
     if not register_all_enabled_projects(public_url, settings):
-        print("❌ 일부 프로젝트 등록에 실패했습니다. (자세한 내용은 서버 로그를 확인하세요)")
+        print("❌ Some project registrations failed. (see server logs for details)")
         sys.exit(1)
-    print("✅ 등록 완료")
+    print("✅ Registration complete")
 
 
 if __name__ == "__main__":
