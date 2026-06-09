@@ -8,6 +8,24 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-06-09
+
+### Added
+
+- **Conversation reply snippet length**: Advanced settings now let you configure how many characters are kept from quoted Telegram replies in conversation context, with validated min/max bounds.
+- **Development script**: Added `./scripts/dev.sh` for editable installs and local server reload without tunnel or webhook registration.
+- **Consolidated AI runner docs**: Replaced separate Claude/Codex/Gemini guides with unified `docs/ai-runners.md` (and Korean counterpart), plus refreshed multi-bot and read-only workspace troubleshooting guides.
+
+### Changed
+
+- **Per-project worktree paths**: Worktree directories are now derived from the project name under `REMOTE_CODER_HOME`; legacy state file paths are resolved automatically.
+- **Documentation cleanup**: Simplified English and Korean README files, removed `.env.example`, and clarified that the project registry and admin UI are the configuration source of truth.
+
+### Fixed
+
+- Natural-language job requests no longer reuse job IDs parsed from quoted Telegram replies; each new request gets a fresh ID.
+- Claude ASK/PLAN mode no longer passes `--permission-mode plan`, so full responses stream to stdout and appear in Telegram summaries again.
+
 ## [0.4.2] — 2026-06-09
 
 ### Added
