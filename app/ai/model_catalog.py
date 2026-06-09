@@ -19,10 +19,10 @@ MODEL_CATALOG: dict[ModelName, tuple[ModelOption, ...]] = {
         ModelOption("claude-sonnet-4-6", "claude-sonnet-4-6"),
     ),
     ModelName.CODEX: (
-        ModelOption("gpt-5.3-codex", "gpt-5.3-codex"),
         ModelOption("gpt-5.5", "gpt-5.5"),
         ModelOption("gpt-5.4", "gpt-5.4"),
         ModelOption("gpt-5.4-mini", "gpt-5.4-mini"),
+        ModelOption("gpt-5.3-codex", "gpt-5.3-codex"),
         ModelOption("gpt-5", "gpt-5"),
     ),
     ModelName.GEMINI: (

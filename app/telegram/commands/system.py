@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app import __version__
 from app.telegram.commands.base import (
     HELP_AGENT_TOPIC,
     HELP_ASK_TOPIC,
@@ -26,6 +27,10 @@ class StartCommand(TelegramCommand):
         "modes": "Choose a mode guide.",
     }
 
+    @staticmethod
+    def _ready_line() -> str:
+        return f"✅ Remote AI Coder v{__version__} is ready."
+
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
         if len(tokens) == 2:
@@ -35,11 +40,11 @@ class StartCommand(TelegramCommand):
                 return topic_text
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
-            return "✅ Remote AI Coder is ready.\n\nWelcome to Remote AI Coder."
+            return f"{self._ready_line()}\n\nWelcome to Remote AI Coder."
         entry = ctx.project_registry.get(project_name)
         if not entry:
             return (
-                "✅ Remote AI Coder is ready.\n\n"
+                f"{self._ready_line()}\n\n"
                 "Welcome to Remote AI Coder.\n"
                 f"- Project: {project_name} (not registered)"
             )
@@ -50,7 +55,7 @@ class StartCommand(TelegramCommand):
         state = "enabled" if entry.enabled else "disabled"
         return "\n".join(
             [
-                "✅ Remote AI Coder is ready.",
+                self._ready_line(),
                 "",
                 "Welcome to Remote AI Coder.",
                 f"- Project: {entry.name}",

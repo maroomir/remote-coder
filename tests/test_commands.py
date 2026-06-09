@@ -2,6 +2,7 @@ from pathlib import Path
 from threading import Event, Thread
 from unittest.mock import Mock, patch
 
+from app import __version__
 from app.admin.advanced_settings import AdvancedSettings
 from app.jobs.schemas import Job, JobRequest, JobStatus
 from app.jobs.store import InMemoryJobStore
@@ -167,6 +168,14 @@ def test_help_command_returns_text_with_no_buttons(project_registry: ProjectRegi
     assert response.inline_buttons is None
 
 
+def test_start_shows_package_version(project_registry: ProjectRegistry):
+    registry = CommandRegistry([StartCommand()])
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/start"), _ctx(project_registry))
+
+    assert response is not None
+    assert response.text.startswith(f"✅ Remote AI Coder v{__version__} is ready.")
+
+
 def test_start_menu_places_model_under_manage(project_registry: ProjectRegistry):
     registry = CommandRegistry([StartCommand()])
     ctx = _ctx(project_registry)
@@ -211,7 +220,7 @@ def test_start_model_topic_falls_back_to_main_menu(project_registry: ProjectRegi
     response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/start model"), _ctx(project_registry))
 
     assert response is not None
-    assert response.text.startswith("✅ Remote AI Coder is ready.")
+    assert response.text.startswith("✅ Remote AI Coder v")
     assert response.inline_buttons == [
         [InlineButton("Help", "/help"), InlineButton("Modes", "/start modes")],
         [InlineButton("Monitor", "/monitor"), InlineButton("Clean", "/clear")],
