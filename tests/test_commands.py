@@ -1025,141 +1025,16 @@ def test_dispatch_rich_returns_none_for_natural_language(project_registry: Proje
 # ---- /fix tests -----------------------------------------------------------
 
 
-def _make_succeeded_job(
-    job_id: str,
-    *,
-    chat_id: int = 1,
-    project: str = "remote-coder",
-    branch: str = "remote-fix-1",
-    commit_hash: str = "abc12345",
-    instruction: str = "do the thing",
-    changed_files: tuple[str, ...] = ("a.py",),
-) -> Job:
-    return Job(
-        id=job_id,
-        request=JobRequest(
-            project=project,
-            model=ModelName.CLAUDE,
-            instruction=instruction,
-            chat_id=chat_id,
-            requested_by=chat_id,
-        ),
-        status=JobStatus.SUCCEEDED,
-        branch=branch,
-        commit_hash=commit_hash,
-        changed_files=list(changed_files),
-    )
-
-
-def _ctx_with_job_manager(
-    project_registry: ProjectRegistry,
-    candidates: list[Job] | None = None,
-) -> CommandContext:
-    ctx = _ctx(project_registry)
-    job_manager = Mock()
-    job_manager.list_fix_candidates.return_value = candidates or []
-    job_manager.is_fix_candidate.side_effect = (
-        lambda job, project, chat_id: job.status == JobStatus.SUCCEEDED
-        and bool(job.branch)
-        and bool(job.commit_hash)
-        and job.request.project == project
-        and job.request.chat_id == chat_id
-    )
-    ctx.job_manager = job_manager
-    for job in candidates or []:
-        ctx.job_store.create(job)
-    return ctx
-
-
-def test_fix_command_no_args_shows_job_buttons(project_registry: ProjectRegistry):
+def test_registry_dispatch_returns_none_for_bare_fix(project_registry: ProjectRegistry):
     from app.telegram.commands import FixCommand
 
-    ctx = _ctx_with_job_manager(project_registry)
     registry = CommandRegistry([FixCommand()])
-    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/fix"), ctx)
-    assert response is not None
-    assert response.text == "No job is available to fix."
-    assert response.inline_buttons is None
+    assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/fix"), _ctx(project_registry)) is None
 
 
-def test_fix_command_no_args_with_candidates_shows_job_buttons(project_registry: ProjectRegistry):
+def test_fix_command_execute_describes_reply_requirement(project_registry: ProjectRegistry):
     from app.telegram.commands import FixCommand
 
-    succeeded = _make_succeeded_job("job_succ", chat_id=1)
-    ctx = _ctx_with_job_manager(project_registry, candidates=[succeeded])
-    registry = CommandRegistry([FixCommand()])
-    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/fix"), ctx)
-    assert response is not None
-    assert response.text == "Choose a job to fix."
-    assert response.inline_buttons is not None
-    assert response.inline_buttons[0][0].callback_data == "/fix job_succ"
-
-
-def test_fix_command_lists_candidates_only_succeeded_with_commit_and_branch(
-    project_registry: ProjectRegistry,
-):
-    from app.telegram.commands import FixCommand
-
-    succeeded = _make_succeeded_job("job_succ", chat_id=1)
-    ctx = _ctx_with_job_manager(project_registry, candidates=[succeeded])
-    registry = CommandRegistry([FixCommand()])
-    response = registry.dispatch_rich(
-        TelegramMessage(chat_id=1, user_id=1, text="/fix"), ctx
-    )
-    assert response is not None
-    assert response.text == "Choose a job to fix."
-    assert response.inline_buttons is not None
-    assert response.inline_buttons[0][0].callback_data == "/fix job_succ"
-    assert "remote-fix-1" in response.inline_buttons[0][0].label
-
-
-def test_fix_command_no_candidates_message(project_registry: ProjectRegistry):
-    from app.telegram.commands import FixCommand
-
-    ctx = _ctx_with_job_manager(project_registry, candidates=[])
-    registry = CommandRegistry([FixCommand()])
-    text = registry.dispatch(
-        TelegramMessage(chat_id=1, user_id=1, text="/fix"), ctx
-    )
-    assert text == "No job is available to fix."
-
-
-def test_fix_source_first_step_stores_await_instruction(project_registry: ProjectRegistry):
-    from app.telegram.commands import FIX_SOURCE_AWAIT_ACTION, FixCommand
-
-    succeeded = _make_succeeded_job("job_succ", chat_id=1)
-    ctx = _ctx_with_job_manager(project_registry, candidates=[succeeded])
-    registry = CommandRegistry([FixCommand()])
-    text = registry.dispatch(
-        TelegramMessage(chat_id=1, user_id=1, text="/fix job_succ"), ctx
-    )
-    assert text is not None
-    assert "Send the fix instruction" in text
-    pending = ctx.confirmation_store.get(ctx.project_name, 1)
-    assert pending is not None
-    assert pending.command_name == "/fix"
-    assert pending.action == FIX_SOURCE_AWAIT_ACTION
-    assert pending.target_job_id == "job_succ"
-
-
-def test_fix_command_rejects_non_candidate_job(project_registry: ProjectRegistry):
-    from app.telegram.commands import FixCommand
-
-    failed = Job(
-        id="job_failed",
-        request=JobRequest(
-            project="remote-coder",
-            model=ModelName.CLAUDE,
-            instruction="x",
-            chat_id=1,
-            requested_by=1,
-        ),
-        status=JobStatus.FAILED,
-    )
-    ctx = _ctx_with_job_manager(project_registry, candidates=[])
-    ctx.job_store.create(failed)
-    registry = CommandRegistry([FixCommand()])
-    text = registry.dispatch(
-        TelegramMessage(chat_id=1, user_id=1, text="/fix job_failed"), ctx
-    )
-    assert "cannot be used as a fix target" in text
+    cmd = FixCommand()
+    text = cmd.execute(TelegramMessage(chat_id=1, user_id=1, text="/fix"), _ctx(project_registry))
+    assert "replying to a job result" in text

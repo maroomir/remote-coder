@@ -133,27 +133,27 @@ def command_parse_error_empty_instruction_fix(language: UiLanguage) -> str:
     if language is UiLanguage.KOREAN:
         return (
             "수정 지시문이 비어 있습니다.\n\n"
-            "예: fix: 로그인 검증 버그 수정\n"
-            "예: /fix job_123 (Job 선택 후 지시문 입력)"
+            "예: (Job 결과에 답장) fix: 로그인 검증 버그 수정\n"
+            "예: (Job 결과에 답장) /fix"
         )
     return (
         "The fix instruction is empty.\n\n"
-        "Example: fix: patch the login validation bug\n"
-        "Example: /fix job_123 (choose a job, then send the instruction)"
+        "Example: (reply to job result) fix: patch the login validation bug\n"
+        "Example: (reply to job result) /fix"
     )
 
 
 def command_parse_error_fix_requires_target(language: UiLanguage) -> str:
     if language is UiLanguage.KOREAN:
         return (
-            "fix 모드는 이전 Job 결과에 답장하거나 /fix로 대상 Job을 선택해야 합니다.\n\n"
+            "fix 모드는 Job 결과 메시지에 답장한 뒤 사용해야 합니다.\n\n"
             "예: (Job 결과에 답장) fix: 테스트도 추가해줘\n"
-            "예: /fix"
+            "예: (Job 결과에 답장) /fix"
         )
     return (
-        "Fix mode requires replying to a previous job result or choosing a target with /fix.\n\n"
+        "Fix mode requires replying to a job result message.\n\n"
         "Example: (reply to job result) fix: add tests too\n"
-        "Example: /fix"
+        "Example: (reply to job result) /fix"
     )
 
 
@@ -197,7 +197,7 @@ HELP_MAIN_EN = "\n".join(
         "- no commit",
         "- plan: <natural language> or /plan <natural language> - plan mode (plan only; no code changes)",
         "- ask: <natural language> or /ask <natural language> - ask mode (analysis and answers; no code edits)",
-        "- fix: <natural language> or /fix <job_id> - fix mode (amends a previous job commit; reply to job result or choose job)",
+        "- fix: <natural language> or /fix - fix mode (reply to a job result; amends that commit)",
         "- Korean aliases 계획:, 질문:, and 수정: instead of plan:/ask:/fix: (colons `:` or full-width `：` allowed)",
         "",
         "Commands:",
@@ -212,7 +212,7 @@ HELP_MAIN_EN = "\n".join(
         "- /reports [count]: Conversation memory report",
         "- /init: Reset this chat's settings",
         "- /stop <job_id>: Stop a running job",
-        "- /fix [job_id]: Fix a previous job's source (amend + force-with-lease push)",
+        "- /fix: Fix the linked job commit (reply to a job result first)",
         "- /start: Inline menu",
     ]
 )

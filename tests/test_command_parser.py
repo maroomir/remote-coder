@@ -716,7 +716,7 @@ def test_parse_fix_instruction_empty_raises(project_registry: ProjectRegistry):
 
 def test_parse_natural_fix_prefix_requires_target(project_registry: ProjectRegistry):
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
-    with pytest.raises(CommandParseError, match="replying to a previous job"):
+    with pytest.raises(CommandParseError, match="job result"):
         parser.parse_natural("fix: patch login", "remote-coder", chat_id=1, user_id=2)
 
 

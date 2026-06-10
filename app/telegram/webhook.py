@@ -188,6 +188,22 @@ def _format_mode_input_prompt(mode: JobMode) -> str:
     raise AssertionError(mode)
 
 
+def _format_fix_mode_input_prompt() -> str:
+    return (
+        "Send the fix instruction to run in fix mode.\n\n"
+        "Example: add missing tests\n"
+        "Example: fix: patch the login validation bug"
+    )
+
+
+def _format_fix_requires_reply_message() -> str:
+    return (
+        "Fix mode requires replying to a job result message.\n\n"
+        "Example: reply to a job result, then send /fix\n"
+        "Example: reply to a job result with fix: add missing tests"
+    )
+
+
 class TelegramChat(BaseModel):
     id: int
 
@@ -425,14 +441,6 @@ def create_webhook_router(
         if tokens and tokens[0].lower() == "/fix":
             if len(tokens) == 1:
                 return None
-            job_id = tokens[1]
-            project_name = effective_project_name_for_chat(req.command_context, req.chat_id)
-            if project_name is not None:
-                candidate = job_store.get(job_id)
-                if candidate is not None and job_manager.is_fix_candidate(
-                    candidate, project_name, req.chat_id
-                ):
-                    return None
             return text.split(maxsplit=1)[1]
         parsed = parser.parse_fix_instruction(text)
         return parsed.instruction if parsed is not None else None
@@ -497,7 +505,7 @@ def create_webhook_router(
             req.background_tasks.add_task(
                 req.notifier.send_text,
                 req.chat_id,
-                "Fix mode requires replying to a previous job result or /fix <job_id>.",
+                _format_fix_requires_reply_message(),
             )
             return {"status": "ignored"}
         return _queue_fix_confirmation(req, fix_instruction.strip(), target_job)
@@ -692,7 +700,7 @@ def create_webhook_router(
                 chat_id=chat_id,
                 requested_by=req.user_id,
                 message_id=req.update.message.message_id,
-                reply_to_message_id=req.reply_mid,
+                reply_to_message_id=pending.reply_to_message_id or req.reply_mid,
             )
             cc.confirmation_store.set(
                 scope_project,
@@ -949,6 +957,26 @@ def create_webhook_router(
                 ),
             )
             background_tasks.add_task(notifier.send_text, chat_id, _format_mode_input_prompt(mode))
+            return {"status": "ok"}
+
+        if message_head_lower == "/fix" and len(message_tokens) == 1:
+            target_job = _resolve_fix_target_from_reply(req)
+            if target_job is None:
+                background_tasks.add_task(
+                    notifier.send_text, chat_id, _format_fix_requires_reply_message()
+                )
+                return {"status": "ignored"}
+            command_context.confirmation_store.set(
+                scope_project,
+                chat_id,
+                PendingConfirmation(
+                    command_name="/fix",
+                    action=FIX_SOURCE_AWAIT_ACTION,
+                    target_job_id=target_job.id,
+                    reply_to_message_id=reply_mid,
+                ),
+            )
+            background_tasks.add_task(notifier.send_text, chat_id, _format_fix_mode_input_prompt())
             return {"status": "ok"}
 
         fix_intent_result = _handle_fix_intent(req)

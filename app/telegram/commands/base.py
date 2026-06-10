@@ -80,7 +80,7 @@ HELP_TEXT = "\n".join(
         "- no commit",
         "- plan: <natural language> or /plan <natural language> - plan mode (plan only; no code changes)",
         "- ask: <natural language> or /ask <natural language> - ask mode (analysis and answers; no code edits)",
-        "- fix: <natural language> or /fix <job_id> - fix mode (amends a previous job commit; reply to job result or choose job)",
+        "- fix: <natural language> or /fix - fix mode (reply to a job result; amends that commit)",
         "- Korean aliases 계획:, 질문:, and 수정: instead of plan:/ask:/fix: (colons `:` or full-width `：` allowed)",
         "",
         "Commands:",
@@ -95,7 +95,7 @@ HELP_TEXT = "\n".join(
         "- /reports [count]: Conversation memory report",
         "- /init: Reset this chat's settings",
         "- /stop <job_id>: Stop a running job",
-        "- /fix [job_id]: Fix a previous job's source (amend + force-with-lease push)",
+        "- /fix: Fix the linked job commit (reply to a job result first)",
         "- /start: Inline menu",
     ]
 )
@@ -152,13 +152,13 @@ HELP_FIX_TOPIC = "\n".join(
     [
         "Fix mode (fix)",
         "",
-        "Apply follow-up fixes on top of a previous succeeded job. The agent amends the existing commit and "
-        "pushes with --force-with-lease. Reply to a job result with fix: or choose a job via /fix.",
+        "Apply follow-up fixes on top of a previous succeeded job. Reply to a job result, then use "
+        "fix: or /fix. The agent amends the existing commit and pushes with --force-with-lease.",
         "",
         "Examples",
         "- (reply to job result) fix: add missing tests",
-        "- /fix job_abc123 then send the fix instruction",
-        "- 수정：로그인 검증 버그도 고쳐줘",
+        "- (reply to job result) /fix then send the fix instruction",
+        "- (reply to job result) 수정：로그인 검증 버그도 고쳐줘",
         "",
         "See /help for more options.",
     ]

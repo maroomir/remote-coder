@@ -16,6 +16,7 @@ class PendingConfirmation:
     original_text: str | None = None
     target_job_id: str | None = None
     prepared_payload: str | None = None
+    reply_to_message_id: int | None = None
 
 
 class InMemoryConfirmationStore:

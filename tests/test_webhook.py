@@ -1719,6 +1719,160 @@ def test_webhook_records_bot_response_message_ids(project_registry, tmp_path):
     assert conv.get_job_id_for_message_id("remote-coder", 123, 201) == "job_recorded"
 
 
+def test_webhook_bare_fix_without_reply_requires_job_result_reply(project_registry, tmp_path):
+    db = tmp_path / "wh_bare_fix_no_reply.sqlite3"
+    conv = SQLiteConversationStore(db)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=conv,
+    )
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=conv,
+        confirmation_store=InMemoryConfirmationStore(),
+        job_manager=Mock(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app = FastAPI()
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=parser,
+            command_registry=_commands_with_clear(),
+            job_manager=Mock(),
+            job_store=store,
+            conversation_store=conv,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    response = client.post(
+        wh,
+        json={
+            "update_id": 80,
+            "message": {"message_id": 90, "text": "/fix", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ignored"
+    assert any("replying to a job result" in text for _, text in notifier.sent)
+    assert command_context.confirmation_store.get("remote-coder", 123) is None
+
+
+def test_webhook_bare_fix_with_reply_stores_await_instruction(project_registry, tmp_path):
+    from app.telegram.commands import FIX_SOURCE_AWAIT_ACTION
+
+    db = tmp_path / "wh_bare_fix_reply.sqlite3"
+    conv = SQLiteConversationStore(db)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=conv,
+    )
+    store = InMemoryJobStore()
+    parent_job = Job(
+        id="parent_job",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="original work",
+            chat_id=123,
+            requested_by=999,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-fix-1",
+        commit_hash="abc1234",
+    )
+    store.create(parent_job)
+    conv.append(
+        project="remote-coder",
+        chat_id=123,
+        role="job_result",
+        text="status=succeeded",
+        job_id=parent_job.id,
+        message_id=79,
+    )
+
+    fix_manager = Mock()
+    fix_manager.resolve_fix_target_job.return_value = parent_job
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=conv,
+        confirmation_store=InMemoryConfirmationStore(),
+        job_manager=fix_manager,
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app = FastAPI()
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=parser,
+            command_registry=_commands_with_clear(),
+            job_manager=fix_manager,
+            job_store=store,
+            conversation_store=conv,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    response = client.post(
+        wh,
+        json={
+            "update_id": 81,
+            "message": {
+                "message_id": 91,
+                "text": "/fix",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+                "reply_to_message": {"message_id": 79, "text": "Job done"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert any("fix instruction" in text.lower() for _, text in notifier.sent)
+    pending = command_context.confirmation_store.get("remote-coder", 123)
+    assert pending is not None
+    assert pending.command_name == "/fix"
+    assert pending.action == FIX_SOURCE_AWAIT_ACTION
+    assert pending.target_job_id == parent_job.id
+    assert pending.reply_to_message_id == 79
+
+
 def test_webhook_fix_reply_queues_confirmation_and_executes(project_registry, tmp_path):
     from app.jobs.schemas import FixKind
 

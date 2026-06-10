@@ -37,7 +37,7 @@ class CommandRegistry:
                 ctx.confirmation_store.pop(scope_project, message.chat_id)
                 return init_cmd.execute(message, ctx)
 
-        if head in {"/plan", "/ask"}:
+        if head in {"/plan", "/ask", "/fix"}:
             return None
 
         pending = ctx.confirmation_store.get(scope_project, message.chat_id)
