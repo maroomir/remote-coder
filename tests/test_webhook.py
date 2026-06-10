@@ -2190,7 +2190,7 @@ def test_webhook_callback_query_shows_detail_model_buttons(project_registry):
     assert notifier.sent_with_buttons
     assert "Choose a specific model" in notifier.sent_with_buttons[0][1]
     buttons = notifier.sent_with_buttons[0][2]
-    assert buttons[0][0].callback_data == "/model codex gpt-5.3-codex"
+    assert buttons[0][0].callback_data == "/model codex gpt-5.5"
     assert "cq_001" in notifier.answered_callbacks
 
 

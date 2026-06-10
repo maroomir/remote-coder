@@ -8,6 +8,20 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
+## [0.4.4] — 2026-06-10
+
+### Added
+
+- **`/fix` command workflow**: `/fix` now requires replying to a job result message, resolves the target job from that context, and shows clearer instructions and error feedback in Telegram.
+- **Start command version**: `/start` responses now include the running application version.
+- **Gemini usage monitoring probe**: Usage monitoring performs a live Gemini CLI model probe and reports observed model name and token usage when available.
+
+### Changed
+
+- **CLI and script messages**: CLI output, tunnel messages, and install/dev/prepare scripts now use English for consistent operator-facing text.
+- **Codex model picker order**: `/model codex` detail buttons now list `gpt-5.5` first in the Codex catalog.
+- **Agent rule docs**: Consolidated `.cursor/rules/` and `AGENTS.md`; removed legacy `.clinerules/` copies.
+
 ## [0.4.3] — 2026-06-09
 
 ### Added

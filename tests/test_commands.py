@@ -326,7 +326,7 @@ def test_model_command_shows_detail_buttons_after_provider_selection(project_reg
     assert response is not None
     assert response.text == "Model provider selected.\n\n- Default model: codex\n- Choose a specific model."
     assert response.inline_buttons is not None
-    assert response.inline_buttons[0] == [InlineButton("gpt-5.3-codex", "/model codex gpt-5.3-codex")]
+    assert response.inline_buttons[0] == [InlineButton("gpt-5.5", "/model codex gpt-5.5")]
 
 
 def test_model_command_confirms_detail_model(project_registry: ProjectRegistry):
