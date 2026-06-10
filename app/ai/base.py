@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import threading
 from abc import ABC, abstractmethod
@@ -9,6 +10,11 @@ from pathlib import Path
 
 from app.jobs.schemas import JobMode
 from app.monitoring.events import EventLogger
+
+
+_SESSION_UUID_PATTERN = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
 
 
 def instruction_for_runner_mode(instruction: str, mode: JobMode) -> str:
@@ -36,6 +42,8 @@ class RunnerInput:
     env: dict[str, str] | None = None
     cancel_event: threading.Event | None = field(default=None, compare=False)
     mode: JobMode = JobMode.AGENT
+    session_id: str | None = None
+    resume_token: str | None = None
 
 
 @dataclass
@@ -45,6 +53,7 @@ class RunnerResult:
     stderr: str
     started_at: datetime
     finished_at: datetime
+    session_id: str | None = None
 
 
 class AiRunner(ABC):
@@ -65,6 +74,61 @@ class BaseCliRunner(AiRunner):
     def _start_log_detail(self, runner_input: RunnerInput) -> str:
         return ""
 
+    def _session_dir(self) -> Path | None:
+        # Providers that auto-generate a session id (Codex/Gemini) override this so the
+        # base run loop can capture the new session file written during the run.
+        return None
+
+    @staticmethod
+    def _session_id_from_name(name: str) -> str | None:
+        match = _SESSION_UUID_PATTERN.search(name)
+        return match.group(0) if match else None
+
+    def _snapshot_session_files(self) -> dict[str, float]:
+        directory = self._session_dir()
+        if directory is None or not directory.exists():
+            return {}
+        snapshot: dict[str, float] = {}
+        for path in directory.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                snapshot[str(path)] = path.stat().st_mtime
+            except OSError:
+                continue
+        return snapshot
+
+    def _capture_new_session_id(self, before: dict[str, float]) -> str | None:
+        directory = self._session_dir()
+        if directory is None or not directory.exists():
+            return None
+        newest_id: str | None = None
+        newest_mtime = -1.0
+        for path in directory.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            if str(path) in before and mtime <= before[str(path)]:
+                continue
+            session_id = self._session_id_from_name(path.name)
+            if session_id is not None and mtime > newest_mtime:
+                newest_mtime = mtime
+                newest_id = session_id
+        return newest_id
+
+    def _resolve_result_session_id(
+        self, runner_input: RunnerInput, before: dict[str, float]
+    ) -> str | None:
+        # Capture-based providers (Codex/Gemini): keep the resumed token, otherwise read the
+        # id the CLI just wrote. Return None when nothing is captured so we never resume a
+        # session the provider does not actually own.
+        if runner_input.resume_token:
+            return runner_input.resume_token
+        return self._capture_new_session_id(before)
+
     def run(self, runner_input: RunnerInput) -> RunnerResult:
         cwd_name = runner_input.cwd.name
         self._log.info(
@@ -75,6 +139,7 @@ class BaseCliRunner(AiRunner):
             len(runner_input.instruction),
         )
         started_at = datetime.now(UTC)
+        session_files_before = self._snapshot_session_files()
         argv = self.build_argv(runner_input)
         proc = subprocess.Popen(
             argv,
@@ -126,4 +191,5 @@ class BaseCliRunner(AiRunner):
             stderr=stderr_data,
             started_at=started_at,
             finished_at=finished_at,
+            session_id=self._resolve_result_session_id(runner_input, session_files_before),
         )

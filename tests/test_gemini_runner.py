@@ -77,3 +77,34 @@ def test_gemini_runner_passes_model_id(mock_popen):
         "--model",
         "gemini-3.1-pro-preview",
     ]
+
+
+@patch("app.ai.base.subprocess.Popen")
+def test_gemini_runner_resumes_with_token(mock_popen):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("done", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
+
+    result = GeminiRunner().run(
+        RunnerInput(
+            instruction="follow up",
+            cwd=Path("."),
+            timeout_seconds=10,
+            resume_token="99999999-9999-9999-9999-999999999999",
+        )
+    )
+
+    command = mock_popen.call_args.args[0]
+    assert command == [
+        "gemini",
+        "--approval-mode",
+        "yolo",
+        "--skip-trust",
+        "-p",
+        "follow up",
+        "--resume",
+        "99999999-9999-9999-9999-999999999999",
+    ]
+    assert result.session_id == "99999999-9999-9999-9999-999999999999"

@@ -278,6 +278,8 @@ class JobManager:
                     env=None,
                     cancel_event=cancel_event,
                     mode=job.request.mode,
+                    session_id=job.request.session_id,
+                    resume_token=job.request.resume_session_token,
                 )
             )
             self._save_runner_log(job, runner_result, worktree_base)
@@ -590,6 +592,8 @@ class JobManager:
                     env=None,
                     cancel_event=cancel_event,
                     mode=JobMode.AGENT,
+                    session_id=job.request.session_id,
+                    resume_token=job.request.resume_session_token,
                 )
             )
             self._save_runner_log(job, runner_result, worktree_base)
@@ -723,6 +727,7 @@ class JobManager:
         usage = extract_runner_usage(f"{runner_result.stdout}\n{runner_result.stderr}")
         job.runner_actual_model = usage.actual_model
         job.runner_token_usage = usage.token_usage
+        job.runner_session_id = runner_result.session_id
         _joblog.info(
             "runner log saved file=%s stdout_summary=%s stderr_summary=%s actual_model=%s token_usage=%s",
             log_path.name,

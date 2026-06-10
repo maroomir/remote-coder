@@ -527,6 +527,40 @@ def create_webhook_router(
             return {"status": "ignored"}
         return _queue_fix_confirmation(req, fix_instruction.strip(), target_job)
 
+    def _attach_session(request: JobRequest) -> None:
+        if conversation_store is None or request.message_id is None:
+            return
+        session_id = conversation_store.resolve_or_create_session(
+            request.project,
+            request.chat_id,
+            request.message_id,
+            request.reply_to_message_id,
+        )
+        token = conversation_store.get_runner_resume_token(session_id, request.model.value)
+        # Native resume needs a stable worktree (CLI sessions are cwd-scoped). A bound branch
+        # guarantees the reply reuses the parent's worktree; otherwise resuming could target a
+        # missing session, so only establish a brand-new session and fall back to context
+        # injection for the rest.
+        if request.branch is not None:
+            request.session_id = session_id
+            request.resume_session_token = token
+        elif token is None:
+            request.session_id = session_id
+            request.resume_session_token = None
+
+    def _persist_session_token(final_job: Job) -> None:
+        if (
+            conversation_store is None
+            or final_job.request.session_id is None
+            or final_job.runner_session_id is None
+        ):
+            return
+        conversation_store.set_runner_resume_token(
+            final_job.request.session_id,
+            final_job.request.model.value,
+            final_job.runner_session_id,
+        )
+
     def _submit_confirmed_fix_request(
         request: JobRequest,
         original_text: str,
@@ -549,8 +583,11 @@ def create_webhook_router(
                 project=request.project,
             )
 
+        _attach_session(request)
+
         def run_and_record_fix() -> None:
             final_job = job_manager.execute_fix_job(request)
+            _persist_session_token(final_job)
             _cmdlog.info(
                 "fix background run finished status=%s",
                 final_job.status.value,
@@ -997,6 +1034,7 @@ def create_webhook_router(
                 project=request.project,
             )
 
+        _attach_session(request)
         job = job_manager.submit(request)
         _cmdlog.info(
             "job accepted background scheduled",
@@ -1052,6 +1090,7 @@ def create_webhook_router(
                 if final_job is None:
                     _cmdlog.warning("background job run returned none", job_id=jid)
                     return
+                _persist_session_token(final_job)
                 summary = format_job_result_memory_summary(final_job)
                 conversation_store.append(
                     project=final_job.request.project,

@@ -68,6 +68,54 @@ def test_job_manager_submit_and_run_success(test_settings, project_registry):
     assert call.kwargs.get("base_branch") is None
 
 
+def test_job_manager_threads_session_into_runner_and_captures_result(
+    test_settings, project_registry
+):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
+    git_service.collect_changes.return_value = []
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0,
+        stdout="ok",
+        stderr="",
+        started_at=None,
+        finished_at=None,
+        session_id="captured-session-id",
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier = Mock()
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="fix bug",
+        chat_id=123,
+        requested_by=123,
+        session_id="11111111-1111-1111-1111-111111111111",
+        resume_session_token="11111111-1111-1111-1111-111111111111",
+    )
+    job = manager.submit(request)
+    final_job = manager.run(job.id)
+
+    runner_input = runner.run.call_args.args[0]
+    assert runner_input.session_id == "11111111-1111-1111-1111-111111111111"
+    assert runner_input.resume_token == "11111111-1111-1111-1111-111111111111"
+    assert final_job.runner_session_id == "captured-session-id"
+
+
 def test_job_store_keeps_multiple_runs_for_reused_job_id(test_settings, project_registry):
     store = InMemoryJobStore()
     git_service = Mock()
