@@ -107,7 +107,10 @@ def test_status_lists_only_jobs_for_bot_project(project_registry: ProjectRegistr
         ctx,
     )
     assert rich is not None
-    assert rich.inline_buttons == [[InlineButton("job-a (running)", "/status job-a")]]
+    assert rich.inline_buttons == [
+        [InlineButton("job-a (running)", "/status job-a")],
+        [InlineButton("✖ Close", "__close__")],
+    ]
 
     hidden = registry.dispatch(
         TelegramMessage(chat_id=999, user_id=1, text="/status job-b"),

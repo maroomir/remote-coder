@@ -14,6 +14,7 @@ from app.telegram.commands.base import (
     _job_button_label,
     effective_project_name_for_chat,
     format_usage,
+    with_nav_row,
 )
 
 _STATUS_EMOJI: dict[str, str] = {
@@ -154,9 +155,12 @@ class StatusCommand(TelegramCommand):
     ) -> list[list[InlineButton]] | None:
         if message is None or ctx is None:
             return None
-        if len(message.text.strip().split()) != 1:
-            return None
+        tokens = message.text.strip().split()
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if len(tokens) == 2:
+            return self._detail_buttons(tokens[1], project_name, ctx)
+        if len(tokens) != 1:
+            return None
         if not project_name:
             return None
         limit = self._job_limit(ctx)
@@ -165,10 +169,33 @@ class StatusCommand(TelegramCommand):
         )
         if not jobs:
             return None
-        return _button_rows(
+        rows = _button_rows(
             [InlineButton(_job_button_label(job), f"/status {job.id}") for job in jobs],
             per_row=1,
         )
+        return with_nav_row(rows)
+
+    @staticmethod
+    def _detail_buttons(
+        job_id: str,
+        project_name: str | None,
+        ctx: CommandContext,
+    ) -> list[list[InlineButton]]:
+        job = ctx.job_store.get(job_id)
+        if job is None or (project_name and job.request.project != project_name):
+            return with_nav_row(None, back_to="/status")
+        rows: list[list[InlineButton]] = []
+        status = job.status.value
+        if status in ("running", "queued"):
+            rows.append([InlineButton("Stop", f"/stop {job.id}")])
+        elif status == "succeeded" and job.branch:
+            rows.append(
+                [
+                    InlineButton("Open PR", f"/pr {job.branch}"),
+                    InlineButton("Rebase", f"/rebase {job.branch}"),
+                ]
+            )
+        return with_nav_row(rows, back_to="/status")
 
 
 class ReportsCommand(TelegramCommand):

@@ -291,7 +291,50 @@ def test_status_command_lists_recent_jobs_as_buttons(project_registry: ProjectRe
 
     assert response is not None
     assert response.text == "Choose a job to inspect."
-    assert response.inline_buttons == [[InlineButton("job1 (queued)", "/status job1")]]
+    assert response.inline_buttons == [
+        [InlineButton("job1 (queued)", "/status job1")],
+        [InlineButton("✖ Close", "__close__")],
+    ]
+
+
+def test_status_detail_running_job_shows_stop_and_back(project_registry: ProjectRegistry):
+    registry = CommandRegistry([StatusCommand()])
+    ctx = _ctx(project_registry)
+    job = Job(
+        id="jrun",
+        request=JobRequest(
+            project="remote-coder", model=ModelName.CLAUDE, instruction="x", chat_id=1, requested_by=1
+        ),
+        status=JobStatus.RUNNING,
+    )
+    ctx.job_store.create(job)
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/status jrun"), ctx)
+    assert response is not None
+    assert response.inline_buttons == [
+        [InlineButton("Stop", "/stop jrun")],
+        [InlineButton("‹ Back", "/status"), InlineButton("✖ Close", "__close__")],
+    ]
+
+
+def test_status_detail_succeeded_job_shows_pr_and_rebase(project_registry: ProjectRegistry):
+    registry = CommandRegistry([StatusCommand()])
+    ctx = _ctx(project_registry)
+    job = Job(
+        id="jok",
+        request=JobRequest(
+            project="remote-coder", model=ModelName.CLAUDE, instruction="x", chat_id=1, requested_by=1
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-fix",
+        commit_hash="abcdef12",
+    )
+    ctx.job_store.create(job)
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/status jok"), ctx)
+    assert response is not None
+    assert response.inline_buttons == [
+        [InlineButton("Open PR", "/pr remote-fix"), InlineButton("Rebase", "/rebase remote-fix")],
+        [InlineButton("‹ Back", "/status"), InlineButton("✖ Close", "__close__")],
+    ]
 
 
 def test_model_command_updates_preference(project_registry: ProjectRegistry):
