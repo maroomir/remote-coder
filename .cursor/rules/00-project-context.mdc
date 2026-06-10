@@ -1,47 +1,31 @@
 ---
-description: Remote AI Coder project context, source-of-truth documents, and implementation priorities
+description: Source-of-truth priority and rule update triggers
 globs:
 alwaysApply: true
 ---
 
-# Project Context and Rule Structure
+# Project Context
 
-Remote AI Coder is a FastAPI automation service that uses Telegram as a remote interface for running local AI coding tools. It creates isolated Git worktrees, runs Claude Code, Codex CLI, or Gemini CLI, commits changes on a separate branch, and reports results back to Telegram.
+Remote AI Coder: FastAPI + Telegram interface for local AI coding tools in isolated Git worktrees.
 
 ## Source of Truth
 
-- `PLAN.md` defines product goals, MVP scope, requirements, architecture, risks, and roadmap.
-- `.clinerules/` defines Cline-readable development rules.
-- `.cursor/rules/` defines Cursor-readable development rules with `.mdc` frontmatter.
-- `AGENTS.md` defines AI-agent workflow, checklists, and final reporting expectations.
-- `CLAUDE.md` is the Claude Code entry point and references the rule files.
+- `PLAN.md` — product goals, scope, roadmap.
+- `.cursor/rules/` — persistent development rules (this directory).
+- `AGENTS.md` — agent workflow, checklists, release steps.
+- `CLAUDE.md` — Claude Code entry point; imports rules from this directory.
 - Existing source files and tests override intended architecture notes.
 
 ## Priority Order
 
 1. The user's latest explicit instruction.
 2. `PLAN.md`.
-3. `.clinerules/`.
-4. `.cursor/rules/`.
-5. `AGENTS.md`.
-6. Existing code and tests.
+3. `.cursor/rules/`.
+4. `AGENTS.md`.
+5. Existing code and tests.
 
-If documents conflict in a way that could change behavior, ask before editing. Clear typos or stale wording can be fixed while preserving intent.
-
-## MVP Implementation Priority
-
-1. FastAPI application skeleton.
-2. Environment/configuration loading.
-3. Telegram webhook receiving.
-4. Chat/User allowlist authentication.
-5. Job model and state management.
-6. Git worktree service.
-7. Claude Runner.
-8. Telegram result notifications.
-9. Codex Runner.
-10. Gemini Runner.
-11. Tests and documentation cleanup.
+If documents conflict in a way that could change behavior, ask before editing.
 
 ## Rule Updates
 
-Suggest rule updates when architecture, workflow, security, directory structure, testing strategy, Git/worktree policy, AI Runner behavior, comment policy, or agent reporting expectations change.
+Suggest rule updates when architecture, workflow, security, Git/worktree policy, AI runner behavior, comment policy, testing strategy, or agent reporting expectations change.

@@ -1,63 +1,32 @@
 ---
-description: Testing, verification, documentation, and Cline/Cursor rule synchronization
+description: Verification commands, test policy, and documentation sync
 globs: "**/*"
 alwaysApply: true
 ---
 
-# Testing, Verification, and Documentation Sync
+# Testing and Documentation Sync
 
-## Before Commands
-
-- Confirm the active Python environment before tests or server commands.
-- Prefer `conda run -n remote-coder ...` in automated contexts.
-- Use project-defined scripts and configuration over ad-hoc commands.
-- Avoid tests that mutate the user's real repositories, create real commits, call external networks, or invoke real AI CLIs unless explicitly required.
-
-## Recommended Verification
-
-Default command:
+## Verification
 
 ```bash
 conda run -n remote-coder pytest -q
 ```
 
-CI-style full pass (disables unrelated pytest plugins that may ship with the environment):
+CI-style full pass:
 
 ```bash
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 conda run -n remote-coder pytest -q -p pytest_asyncio.plugin -p respx.fixtures
 ```
 
-For narrower work, run the focused test file or test case first, then broaden when the change affects shared behavior.
+`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` prevents unrelated system pytest plugins from interfering.
 
-## Testing Priorities
-
-- Telegram command parsing.
-- Chat ID/User ID allowlist authentication.
-- Job state transitions.
-- Git worktree path generation and branch naming.
-- AI Runner success/failure result handling.
-- Notifier message formatting.
-- Strategy, Command, Adapter, Factory, State, and Repository objects when introduced.
-- Event logging behavior at Telegram, Job, Git, and Runner boundaries.
-- Multi-bot webhook routing, per-project notifier resolution, and project-scoped chat state (confirmations, model prefs, job lists).
-
-## Test Design Rules
-
-- Mock or fixture Telegram API calls, AI CLI calls, and real Git repositories by default.
-- Keep external dependencies behind interfaces/adapters so they are easy to mock.
-- When applying a design pattern, make each strategy/command/state object independently testable.
-- For non-trivial work, define success criteria and verification before editing.
-- For bug fixes, reproduce the bug with a test when practical, then verify the fix.
-- For refactors, verify existing behavior before and after the change.
-- If verification cannot be run, state why and describe the remaining risk.
+Run focused tests first; broaden when shared behavior changes. Mock Telegram API, AI CLI, real Git repos, and external networks by default.
 
 ## Documentation Sync
 
-- Version bumps and shipping a release: follow `RELEASE.md` and update `CHANGELOG.md` when cutting a new version section.
-- New OS environment variables or file-based settings require README and related docs updates.
-- New Telegram commands require README or usage-document updates.
-- If implementation decisions change product scope or roadmap, update the relevant `PLAN.md` section.
-- If development rules, security policy, workflow, directory structure, or testing strategy changes, review `.clinerules/`, `.cursor/rules/`, and `AGENTS.md` together.
-- If OOP or GoF pattern guidance changes, update `.clinerules/`, `.cursor/rules/`, and `AGENTS.md` together.
-- Keep duplicated policy minimal; prefer one source of detail and references from related files.
-- Comment and docstring rules belong in `60-comments-policy`; do not redefine them elsewhere unless necessary.
+- Release: follow `RELEASE.md`; update `CHANGELOG.md` and `CHANGELOG.ko.md`.
+- New env vars, file settings, or Telegram commands: update README and related docs.
+- Product scope changes: update `PLAN.md`.
+- Rule or workflow changes: update `.cursor/rules/` and `AGENTS.md` together.
+
+Use `EventLogger` with `LOG_RECORD_CONTEXT_KEYS` at Telegram, Job, Git, and Runner boundaries. Log message text as first-line preview only (max 80 chars).

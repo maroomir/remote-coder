@@ -1,52 +1,13 @@
 ---
-description: OOP, GoF design patterns, architecture, and recommended code structure
+description: Layer boundaries and pattern adoption when complexity warrants it
 globs: "**/*.py"
 alwaysApply: true
 ---
 
-# Architecture, OOP, and GoF Pattern Rules
+# Architecture
 
-## Core Principles
-
-- Implement features in small, verifiable units.
-- Separate external APIs, file system access, process execution, and Git operations behind service or adapter layers.
-- Telegram webhook handlers must respond quickly; long-running AI work belongs in background jobs.
-- Prefer safe isolation and clear observability over operational automation.
-- In the MVP stage, prefer clear structure and testable code over premature abstraction.
-- When requests are ambiguous, surface assumptions and tradeoffs before editing.
-- Prefer the smallest change that satisfies the request.
-- Do not add unrequested features, configuration, or extension points.
-- Keep edits surgical.
-- Use object-oriented design as the default development style.
-- Apply GoF patterns when they simplify the code or contain real variability.
-
-## OOP Rules
-
-- Keep classes and modules close to single responsibility.
-- Encapsulate Telegram API calls, Git operations, subprocess execution, and AI CLI details.
-- Use interfaces or abstract base classes for replaceable components such as runners, job stores, and notifiers.
-- Prefer composition over inheritance.
-- Use domain names that reveal intent, such as `Job`, `JobManager`, `GitWorktreeService`, `AiRunner`, and `TelegramNotifier`.
-- Keep functions and methods short enough to explain one behavior.
-
-## Recommended Patterns
-
-| Pattern | Candidate use |
-|---|---|
-| Strategy | Claude/Codex/Gemini runner selection, branch naming, model-usage monitoring, worktree cleanup policy |
-| Factory Method / Abstract Factory | Runner, store, notifier, or repository creation from configuration |
-| Adapter | Telegram Bot API, Claude CLI, Codex CLI, Gemini CLI, Git CLI |
-| Facade | Job execution flow through `JobManager` or `JobOrchestrator` |
-| Template Method | Shared AI execution flow with tool-specific details |
-| Command | Telegram command handling such as `/help`, `/model`, `/status` |
-| Observer | Job state notifications, logs, and follow-up hooks |
-| State | Explicit job state transitions when they become complex |
-| Repository | Job storage and project configuration storage |
-
-## Pattern Adoption Rules
-
-- If branching keeps growing, consider Strategy, Command, or State.
-- Wrap external tools and APIs with adapters so tests can mock them.
-- Move complex creation logic behind a factory.
-- Collapse long workflows behind a facade or orchestrator.
+- Webhook handlers respond quickly; long-running AI work runs in background jobs.
+- Keep Telegram API, Git CLI, subprocess, and AI CLI details behind adapters/services.
+- Use Strategy/Factory for runner selection, Command for Telegram handlers, Facade for job orchestration — only when variability or complexity already exists.
 - Do not create multiple classes for simple or single-use behavior.
+- Code and tests are the source of truth for directory layout; do not maintain a file tree in docs.

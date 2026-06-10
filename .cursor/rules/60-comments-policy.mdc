@@ -1,57 +1,13 @@
 ---
-description: Minimal comments policy: keep only why, constraints, security, and non-obvious contracts
+description: Minimal comments — only non-obvious constraints and domain rules
 globs: "**/*.py"
 alwaysApply: true
 ---
 
 # Comments Policy
 
-Applies to Python source, tests, and project scripts unless a task says otherwise.
-
-## Project Preference: Minimal Comments
-
-- Default to adding no new comments.
-- Keep comments only for information the code cannot express.
-- Prefer clearer names, types, and structure over explanatory comments.
-- Do not add decorative section comments, narration, or docstrings that repeat signatures.
-- When unsure, leave the comment out.
-
-## When to Add a Comment
-
-Add a comment only when skipping it would likely mislead someone or hide a real constraint:
-
-- Why or non-obvious constraints from external APIs, OS behavior, or library limits.
-- Security or operations warnings.
-- Domain rules from product policy or external specifications.
-- Performance/correctness tradeoffs.
-- Temporary workarounds with issue/PR references and removal conditions.
-
-## Allowed Markers
-
-Use only these markers:
-
-- `TODO(<issue>):` planned work with a tracking issue.
-- `FIXME(<issue>):` known bug or incorrect behavior with a tracking issue.
-- `NOTE:` non-obvious contract, coupling, or "not a bug" context.
-- `SECURITY:` security assumption, trust boundary, or forbidden behavior.
-
-Do not use untracked `TODO` or `FIXME`. Do not use vague markers such as `HACK` or `XXX`.
-
-## Do Not Add
-
-- Comments that restate implementation.
-- Docstrings that repeat function/class signatures.
-- Commented-out old code blocks.
-- Decorative separators or chatty commentary.
-
-## Docstring Rules
-
-- Remove obvious one-line docstrings.
-- Use docstrings only for domain rules, constraints, tradeoffs, or complex public facades.
-- Do not add docstrings to `__init__.py`, simple dataclasses, or DTO modules.
-- Public library-style APIs may use short English docstrings when they do not duplicate the signature.
-
-## Language
-
-- Prefer English for new code comments and docstrings.
-- Preserve existing Korean comments unless editing them is directly required.
+- Default: no new comments. Prefer clearer names and structure.
+- Add comments only for non-obvious constraints, security warnings, domain rules, or tradeoffs.
+- Allowed markers: `TODO(<issue>):`, `FIXME(<issue>):`, `NOTE:`, `SECURITY:` — no untracked TODO/FIXME.
+- No docstrings that repeat signatures. No decorative section comments.
+- Prefer English for new comments; preserve existing Korean comments unless editing them directly.

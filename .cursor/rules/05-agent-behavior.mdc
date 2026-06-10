@@ -1,48 +1,13 @@
 ---
-description: Coding-agent behavior for assumptions, simplicity, surgical edits, and verification
+description: Agent behavior for assumptions, minimal scope, and verification
 globs:
 alwaysApply: true
 ---
 
 # Agent Behavior
 
-These rules adapt the Karpathy-inspired coding-agent guidelines for `remote-coder`.
-
-Source: https://github.com/forrestchang/andrej-karpathy-skills
-
-Tradeoff: bias toward caution over speed. For trivial typo fixes or obvious one-line edits, use judgment.
-
-## Think Before Coding
-
-- State assumptions explicitly when they affect product behavior, architecture, security, or verification.
-- Ask when uncertainty could change the implementation.
-- Present multiple plausible interpretations instead of silently choosing one.
-- Say when a simpler approach exists; push back on unnecessary complexity.
-- If something is unclear, stop, name the confusion, and ask before editing.
-
-## Simplicity First
-
-- Write the minimum code that solves the requested problem.
-- Do not add unrequested features, abstractions, flexibility, configurability, or extension points.
-- Do not add defensive branches for scenarios that cannot happen in the current design.
-- If a solution becomes much larger than the problem demands, simplify before finalizing.
-
-Ask before finalizing: would a senior engineer say this is overcomplicated?
-
-## Surgical Changes
-
-- Touch only what the request requires.
-- Do not improve adjacent code, comments, formatting, or naming unless directly required.
-- Do not refactor unrelated code.
-- Match the existing style, even when new code could reasonably use a different style.
-- Mention unrelated dead code or cleanup opportunities instead of changing them.
-- Remove only unused imports, variables, functions, files, or tests created by your own changes.
-
-Every changed line should trace directly to the user's request.
-
-## Goal-Driven Execution
-
-- For non-trivial tasks, define success criteria before editing.
-- Transform work into verifiable goals: reproduce bugs before fixing, cover validation cases before passing them, preserve behavior during refactors.
-- For multi-step work, state a brief plan with verification for each step.
-- Prefer project-defined verification commands; if automation is unavailable or not relevant, state the limitation and do focused manual inspection.
+- State assumptions when they affect behavior, architecture, security, or verification. Ask when ambiguity could change the implementation.
+- Write the minimum code that solves the request. No unrequested features, abstractions, or extension points.
+- Touch only what the request requires. Match existing style. Remove unused imports/files from your own changes only.
+- For non-trivial work, define success criteria and verification before editing.
+- Prefer project-defined verification commands; state limitations when automation cannot run.

@@ -1,36 +1,13 @@
 ---
-description: Python tech stack, FastAPI implementation, and configuration rules
+description: Environment, FastAPI constraints, and configuration
 globs: "**/*.py"
 alwaysApply: true
 ---
 
-# Tech Stack and FastAPI Rules
+# Tech Stack and FastAPI
 
-## Recommended Stack
-
-- Python 3.11 or newer.
-- FastAPI.
-- Uvicorn.
-- pytest.
-- `pydantic-settings`.
-- `pyproject.toml` based packaging.
-- Telegram Bot API calls through a small adapter or stable Telegram library.
-- Git CLI based worktree management.
-- Claude Code CLI, Codex CLI, and Gemini CLI adapters.
-
-## FastAPI Rules
-
-- Webhook endpoints must respond quickly.
-- Long-running AI jobs must run in the background job flow, not inside the webhook request.
-- Separate routers, services, settings, and models.
-- Use Pydantic models for request validation.
-- Do not execute AI CLI work directly inside webhook request handling.
-
-## Configuration Rules
-
-- Centralize environment variables in `config.py` or a settings object.
-- Support project-specific settings through YAML/JSON configuration when needed.
-- Use safe defaults.
-- Document new OS environment variables and file-based settings in README and admin UI docs.
-- Before running tests or the server, use the `remote-coder` Conda environment.
-- If activation is difficult in an automated context, use `conda run -n remote-coder ...`.
+- Python 3.11+, FastAPI, pytest, `pydantic-settings`, `pyproject.toml` packaging.
+- Webhook endpoints respond quickly; AI CLI work runs in background jobs, not inside webhook handlers.
+- Centralize env vars in `config.py` or a settings object. Document new env vars and file-based settings in README.
+- Before tests or server commands, use the `remote-coder` Conda environment: `conda run -n remote-coder ...`.
+- No fixed lint/format command in this repo; follow existing code style.

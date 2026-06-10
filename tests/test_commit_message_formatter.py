@@ -32,10 +32,9 @@ def test_commit_message_formatter_prefers_feature_intent_over_changed_file_list(
         job_id="job_20260430010101_ab12cd",
         instruction="Improve generated commit messages so commits clearly describe the added feature",
         changed_files=[
-            ".clinerules/00-project-context.md",
-            ".clinerules/10-architecture-oop-gof.md",
-            ".clinerules/20-tech-stack-and-fastapi.md",
             ".cursor/rules/00-project-context.mdc",
+            ".cursor/rules/10-architecture-oop-gof.mdc",
+            ".cursor/rules/20-tech-stack-and-fastapi.mdc",
             "tests/test_commit_message_formatter.py",
         ],
     )
