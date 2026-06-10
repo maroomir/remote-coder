@@ -10,6 +10,7 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ### Added
 
+- **Reply-linked AI sessions**: Jobs connected through Telegram replies now continue the *same* AI CLI session instead of starting fresh every message. Each reply chain is anchored to its root message and assigned a session id (persisted in SQLite and linked to job ids); runners resume natively — Claude via `--session-id`/`--resume`, Codex via `codex exec resume <id>` (id captured from its rollout file), Gemini via `--resume <id>` when available, otherwise falling back to the existing reply-context injection. Native Claude resume relies on the chain reusing the same worktree (the normal branch-bound reply flow). `/clear memory` also clears stored sessions.
 - **Easy setup wizard**: The admin dashboard now guides first-time users through a 4-step flow — verify bot token, auto-detect the Telegram chat, and create the project — so a new project can be live in about a minute. Backed by new localhost-only `POST /api/setup/validate-token` and `POST /api/setup/detect-chat` endpoints.
 
 ### Changed

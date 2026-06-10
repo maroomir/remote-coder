@@ -87,3 +87,54 @@ def test_codex_runner_plan_mode_forces_read_only_sandbox(mock_popen, caplog):
     assert command[0:4] == ["codex", "exec", "--sandbox", "read-only"]
     assert "PLAN mode" in command[4]
     assert "analyze" in command[4]
+
+
+@patch("app.ai.base.subprocess.Popen")
+def test_codex_runner_resumes_with_token(mock_popen):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("done", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
+
+    result = CodexRunner().run(
+        RunnerInput(
+            instruction="follow up",
+            cwd=Path("."),
+            timeout_seconds=10,
+            resume_token="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        )
+    )
+
+    assert mock_popen.call_args.args[0] == [
+        "codex",
+        "exec",
+        "resume",
+        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "--sandbox",
+        "workspace-write",
+        "follow up",
+    ]
+    assert result.session_id == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+
+def test_codex_runner_captures_new_session_id_from_rollout(tmp_path, monkeypatch):
+    runner = CodexRunner()
+    sessions = tmp_path / "sessions" / "2026" / "06"
+    sessions.mkdir(parents=True)
+    monkeypatch.setattr(runner, "_session_dir", lambda: tmp_path / "sessions")
+    rollout = sessions / "rollout-2026-06-10-12345678-1234-1234-1234-1234567890ab.jsonl"
+    rollout.write_text("{}", encoding="utf-8")
+    captured = runner._capture_new_session_id({})
+    assert captured == "12345678-1234-1234-1234-1234567890ab"
+
+
+def test_codex_runner_capture_ignores_preexisting_files(tmp_path, monkeypatch):
+    runner = CodexRunner()
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    old = sessions / "rollout-2026-06-09-00000000-0000-0000-0000-000000000000.jsonl"
+    old.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(runner, "_session_dir", lambda: sessions)
+    before = runner._snapshot_session_files()
+    assert runner._capture_new_session_id(before) is None

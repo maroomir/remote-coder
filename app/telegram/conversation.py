@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -149,6 +150,29 @@ class SQLiteConversationStore:
                 )
                 conn.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS agent_sessions (
+                        project TEXT NOT NULL,
+                        chat_id INTEGER NOT NULL,
+                        root_message_id INTEGER NOT NULL,
+                        session_id TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        PRIMARY KEY (project, chat_id, root_message_id)
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS agent_session_runner_tokens (
+                        session_id TEXT NOT NULL,
+                        provider TEXT NOT NULL,
+                        runner_session_id TEXT NOT NULL,
+                        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        PRIMARY KEY (session_id, provider)
+                    )
+                    """
+                )
+                conn.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS message_branch_links (
                         project TEXT NOT NULL,
                         chat_id INTEGER NOT NULL,
@@ -169,6 +193,20 @@ class SQLiteConversationStore:
         with self._lock:
             conn = sqlite3.connect(self._db_path)
             try:
+                conn.execute(
+                    """
+                    DELETE FROM agent_session_runner_tokens
+                    WHERE session_id IN (
+                        SELECT session_id FROM agent_sessions
+                        WHERE project = ? AND chat_id = ?
+                    )
+                    """,
+                    (project, chat_id),
+                )
+                conn.execute(
+                    "DELETE FROM agent_sessions WHERE project = ? AND chat_id = ?",
+                    (project, chat_id),
+                )
                 links_cur = conn.execute(
                     "DELETE FROM message_branch_links WHERE project = ? AND chat_id = ?",
                     (project, chat_id),
@@ -407,6 +445,113 @@ class SQLiteConversationStore:
                     )
                     """,
                     (job_id, project, chat_id, message_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def _user_message_id_for_job(self, project: str, chat_id: int, job_id: str) -> int | None:
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                row = conn.execute(
+                    """
+                    SELECT message_id
+                    FROM conversation_entries
+                    WHERE project = ? AND chat_id = ? AND role = 'user' AND job_id = ?
+                    AND message_id IS NOT NULL
+                    ORDER BY id ASC
+                    LIMIT 1
+                    """,
+                    (project, chat_id, job_id),
+                ).fetchone()
+            finally:
+                conn.close()
+        return int(row[0]) if row is not None and row[0] is not None else None
+
+    def _resolve_root_user_message_id(
+        self, project: str, chat_id: int, message_id: int, reply_to_message_id: int | None
+    ) -> int:
+        if reply_to_message_id is None:
+            return message_id
+        replied = self.get_entry_by_message_id(project, chat_id, reply_to_message_id)
+        start_user_mid: int | None = None
+        if replied is not None and replied.role == "user":
+            start_user_mid = replied.message_id
+        elif replied is not None and replied.job_id:
+            start_user_mid = self._user_message_id_for_job(project, chat_id, replied.job_id)
+        if start_user_mid is None:
+            return message_id
+        chain = self.get_reply_chain_user_entries_newest_first(project, chat_id, start_user_mid)
+        if chain:
+            root = chain[-1].message_id
+            if root is not None:
+                return root
+        return start_user_mid
+
+    def resolve_or_create_session(
+        self, project: str, chat_id: int, message_id: int, reply_to_message_id: int | None = None
+    ) -> str:
+        root_mid = self._resolve_root_user_message_id(
+            project, chat_id, message_id, reply_to_message_id
+        )
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                row = conn.execute(
+                    """
+                    SELECT session_id FROM agent_sessions
+                    WHERE project = ? AND chat_id = ? AND root_message_id = ?
+                    """,
+                    (project, chat_id, root_mid),
+                ).fetchone()
+                if row is not None:
+                    return str(row[0])
+                # Canonical UUID form so it can be passed directly to Claude `--session-id`.
+                session_id = str(uuid.uuid4())
+                conn.execute(
+                    """
+                    INSERT INTO agent_sessions (project, chat_id, root_message_id, session_id)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (project, chat_id, root_mid, session_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        return session_id
+
+    def get_runner_resume_token(self, session_id: str, provider: str) -> str | None:
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                row = conn.execute(
+                    """
+                    SELECT runner_session_id FROM agent_session_runner_tokens
+                    WHERE session_id = ? AND provider = ?
+                    """,
+                    (session_id, provider),
+                ).fetchone()
+            finally:
+                conn.close()
+        return str(row[0]) if row is not None and row[0] is not None else None
+
+    def set_runner_resume_token(
+        self, session_id: str, provider: str, runner_session_id: str
+    ) -> None:
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO agent_session_runner_tokens (session_id, provider, runner_session_id)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(session_id, provider)
+                    DO UPDATE SET
+                        runner_session_id = excluded.runner_session_id,
+                        updated_at = datetime('now')
+                    """,
+                    (session_id, provider, runner_session_id),
                 )
                 conn.commit()
             finally:

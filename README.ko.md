@@ -13,6 +13,7 @@ Telegram 메시지 하나로 내 로컬 개발 머신의 Claude Code, Codex, Gem
 - 등록 프로젝트마다 별도 Telegram 봇, allowlist, 설정을 둡니다.
 - 요청별 Git worktree, 브랜치 생성, 커밋, push, 결과 알림을 처리합니다.
 - Claude, Codex, Gemini를 같은 Job 흐름으로 실행합니다.
+- 답장(reply)으로 연결된 Job은 동일한 AI CLI 세션을 이어가며 이전 맥락 위에서 작업합니다.
 - 프로젝트 설정, 고급 옵션, 로그, 대화 기억을 로컬 관리 UI에서 확인합니다.
 - 커밋 없이 분석만 하는 읽기 전용 `plan:` / `ask:` 모드를 지원합니다.
 

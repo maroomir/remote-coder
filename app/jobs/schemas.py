@@ -11,6 +11,7 @@ from app.models import ModelName
 
 _SAFE_BRANCH_TOKEN = re.compile(r"^[A-Za-z0-9/._-]+$")
 _SAFE_JOB_ID_TOKEN = re.compile(r"^[A-Za-z0-9_.-]+$")
+_SAFE_SESSION_TOKEN = re.compile(r"^[A-Za-z0-9_.:-]+$")
 
 
 class JobStatus(StrEnum):
@@ -47,6 +48,8 @@ class JobRequest(BaseModel):
     reply_to_message_id: int | None = None
     parent_job_id: str | None = None
     fix_kind: FixKind | None = None
+    session_id: str | None = None
+    resume_session_token: str | None = None
 
     @field_validator("branch")
     @classmethod
@@ -68,6 +71,15 @@ class JobRequest(BaseModel):
             raise ValueError("job_id must use only ASCII letters, numbers, ., _, -")
         return value
 
+    @field_validator("session_id", "resume_session_token")
+    @classmethod
+    def _validate_session_token(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not value or len(value) > 128 or not _SAFE_SESSION_TOKEN.match(value):
+            raise ValueError("session token must use only ASCII letters, numbers, ., :, _, -")
+        return value
+
 
 class Job(BaseModel):
     id: str
@@ -82,6 +94,7 @@ class Job(BaseModel):
     runner_token_usage: dict[str, int] = Field(default_factory=dict)
     runner_stdout_summary: str | None = None
     runner_stderr_summary: str | None = None
+    runner_session_id: str | None = None
     accepted_message_id: int | None = None
     result_message_ids: list[int] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
