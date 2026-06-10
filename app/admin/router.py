@@ -356,7 +356,6 @@ def create_admin_router(
             "job_timeout_seconds": adv.job_timeout_seconds,
             "git_remote_name": adv.git_remote_name,
             "codex_sandbox": adv.codex_sandbox.value,
-            "conversation_recent_limit": adv.conversation_recent_limit,
             "keep_worktree_on_success": adv.keep_worktree_on_success,
             "webhook_token_hash_prefix_length": WEBHOOK_TOKEN_HASH_PREFIX_LENGTH,
             "webhook_route_template": "/telegram/webhook/{token_hash_prefix}",
@@ -556,14 +555,11 @@ def create_admin_router(
             for project in registry.list_projects():
                 webhook_registrar.sync_project_commands(project)
         _adminlog.info(
-            "advanced settings updated ui_language=%s lifecycle_notify=%s pull_startup=%s auto_merge=%s delete_rebased_branch=%s natural_confirm_buttons=%s status_limit=%d job_timeout=%s memory_limit=%s",
+            "advanced settings updated ui_language=%s pull_startup=%s auto_merge=%s delete_rebased_branch=%s job_timeout=%s memory_limit=%s",
             saved.ui_language.value,
-            saved.server_lifecycle_notify_enabled,
             saved.pull_projects_on_server_startup_enabled,
             saved.auto_merge_to_main_enabled,
             saved.delete_rebased_branch_enabled,
-            saved.natural_job_confirmation_buttons_enabled,
-            saved.status_recent_job_limit,
             saved.job_timeout_seconds or "-",
             saved.conversation_memory_limit_enabled,
         )

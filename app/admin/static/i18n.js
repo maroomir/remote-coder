@@ -247,31 +247,9 @@
       en: "Default: English. Choose Korean here for the Telegram bot and this admin UI.",
       ko: "기본값: English. 여기서 한국어를 선택하면 Telegram 봇과 이 관리 UI에 적용됩니다.",
     },
-    "advanced.statusLimitLabel": { en: "Recent jobs shown by /status", ko: "/status가 보여주는 최근 작업 수" },
-    "advanced.statusLimitHint": {
-      en: "Maximum number of recent jobs selectable with inline buttons in /status. Default: 10",
-      ko: "/status에서 인라인 버튼으로 고를 수 있는 최근 작업 최대 개수. 기본값: 10",
-    },
-    "advanced.phStatus": { en: "Example: 10", ko: "예: 10" },
     "advanced.phTimeout": { en: "Example: 3600", ko: "예: 3600" },
     "advanced.phRows": { en: "Example: 5000", ko: "예: 5000" },
     "advanced.phBytes": { en: "Example: 10485760", ko: "예: 10485760" },
-    "advanced.naturalConfirmLabel": {
-      en: "Use inline buttons instead of <code>y</code>/<code>Y</code> for natural-language job confirmations",
-      ko: "자연어 작업 확인에 <code>y</code>/<code>Y</code> 대신 인라인 버튼 사용",
-    },
-    "advanced.naturalConfirmHint": {
-      en: "Default: off. When enabled, job confirmation messages show <strong>Yes</strong>/<strong>No</strong> buttons.",
-      ko: "기본값: 꺼짐. 켜면 작업 확인 메시지에 <strong>Yes</strong>/<strong>No</strong> 버튼이 표시됩니다.",
-    },
-    "advanced.lifecycleLabel": {
-      en: "Send Telegram notifications when the server starts or stops",
-      ko: "서버 시작·중지 시 Telegram 알림 전송",
-    },
-    "advanced.lifecycleHint": {
-      en: "Default: on. When disabled, restarts do not send server start/stop messages.",
-      ko: "기본값: 켜짐. 끄면 재시작 시 서버 시작·중지 메시지를 보내지 않습니다.",
-    },
     "advanced.secJob": { en: "Job Execution", ko: "작업 실행" },
     "advanced.secJobLead": { en: "Configure AI job execution limits.", ko: "AI 작업 실행 제한을 설정합니다." },
     "advanced.jobTimeoutLabel": {
@@ -299,22 +277,6 @@
     "advanced.codexSandboxHint": {
       en: "Codex exec --sandbox value. Default: workspace-write.",
       ko: "Codex exec --sandbox 값입니다. 기본값: workspace-write.",
-    },
-    "advanced.conversationRecentLabel": {
-      en: "Recent conversation entries for ambiguous follow-ups",
-      ko: "모호한 후속 요청에 붙이는 최근 대화 개수",
-    },
-    "advanced.conversationRecentHint": {
-      en: "How many recent SQLite conversation rows to include when parsing ambiguous follow-ups. Default: 10.",
-      ko: "모호한 후속 요청 파싱 시 포함할 최근 SQLite 대화 행 수입니다. 기본값: 10.",
-    },
-    "advanced.replySnippetMaxLabel": {
-      en: "Reply/context snippet max length (characters)",
-      ko: "Reply/맥락 스니펫 최대 길이(문자)",
-    },
-    "advanced.replySnippetMaxHint": {
-      en: "Maximum characters per reply chain, job result, or fallback reply message included in AI instructions. Default: 3000. Range: 200–20000.",
-      ko: "AI 지시문에 포함되는 reply 체인·Job 결과·fallback reply 메시지당 최대 문자 수입니다. 기본값: 3000. 범위: 200–20000.",
     },
     "advanced.secGit": { en: "Git Integration", ko: "Git 통합" },
     "advanced.secGitLead": {

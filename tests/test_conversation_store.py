@@ -81,13 +81,11 @@ def test_context_builder_respects_custom_snippet_limit(tmp_path: Path):
     assert "...(truncated)" in out
 
 
-def test_format_job_context_truncates_long_text_with_advanced_setting(tmp_path: Path):
-    adv = FileAdvancedSettingsStore(tmp_path / "advanced_settings.json")
-    adv.save(AdvancedSettings(conversation_reply_snippet_max_chars=500))
+def test_format_job_context_truncates_long_text_at_default_snippet_limit(tmp_path: Path):
     db = tmp_path / "job_context_trunc.sqlite3"
-    store = SQLiteConversationStore(db, advanced_settings_store=adv)
-    long_user = "u" * 800
-    long_result = "r" * 800
+    store = SQLiteConversationStore(db)
+    long_user = "u" * 3500
+    long_result = "r" * 3500
     store.append(
         project="p1",
         chat_id=7,

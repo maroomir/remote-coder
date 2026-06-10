@@ -10,12 +10,14 @@ from app.telegram.commands.base import (
     TelegramMessage,
     _button_rows,
     _cmd_evt,
-    _confirmation_buttons_enabled,
     _job_button_label,
     effective_git_remote_name,
     effective_project_name_for_chat,
 )
 from app.telegram.confirmations import PendingConfirmation
+
+CLEAR_CONFIRM_YES = "__clear_confirm__:yes"
+CLEAR_CONFIRM_NO = "__clear_confirm__:no"
 
 
 class ClearCommand(ConfirmableCommand):
@@ -25,7 +27,7 @@ class ClearCommand(ConfirmableCommand):
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
         if len(tokens) == 1:
-            return "Choose what to clear. Confirmation with y/Y is required before running."
+            return "Choose what to clear. A confirmation button is required before running."
         if len(tokens) != 2 or tokens[1] not in {"branch", "memory", "worktrees"}:
             return "Usage: /clear branch or /clear worktrees or /clear memory"
 
@@ -45,12 +47,7 @@ class ClearCommand(ConfirmableCommand):
             summary = "Clean managed worktrees and prune stale entries in this bot project."
         else:
             summary = "Delete only this chat's conversation memory in this bot project."
-        if _confirmation_buttons_enabled(ctx):
-            return f"Pending action: {summary}\nChoose whether to run it."
-        return (
-            f"Pending action: {summary}\n"
-            "Send y or Y to run it. Any other response cancels it."
-        )
+        return f"Pending action: {summary}\nChoose whether to run it."
 
     def get_inline_buttons(
         self,
@@ -68,15 +65,13 @@ class ClearCommand(ConfirmableCommand):
                     InlineButton("memory", "/clear memory"),
                 ],
             ]
-        if not _confirmation_buttons_enabled(ctx):
-            return None
         pending = ctx.confirmation_store.get(
             effective_project_name_for_chat(ctx, message.chat_id),
             message.chat_id,
         )
         if pending is None or pending.command_name != self.name:
             return None
-        return [[InlineButton("Yes", "Y"), InlineButton("No", "n")]]
+        return [[InlineButton("Yes", CLEAR_CONFIRM_YES), InlineButton("No", CLEAR_CONFIRM_NO)]]
 
     def confirm(
         self,
@@ -84,7 +79,7 @@ class ClearCommand(ConfirmableCommand):
         ctx: CommandContext,
         pending: PendingConfirmation,
     ) -> str:
-        if message.text.strip() not in {"y", "Y"}:
+        if message.text.strip() != CLEAR_CONFIRM_YES:
             if pending.action == "branch":
                 target = "Branch cleanup"
             elif pending.action == "worktrees":

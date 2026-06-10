@@ -98,8 +98,6 @@ class _RecentUpdateTracker:
 def _format_natural_job_confirmation(
     request: JobRequest,
     current_branch: str,
-    *,
-    use_buttons: bool = False,
 ) -> str:
     lines = [
         "Confirm the work to run.",
@@ -116,23 +114,13 @@ def _format_natural_job_confirmation(
         lines.append("- Mode: agent (may edit code, commit, and push)")
     if request.branch:
         lines.append(f"- Requested branch: {request.branch}")
-    if use_buttons:
-        footer = "Choose whether to run it."
-    else:
-        footer = (
-            "Send `y` or `Y` to run it. "
-            "A new natural-language request can replace this confirmation. "
-            "Unparsed input cancels the pending work."
-        )
-    lines.extend(["", footer])
+    lines.extend(["", "Choose whether to run it."])
     return "\n".join(lines)
 
 
 def _format_fix_source_confirmation(
     request: JobRequest,
     target_job: Job,
-    *,
-    use_buttons: bool,
 ) -> str:
     lines = [
         "Confirm the fix job.",
@@ -143,27 +131,14 @@ def _format_fix_source_confirmation(
         f"- Original commit: {target_job.commit_hash}",
         f"- Model: {format_model_selection(request.model, request.model_id)}",
         "- Mode: fix (amends the existing commit and pushes with --force-with-lease)",
+        "",
+        "Choose whether to run it.",
     ]
-    if use_buttons:
-        lines.extend(["", "Choose whether to run it."])
-    else:
-        lines.extend(
-            [
-                "",
-                "Send `y` or `Y` to run it. Any other response cancels it.",
-            ]
-        )
     return "\n".join(lines)
 
 
 def _natural_job_confirmation_buttons() -> list[list[InlineButton]]:
     return [[InlineButton("Yes", _NATURAL_JOB_CONFIRM_YES), InlineButton("No", _NATURAL_JOB_CONFIRM_NO)]]
-
-
-def _natural_job_confirmation_buttons_enabled(command_context: CommandContext) -> bool:
-    if command_context.advanced_settings_store is None:
-        return False
-    return command_context.advanced_settings_store.get().natural_job_confirmation_buttons_enabled
 
 
 def _format_natural_job_cancelled(request: JobRequest | None) -> str:
@@ -327,17 +302,43 @@ def create_webhook_router(
         if cq.data in {_NATURAL_JOB_CONFIRM_YES, _NATURAL_JOB_CONFIRM_NO}:
             notifier.answer_callback_query(cq.id)
             pending = command_context.confirmation_store.get(scope_project, cq_chat_id)
-            if pending is None or pending.command_name != _NATURAL_JOB_CONFIRMATION:
+            is_natural = pending is not None and pending.command_name == _NATURAL_JOB_CONFIRMATION
+            is_fix = (
+                pending is not None
+                and pending.command_name == "/fix"
+                and pending.action == FIX_SOURCE_PENDING_ACTION
+            )
+            if not (is_natural or is_fix):
                 background_tasks.add_task(notifier.send_text, cq_chat_id, "There is no pending confirmation.")
                 return {"status": "ignored"}
             confirmed = command_context.confirmation_store.pop(scope_project, cq_chat_id)
             if cq.data == _NATURAL_JOB_CONFIRM_NO:
-                background_tasks.add_task(
-                    notifier.send_text,
-                    cq_chat_id,
-                    _format_natural_job_cancelled(confirmed.job_request if confirmed else None),
-                )
+                if is_fix:
+                    background_tasks.add_task(notifier.send_text, cq_chat_id, "Cancelled the fix job.")
+                else:
+                    background_tasks.add_task(
+                        notifier.send_text,
+                        cq_chat_id,
+                        _format_natural_job_cancelled(confirmed.job_request if confirmed else None),
+                    )
                 return {"status": "ok"}
+            if is_fix:
+                if (
+                    confirmed is None
+                    or confirmed.job_request is None
+                    or confirmed.job_request.parent_job_id is None
+                ):
+                    background_tasks.add_task(
+                        notifier.send_text, cq_chat_id, "Could not process the pending confirmation."
+                    )
+                    return {"status": "ignored"}
+                background_tasks.add_task(
+                    _submit_confirmed_fix_request,
+                    confirmed.job_request,
+                    confirmed.original_text or confirmed.job_request.instruction,
+                    background_tasks,
+                )
+                return {"status": "accepted"}
             if confirmed is None or confirmed.job_request is None or confirmed.original_text is None:
                 background_tasks.add_task(notifier.send_text, cq_chat_id, "Could not process the pending confirmation.")
                 return {"status": "ignored"}
@@ -433,21 +434,13 @@ def create_webhook_router(
                 original_text=original_text_stripped,
             ),
         )
-        use_confirmation_buttons = _natural_job_confirmation_buttons_enabled(cc)
-        confirmation_text = _format_natural_job_confirmation(
-            request,
-            current_branch,
-            use_buttons=use_confirmation_buttons,
+        confirmation_text = _format_natural_job_confirmation(request, current_branch)
+        req.background_tasks.add_task(
+            req.notifier.send_with_buttons,
+            req.chat_id,
+            confirmation_text,
+            _natural_job_confirmation_buttons(),
         )
-        if use_confirmation_buttons:
-            req.background_tasks.add_task(
-                req.notifier.send_with_buttons,
-                req.chat_id,
-                confirmation_text,
-                _natural_job_confirmation_buttons(),
-            )
-        else:
-            req.background_tasks.add_task(req.notifier.send_text, req.chat_id, confirmation_text)
         return True
 
     def _resolve_fix_target_from_reply(req: _Req) -> Job | None:
@@ -505,19 +498,13 @@ def create_webhook_router(
                 target_job_id=target_job.id,
             ),
         )
-        use_buttons = _natural_job_confirmation_buttons_enabled(req.command_context)
-        confirmation_text = _format_fix_source_confirmation(
-            fix_request, target_job, use_buttons=use_buttons
+        confirmation_text = _format_fix_source_confirmation(fix_request, target_job)
+        req.background_tasks.add_task(
+            req.notifier.send_with_buttons,
+            req.chat_id,
+            confirmation_text,
+            _natural_job_confirmation_buttons(),
         )
-        if use_buttons:
-            req.background_tasks.add_task(
-                req.notifier.send_with_buttons,
-                req.chat_id,
-                confirmation_text,
-                _natural_job_confirmation_buttons(),
-            )
-        else:
-            req.background_tasks.add_task(req.notifier.send_text, req.chat_id, confirmation_text)
         return {"status": "ok"}
 
     def _handle_fix_intent(req: _Req) -> dict[str, str] | None:
@@ -614,17 +601,7 @@ def create_webhook_router(
         bt = req.background_tasks
 
         if pending.command_name == _NATURAL_JOB_CONFIRMATION and req.message_head_lower != "/init":
-            if req.message.text.strip() in {"y", "Y"}:
-                confirmed = cc.confirmation_store.pop(scope_project, chat_id)
-                if confirmed is None or confirmed.job_request is None or confirmed.original_text is None:
-                    bt.add_task(notifier.send_text, chat_id, "Could not process the pending confirmation.")
-                    return {"status": "ignored"}
-                job = _submit_confirmed_natural_request(
-                    request=confirmed.job_request,
-                    original_text=confirmed.original_text,
-                    background_tasks=bt,
-                )
-                return {"status": "accepted", "job_id": job.id}
+            # Confirmation is button-only (Yes/No); a new parseable message replaces the pending one.
             try:
                 parsed_request = parser.parse_natural(
                     req.message.text,
@@ -743,19 +720,13 @@ def create_webhook_router(
                     target_job_id=target_job.id,
                 ),
             )
-            use_buttons = _natural_job_confirmation_buttons_enabled(cc)
-            confirmation_text = _format_fix_source_confirmation(
-                fix_request, target_job, use_buttons=use_buttons
+            confirmation_text = _format_fix_source_confirmation(fix_request, target_job)
+            bt.add_task(
+                notifier.send_with_buttons,
+                chat_id,
+                confirmation_text,
+                _natural_job_confirmation_buttons(),
             )
-            if use_buttons:
-                bt.add_task(
-                    notifier.send_with_buttons,
-                    chat_id,
-                    confirmation_text,
-                    _natural_job_confirmation_buttons(),
-                )
-            else:
-                bt.add_task(notifier.send_text, chat_id, confirmation_text)
             return {"status": "ok"}
 
         if (
@@ -763,22 +734,7 @@ def create_webhook_router(
             and pending.action == FIX_SOURCE_PENDING_ACTION
             and req.message_head_lower != "/init"
         ):
-            if req.message.text.strip() in {"y", "Y"}:
-                confirmed = cc.confirmation_store.pop(scope_project, chat_id)
-                if (
-                    confirmed is None
-                    or confirmed.job_request is None
-                    or confirmed.job_request.parent_job_id is None
-                ):
-                    bt.add_task(notifier.send_text, chat_id, "Could not process the pending confirmation.")
-                    return {"status": "ignored"}
-                bt.add_task(
-                    _submit_confirmed_fix_request,
-                    confirmed.job_request,
-                    confirmed.original_text or confirmed.job_request.instruction,
-                    bt,
-                )
-                return {"status": "accepted"}
+            # Confirmation is button-only (Yes/No); any typed message cancels the pending fix.
             cc.confirmation_store.pop(scope_project, chat_id)
             bt.add_task(notifier.send_text, chat_id, "Cancelled the fix job.")
             return {"status": "ignored"}

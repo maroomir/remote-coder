@@ -354,15 +354,12 @@ def test_parse_natural_reply_includes_unstored_reply_text(project_registry: Proj
 def test_parse_natural_reply_fallback_truncates_long_unstored_reply_text(project_registry: ProjectRegistry):
     db = project_registry.config_path.parent / "parser_reply_text_long.sqlite3"
     store = SQLiteConversationStore(db)
-    store_mock = Mock()
-    store_mock.get.return_value = AdvancedSettings(conversation_reply_snippet_max_chars=500)
     parser = CommandParser(
         project_registry=project_registry,
         default_model=ModelName.CLAUDE,
         conversation_store=store,
-        advanced_settings_store=store_mock,
     )
-    long_reply = "z" * 900
+    long_reply = "z" * 3500
 
     req = parser.parse_natural(
         "이 응답 기준으로 이어서 수정해줘",

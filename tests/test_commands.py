@@ -706,13 +706,8 @@ def test_clear_branch_command_requests_confirmation(project_registry: ProjectReg
     ctx.git_service.delete_local_branches.assert_not_called()
 
 
-def test_clear_branch_command_uses_confirmation_buttons_when_enabled(project_registry: ProjectRegistry):
-    advanced_settings_store = Mock()
-    advanced_settings_store.get.return_value = AdvancedSettings(
-        ui_language="ko",
-        natural_job_confirmation_buttons_enabled=True,
-    )
-    ctx = _ctx(project_registry, advanced_settings_store=advanced_settings_store)
+def test_clear_branch_command_always_shows_confirmation_buttons(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
     registry = CommandRegistry([ClearCommand()])
 
     response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
@@ -720,8 +715,9 @@ def test_clear_branch_command_uses_confirmation_buttons_when_enabled(project_reg
     assert response is not None
     assert "Pending action" in response.text
     assert "Choose whether to run it." in response.text
-    assert "y 또는 `Y`" not in response.text
-    assert response.inline_buttons == [[InlineButton("Yes", "Y"), InlineButton("No", "n")]]
+    assert response.inline_buttons == [
+        [InlineButton("Yes", "__clear_confirm__:yes"), InlineButton("No", "__clear_confirm__:no")]
+    ]
     ctx.git_service.delete_remote_branches.assert_not_called()
     ctx.git_service.delete_local_branches.assert_not_called()
 
@@ -733,7 +729,7 @@ def test_clear_command_lists_cleanup_options_as_buttons(project_registry: Projec
     response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/clear"), ctx)
 
     assert response is not None
-    assert response.text == "Choose what to clear. Confirmation with y/Y is required before running."
+    assert response.text == "Choose what to clear. A confirmation button is required before running."
     assert response.inline_buttons == [
         [
             InlineButton("branch", "/clear branch"),
@@ -758,7 +754,7 @@ def test_clear_branch_confirmation_executes_matching_deletes(project_registry: P
     ctx.git_service.list_local_branches_matching.return_value = ["remote-y"]
     registry = CommandRegistry([ClearCommand()])
     registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
-    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="y"), ctx)
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="__clear_confirm__:yes"), ctx)
     assert "remote-coder" in (text or "")
     assert "remote 1" in (text or "")
     assert "local 1" in (text or "")
@@ -774,7 +770,7 @@ def test_clear_worktrees_confirmation_executes_cleanup(project_registry: Project
     ctx.git_service.cleanup_managed_worktrees.return_value = 2
     registry = CommandRegistry([ClearCommand()])
     registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear worktrees"), ctx)
-    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="y"), ctx)
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="__clear_confirm__:yes"), ctx)
     assert "remote-coder" in (text or "")
     assert "2 worktrees deleted" in (text or "")
     assert "stale entries pruned" in (text or "")
@@ -799,7 +795,7 @@ def test_clear_branch_only_targets_bot_bound_project(project_registry: ProjectRe
     ctx.git_service.list_local_branches_matching.return_value = []
     registry = CommandRegistry([ClearCommand()])
     registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear branch"), ctx)
-    registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="y"), ctx)
+    registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="__clear_confirm__:yes"), ctx)
 
     ctx.git_service.checkout_integrate_branch.assert_called_once()
     called_root = ctx.git_service.checkout_integrate_branch.call_args[0][0]
@@ -824,7 +820,7 @@ def test_clear_worktrees_only_targets_bot_bound_project(project_registry: Projec
     ctx.git_service.cleanup_managed_worktrees.return_value = 0
     registry = CommandRegistry([ClearCommand()])
     registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/clear worktrees"), ctx)
-    registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="y"), ctx)
+    registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="__clear_confirm__:yes"), ctx)
 
     ctx.git_service.cleanup_managed_worktrees.assert_called_once()
     args = ctx.git_service.cleanup_managed_worktrees.call_args[0]
@@ -851,7 +847,7 @@ def test_clear_memory_only_deletes_current_project_and_chat(
     ctx.project_name = "remote-coder"
     registry = CommandRegistry([ClearCommand()])
     registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/clear memory"), ctx)
-    text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="y"), ctx)
+    text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="__clear_confirm__:yes"), ctx)
 
     assert text is not None
     assert "Deleted this chat's conversation memory" in text

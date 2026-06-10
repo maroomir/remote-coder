@@ -69,7 +69,6 @@ parser = CommandParser(
     default_model=ModelName.CLAUDE,
     model_preferences=model_preferences,
     conversation_store=conversation_store,
-    conversation_recent_limit=_adv.conversation_recent_limit,
     advanced_settings_store=advanced_settings_store,
 )
 command_registry = CommandRegistry(commands=build_default_commands())
@@ -157,52 +156,46 @@ async def lifespan(_app: FastAPI):
         remote=adv.git_remote_name,
         system_log=_systemlog,
     )
-    if adv.server_lifecycle_notify_enabled:
-        for instance in instances:
-            ctx = replace(instance.command_context, project_name=instance.project_name)
-            bot_notifier = instance.notifier
-            for chat_id in instance.auth_service.allowed_chat_ids:
-                try:
-                    response = command_registry.dispatch_rich(
-                        TelegramMessage(chat_id=chat_id, user_id=None, text="/start"),
-                        ctx,
+    for instance in instances:
+        ctx = replace(instance.command_context, project_name=instance.project_name)
+        bot_notifier = instance.notifier
+        for chat_id in instance.auth_service.allowed_chat_ids:
+            try:
+                response = command_registry.dispatch_rich(
+                    TelegramMessage(chat_id=chat_id, user_id=None, text="/start"),
+                    ctx,
+                )
+                if response:
+                    text = ui_message(
+                        "server.started",
+                        "✅ Remote AI Coder server started.\n{body}",
+                        body=response.text,
                     )
-                    if response:
-                        text = ui_message(
-                            "server.started",
-                            "✅ Remote AI Coder server started.\n{body}",
-                            body=response.text,
-                        )
-                        if response.inline_buttons:
-                            bot_notifier.send_with_buttons(chat_id, text, response.inline_buttons)
-                        else:
-                            bot_notifier.send_text(chat_id, text)
-                        _systemlog.info("startup notification sent", chat_id=chat_id)
-                except Exception:
-                    _systemlog.exception("startup notification failed", chat_id=chat_id)
-    else:
-        _systemlog.info("lifespan startup notify disabled by settings")
+                    if response.inline_buttons:
+                        bot_notifier.send_with_buttons(chat_id, text, response.inline_buttons)
+                    else:
+                        bot_notifier.send_text(chat_id, text)
+                    _systemlog.info("startup notification sent", chat_id=chat_id)
+            except Exception:
+                _systemlog.exception("startup notification failed", chat_id=chat_id)
     yield
     shutdown_instances = bot_instance_manager.list_all()
     shutdown_chat_total = sum(len(inst.auth_service.allowed_chat_ids) for inst in shutdown_instances)
     _systemlog.info("lifespan shutdown notifying allowed chats count=%d", shutdown_chat_total)
-    if advanced_settings_store.get().server_lifecycle_notify_enabled:
-        for instance in shutdown_instances:
-            bot_notifier = instance.notifier
-            for chat_id in instance.auth_service.allowed_chat_ids:
-                try:
-                    bot_notifier.send_text(
-                        chat_id,
-                        ui_message(
-                            "server.shutdown",
-                            "🔴 Remote AI Coder server connection closed.",
-                        ),
-                    )
-                    _systemlog.info("shutdown notification sent", chat_id=chat_id)
-                except Exception:
-                    _systemlog.exception("shutdown notification failed", chat_id=chat_id)
-    else:
-        _systemlog.info("lifespan shutdown notify disabled by settings")
+    for instance in shutdown_instances:
+        bot_notifier = instance.notifier
+        for chat_id in instance.auth_service.allowed_chat_ids:
+            try:
+                bot_notifier.send_text(
+                    chat_id,
+                    ui_message(
+                        "server.shutdown",
+                        "🔴 Remote AI Coder server connection closed.",
+                    ),
+                )
+                _systemlog.info("shutdown notification sent", chat_id=chat_id)
+            except Exception:
+                _systemlog.exception("shutdown notification failed", chat_id=chat_id)
 
 
 app = FastAPI(title="Remote AI Coder", lifespan=lifespan)

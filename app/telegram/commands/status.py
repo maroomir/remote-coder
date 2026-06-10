@@ -27,6 +27,7 @@ _STATUS_EMOJI: dict[str, str] = {
 _STDOUT_TAIL = 1500
 _STDERR_TAIL = 800
 _MAX_CHANGED_FILES = 10
+_RECENT_JOB_LIMIT = 10
 
 
 class StatusCommand(TelegramCommand):
@@ -144,9 +145,7 @@ class StatusCommand(TelegramCommand):
 
     @staticmethod
     def _job_limit(ctx: CommandContext) -> int:
-        if ctx.advanced_settings_store is None:
-            return 10
-        return ctx.advanced_settings_store.get().status_recent_job_limit
+        return _RECENT_JOB_LIMIT
 
     def get_inline_buttons(
         self,

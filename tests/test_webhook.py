@@ -170,6 +170,24 @@ class DummyNotifier:
         self.answered_toasts.append((callback_query_id, text, show_alert))
 
 
+def _confirm_via_button(client, wh, notifier, update_id, *, message_id=900, yes=True):
+    """Tap the Yes (or No) button of the most recent buttoned confirmation."""
+    buttons = notifier.sent_with_buttons[-1][2]
+    data = buttons[0][0].callback_data if yes else buttons[0][1].callback_data
+    return client.post(
+        wh,
+        json={
+            "update_id": update_id,
+            "callback_query": {
+                "id": f"cq_{update_id}",
+                "from": {"id": 999},
+                "message": {"chat": {"id": 123}, "message_id": message_id},
+                "data": data,
+            },
+        },
+    )
+
+
 def _webhook_url(project_registry: ProjectRegistry) -> str:
     record = project_registry.get("remote-coder")
     assert record is not None
@@ -262,19 +280,14 @@ def test_webhook_accepts_natural_message(project_registry):
         "message": {"message_id": 1, "text": "fix tests", "chat": {"id": 123}, "from": {"id": 999}},
     }
     response = client.post(wh, json=payload)
-    confirm_response = client.post(
-        wh,
-        json={
-            "update_id": 2,
-            "message": {"message_id": 2, "text": "Y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    confirm_response = _confirm_via_button(client, wh, notifier, 2)
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert notifier.sent[0][1].startswith("Confirm the work to run.")
-    assert "- Project: remote-coder" in notifier.sent[0][1]
-    assert "- Work branch: main" in notifier.sent[0][1]
-    assert "- Model: claude" in notifier.sent[0][1]
+    conf_text = notifier.sent_with_buttons[0][1]
+    assert conf_text.startswith("Confirm the work to run.")
+    assert "- Project: remote-coder" in conf_text
+    assert "- Work branch: main" in conf_text
+    assert "- Model: claude" in conf_text
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "accepted"
 
@@ -338,16 +351,10 @@ def test_webhook_plan_mode_requires_confirmation_then_accepts_y(project_registry
     assert pending.job_request is not None
     assert pending.job_request.mode == JobMode.PLAN
     assert "outline the refactor" in pending.job_request.instruction
-    assert "- Mode: plan" in notifier.sent[0][1]
+    assert "- Mode: plan" in notifier.sent_with_buttons[0][1]
     git_service.get_current_branch.assert_called_once()
 
-    confirm_response = client.post(
-        wh,
-        json={
-            "update_id": 11,
-            "message": {"message_id": 11, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    confirm_response = _confirm_via_button(client, wh, notifier, 11)
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "accepted"
     assert confirm_response.json()["job_id"] == "job_1"
@@ -410,13 +417,7 @@ def test_webhook_binds_confirmed_plan_user_message_to_job_id(project_registry, t
             },
         },
     )
-    confirm_response = client.post(
-        wh,
-        json={
-            "update_id": 41,
-            "message": {"message_id": 41, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    confirm_response = _confirm_via_button(client, wh, notifier, 41)
 
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "accepted"
@@ -488,13 +489,7 @@ def test_webhook_slash_plan_requires_confirmation_then_accepts_y(project_registr
     assert "outline only" in pending.job_request.instruction
     git_service.get_current_branch.assert_called_once()
 
-    confirm_response = client.post(
-        wh,
-        json={
-            "update_id": 13,
-            "message": {"message_id": 13, "text": "Y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    confirm_response = _confirm_via_button(client, wh, notifier, 13)
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "accepted"
     assert job_manager.last_request.mode == JobMode.PLAN
@@ -580,7 +575,7 @@ def test_webhook_empty_slash_plan_waits_for_next_instruction(project_registry):
     assert pending.job_request.model == ModelName.CODEX
     assert pending.job_request.instruction == "outline only"
     assert pending.original_text == "model: codex outline only"
-    assert "- Mode: plan" in notifier.sent[-1][1]
+    assert "- Mode: plan" in notifier.sent_with_buttons[-1][1]
     git_service.get_current_branch.assert_called_once()
 
 
@@ -652,7 +647,7 @@ def test_webhook_empty_slash_ask_waits_for_next_instruction(project_registry):
     assert pending.job_request is not None
     assert pending.job_request.mode == JobMode.ASK
     assert "routing" in pending.job_request.instruction
-    assert "- Mode: ask" in notifier.sent[-1][1]
+    assert "- Mode: ask" in notifier.sent_with_buttons[-1][1]
 
 
 def test_webhook_init_cancels_empty_slash_plan_wait(project_registry):
@@ -774,16 +769,10 @@ def test_webhook_ask_mode_requires_confirmation_then_accepts_y(project_registry)
     assert pending is not None
     assert pending.job_request.mode == JobMode.ASK
     assert "routing" in pending.job_request.instruction
-    assert "- Mode: ask" in notifier.sent[0][1]
+    assert "- Mode: ask" in notifier.sent_with_buttons[0][1]
     git_service.get_current_branch.assert_called_once()
 
-    confirm_response = client.post(
-        wh,
-        json={
-            "update_id": 12,
-            "message": {"message_id": 12, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    confirm_response = _confirm_via_button(client, wh, notifier, 12)
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "accepted"
     assert job_manager.last_request.mode == JobMode.ASK
@@ -858,15 +847,9 @@ def test_webhook_natural_pending_replaced_silently_when_new_message_parses(proje
     assert pending.job_request is not None
     assert pending.job_request.mode == JobMode.PLAN
     assert "outline only" in pending.job_request.instruction
-    assert notifier.sent[-1][1].count("- Mode: plan") >= 1
+    assert notifier.sent_with_buttons[-1][1].count("- Mode: plan") >= 1
 
-    confirm = client.post(
-        wh,
-        json={
-            "update_id": 22,
-            "message": {"message_id": 22, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    confirm = _confirm_via_button(client, wh, notifier, 22)
     assert confirm.json()["status"] == "accepted"
     assert job_manager.last_request is not None
     assert job_manager.last_request.mode == JobMode.PLAN
@@ -941,7 +924,6 @@ def test_webhook_accepts_natural_message_with_confirmation_buttons(project_regis
     advanced_settings_store = Mock()
     advanced_settings_store.get.return_value = AdvancedSettings(
         ui_language="ko",
-        natural_job_confirmation_buttons_enabled=True,
     )
     command_context = CommandContext(
         job_store=store,
@@ -1018,7 +1000,6 @@ def test_webhook_cancels_natural_message_with_confirmation_button(project_regist
     advanced_settings_store = Mock()
     advanced_settings_store.get.return_value = AdvancedSettings(
         ui_language="ko",
-        natural_job_confirmation_buttons_enabled=True,
     )
     command_context = CommandContext(
         job_store=store,
@@ -1176,20 +1157,14 @@ def test_webhook_executes_pending_clear_confirmation(project_registry):
             "message": {"message_id": 10, "text": "/clear branch", "chat": {"id": 123}, "from": {"id": 999}},
         },
     )
-    confirm_response = client.post(
-        wh,
-        json={
-            "update_id": 11,
-            "message": {"message_id": 11, "text": "Y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    confirm_response = _confirm_via_button(client, wh, notifier, 11)
 
     assert prompt_response.status_code == 200
     assert prompt_response.json()["status"] == "ok"
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "ok"
-    assert "Pending action" in notifier.sent[0][1]
-    assert "remote 1" in notifier.sent[1][1]
+    assert "Pending action" in notifier.sent_with_buttons[0][1]
+    assert "remote 1" in notifier.sent[0][1]
 
 
 def test_webhook_executes_pending_clear_confirmation_with_buttons(project_registry):
@@ -1202,7 +1177,6 @@ def test_webhook_executes_pending_clear_confirmation_with_buttons(project_regist
     advanced_settings_store = Mock()
     advanced_settings_store.get.return_value = AdvancedSettings(
         ui_language="ko",
-        natural_job_confirmation_buttons_enabled=True,
     )
     command_context = CommandContext(
         job_store=store,
@@ -1317,20 +1291,14 @@ def test_webhook_executes_pending_clear_worktrees_confirmation(project_registry)
             "message": {"message_id": 20, "text": "/clear worktrees", "chat": {"id": 123}, "from": {"id": 999}},
         },
     )
-    confirm_response = client.post(
-        wh,
-        json={
-            "update_id": 21,
-            "message": {"message_id": 21, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    confirm_response = _confirm_via_button(client, wh, notifier, 21)
 
     assert prompt_response.status_code == 200
     assert prompt_response.json()["status"] == "ok"
     assert confirm_response.status_code == 200
     assert confirm_response.json()["status"] == "ok"
-    assert "Pending action" in notifier.sent[0][1]
-    assert "3 worktrees deleted" in notifier.sent[1][1]
+    assert "Pending action" in notifier.sent_with_buttons[0][1]
+    assert "3 worktrees deleted" in notifier.sent[0][1]
 
 
 def test_webhook_ambiguous_followup_uses_conversation_history(project_registry, tmp_path):
@@ -1390,13 +1358,7 @@ def test_webhook_ambiguous_followup_uses_conversation_history(project_registry, 
             "message": {"message_id": 2, "text": "작업 시작해줘", "chat": {"id": 123}, "from": {"id": 999}},
         },
     )
-    confirm_response = client.post(
-        wh,
-        json={
-            "update_id": 3,
-            "message": {"message_id": 3, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    confirm_response = _confirm_via_button(client, wh, notifier, 3)
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert confirm_response.status_code == 200
@@ -1575,13 +1537,7 @@ def test_webhook_reply_reuses_bound_branch(project_registry, tmp_path):
             },
         },
     )
-    confirm_response = client.post(
-        wh,
-        json={
-            "update_id": 6,
-            "message": {"message_id": 3, "text": "Y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    confirm_response = _confirm_via_button(client, wh, notifier, 6)
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
@@ -1648,13 +1604,7 @@ def test_webhook_appends_user_message_with_telegram_ids(project_registry, tmp_pa
             },
         },
     )
-    confirm_response = client.post(
-        wh,
-        json={
-            "update_id": 51,
-            "message": {"message_id": 78, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    confirm_response = _confirm_via_button(client, wh, notifier, 51)
     assert response.status_code == 200
     assert confirm_response.status_code == 200
     recent = conv.list_recent("remote-coder", 123, limit=5)
@@ -1720,13 +1670,7 @@ def test_webhook_records_bot_response_message_ids(project_registry, tmp_path):
             },
         },
     )
-    client.post(
-        wh,
-        json={
-            "update_id": 53,
-            "message": {"message_id": 81, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    _confirm_via_button(client, wh, notifier, 53)
 
     assert conv.get_job_id_for_message_id("remote-coder", 123, 200) == "job_recorded"
     assert conv.get_job_id_for_message_id("remote-coder", 123, 201) == "job_recorded"
@@ -1995,20 +1939,14 @@ def test_webhook_fix_reply_queues_confirmation_and_executes(project_registry, tm
     )
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert any("Confirm the fix job" in text for _, text in notifier.sent)
+    assert any("Confirm the fix job" in m[1] for m in notifier.sent_with_buttons)
     pending = command_context.confirmation_store.get("remote-coder", 123)
     assert pending is not None
     assert pending.job_request is not None
     assert pending.job_request.instruction == "add tests"
     assert pending.job_request.parent_job_id == parent_job.id
 
-    confirm = client.post(
-        wh,
-        json={
-            "update_id": 71,
-            "message": {"message_id": 81, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
-        },
-    )
+    confirm = _confirm_via_button(client, wh, notifier, 71)
     assert confirm.status_code == 200
     assert confirm.json()["status"] == "accepted"
     fix_manager.execute_fix_job.assert_called_once()
@@ -2096,7 +2034,12 @@ def test_webhook_logs_inbound_and_job_accepted(caplog, project_registry):
             wh,
             json={
                 "update_id": 2,
-                "message": {"message_id": 2, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
+                "callback_query": {
+                    "id": "cq_accept",
+                    "from": {"id": 999},
+                    "message": {"chat": {"id": 123}, "message_id": 2},
+                    "data": "__natural_job__:yes",
+                },
             },
         )
     names = [r.name for r in caplog.records]

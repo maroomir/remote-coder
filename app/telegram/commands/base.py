@@ -199,12 +199,6 @@ def _job_button_label(job: Job) -> str:
     return f"{job.id} ({job.status.value})"
 
 
-def _confirmation_buttons_enabled(ctx: CommandContext) -> bool:
-    if ctx.advanced_settings_store is None:
-        return False
-    return ctx.advanced_settings_store.get().natural_job_confirmation_buttons_enabled
-
-
 def effective_git_remote_name(ctx: CommandContext) -> str:
     if ctx.advanced_settings_store is not None:
         return ctx.advanced_settings_store.get().git_remote_name

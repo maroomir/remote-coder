@@ -88,13 +88,9 @@ class CommandParser:
         self._advanced_settings_store = advanced_settings_store
 
     def _effective_conversation_recent_limit(self) -> int:
-        if self._advanced_settings_store is not None:
-            return self._advanced_settings_store.get().conversation_recent_limit
         return self._conversation_recent_limit
 
     def _effective_reply_snippet_max_chars(self) -> int:
-        if self._advanced_settings_store is not None:
-            return self._advanced_settings_store.get().conversation_reply_snippet_max_chars
         if self._conversation_store is not None:
             return self._conversation_store.snippet_max_chars()
         return CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT

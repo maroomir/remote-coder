@@ -399,18 +399,19 @@ def test_admin_api_advanced_settings_get_default(test_settings, project_registry
     assert r.status_code == 200
     data = r.json()
     assert data["ui_language"] == "en"
-    assert data["server_lifecycle_notify_enabled"] is True
     assert data["pull_projects_on_server_startup_enabled"] is False
     assert data["auto_merge_to_main_enabled"] is False
     assert data["delete_rebased_branch_enabled"] is True
-    assert data["natural_job_confirmation_buttons_enabled"] is False
     assert data["conversation_memory_limit_enabled"] is False
     assert data["job_timeout_seconds"] == 1800
     assert data["git_remote_name"] == "origin"
     assert data["codex_sandbox"] == "workspace-write"
-    assert data["conversation_recent_limit"] == 10
-    assert data["conversation_reply_snippet_max_chars"] == 3000
     assert data["keep_worktree_on_success"] is True
+    assert "natural_job_confirmation_buttons_enabled" not in data
+    assert "server_lifecycle_notify_enabled" not in data
+    assert "status_recent_job_limit" not in data
+    assert "conversation_recent_limit" not in data
+    assert "conversation_reply_snippet_max_chars" not in data
 
 
 def test_admin_api_advanced_settings_put_and_persist(test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store):
@@ -421,42 +422,32 @@ def test_admin_api_advanced_settings_put_and_persist(test_settings, project_regi
     client = TestClient(app)
     body = {
         "ui_language": "en",
-        "server_lifecycle_notify_enabled": False,
         "pull_projects_on_server_startup_enabled": True,
         "auto_merge_to_main_enabled": True,
         "delete_rebased_branch_enabled": False,
-        "natural_job_confirmation_buttons_enabled": True,
         "conversation_memory_limit_enabled": True,
         "conversation_memory_max_rows": 100,
         "conversation_memory_max_bytes": None,
-        "status_recent_job_limit": 7,
         "job_timeout_seconds": 3600,
         "git_remote_name": "upstream",
         "keep_worktree_on_success": False,
         "codex_sandbox": "read-only",
-        "conversation_recent_limit": 5,
-        "conversation_reply_snippet_max_chars": 1200,
     }
     put = client.put("/api/advanced-settings", json=body)
     assert put.status_code == 200
-    assert put.json()["server_lifecycle_notify_enabled"] is False
     assert put.json()["pull_projects_on_server_startup_enabled"] is True
     assert put.json()["auto_merge_to_main_enabled"] is True
     assert put.json()["delete_rebased_branch_enabled"] is False
-    assert put.json()["natural_job_confirmation_buttons_enabled"] is True
     assert put.json()["job_timeout_seconds"] == 3600
-    assert put.json()["conversation_reply_snippet_max_chars"] == 1200
+    assert put.json()["git_remote_name"] == "upstream"
     get = client.get("/api/advanced-settings")
-    assert get.json()["server_lifecycle_notify_enabled"] is False
     assert get.json()["pull_projects_on_server_startup_enabled"] is True
     assert get.json()["conversation_memory_max_rows"] == 100
     assert get.json()["delete_rebased_branch_enabled"] is False
-    assert get.json()["natural_job_confirmation_buttons_enabled"] is True
-    assert get.json()["status_recent_job_limit"] == 7
-    assert get.json()["conversation_reply_snippet_max_chars"] == 1200
+    assert get.json()["keep_worktree_on_success"] is False
 
 
-def test_admin_api_advanced_settings_put_invalid_snippet_returns_422(
+def test_admin_api_advanced_settings_put_rejects_removed_field(
     test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
 ):
     app = FastAPI()
@@ -470,7 +461,6 @@ def test_admin_api_advanced_settings_put_invalid_snippet_returns_422(
             "auto_merge_to_main_enabled": False,
             "delete_rebased_branch_enabled": True,
             "natural_job_confirmation_buttons_enabled": False,
-            "conversation_reply_snippet_max_chars": 100,
         },
     )
     assert r.status_code == 422
@@ -489,7 +479,6 @@ def test_admin_api_advanced_settings_put_invalid_memory_returns_422(
         json={
             "auto_merge_to_main_enabled": False,
             "delete_rebased_branch_enabled": True,
-            "natural_job_confirmation_buttons_enabled": False,
             "conversation_memory_limit_enabled": True,
             "conversation_memory_max_rows": None,
             "conversation_memory_max_bytes": None,

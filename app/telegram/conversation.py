@@ -104,8 +104,6 @@ class SQLiteConversationStore:
         return self._db_path
 
     def snippet_max_chars(self) -> int:
-        if self._advanced_settings_store is not None:
-            return self._advanced_settings_store.get().conversation_reply_snippet_max_chars
         return CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT
 
     def ensure_schema(self) -> None:

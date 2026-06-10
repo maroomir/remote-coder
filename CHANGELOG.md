@@ -16,6 +16,9 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 - **Admin UI redesign**: All admin pages share a responsive sidebar dashboard layout and a single stylesheet (`admin.css`) with a refreshed, modern theme. The home page is now a dashboard; project registration, advanced settings, logs, and the data browser keep their behavior under the new shell.
 - **Telegram message styling**: Outbound bot messages are now rendered BotFather-style with Telegram message entities — bold titles and section headings, monospace Job ID/branch/commit values — while the message text itself stays unchanged.
+- **In-chat panels edit in place**: Tapping a menu/submenu button now edits the existing message instead of sending a new one, with a lightweight toast on actions and consistent ‹ Back / ✖ Close navigation. The `/status <job_id>` view gains status-aware action buttons (Stop, or Open PR / Rebase).
+- **Button-only confirmations**: Job, fix, and clear confirmations always use inline Yes/No buttons; the `y`/`Y` text path and the related advanced setting were removed.
+- **Slimmer Advanced Settings**: Removed five rarely-used options — confirmation-button toggle, server start/stop notification toggle, `/status` recent-job count, ambiguous follow-up conversation count, and reply-snippet max length — and hardcoded them to their previous defaults. Existing config files drop the old keys on load.
 
 ## [0.4.4] — 2026-06-10
 

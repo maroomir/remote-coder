@@ -14,26 +14,31 @@ CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT = 3000
 CONVERSATION_REPLY_SNIPPET_MAX_CHARS_MIN = 200
 CONVERSATION_REPLY_SNIPPET_MAX_CHARS_MAX = 20000
 
+# Settings retired for usability; popped on load so old config files still validate.
+_REMOVED_SETTING_KEYS = (
+    "auto_pull_on_project_switch",
+    "server_lifecycle_notify_enabled",
+    "natural_job_confirmation_buttons_enabled",
+    "status_recent_job_limit",
+    "conversation_recent_limit",
+    "conversation_reply_snippet_max_chars",
+)
+
 
 class AdvancedSettings(BaseModel):
     model_config = {"extra": "forbid"}
 
     ui_language: UiLanguage = UiLanguage.ENGLISH
-    server_lifecycle_notify_enabled: bool = True
     pull_projects_on_server_startup_enabled: bool = False
     auto_merge_to_main_enabled: bool = False
     delete_rebased_branch_enabled: bool = True
-    natural_job_confirmation_buttons_enabled: bool = False
     conversation_memory_limit_enabled: bool = False
     conversation_memory_max_rows: int | None = None
     conversation_memory_max_bytes: int | None = None
-    status_recent_job_limit: int = 10
     job_timeout_seconds: int = 1800
     git_remote_name: str = "origin"
     keep_worktree_on_success: bool = True
     codex_sandbox: CodexSandboxMode = CodexSandboxMode.WORKSPACE_WRITE
-    conversation_recent_limit: int = 10
-    conversation_reply_snippet_max_chars: int = CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT
 
     @model_validator(mode="after")
     def _validate_memory_limits(self) -> Self:
@@ -51,22 +56,8 @@ class AdvancedSettings(BaseModel):
             raise ValueError("conversation_memory_max_rows must be positive or blank.")
         if self.conversation_memory_max_bytes is not None and self.conversation_memory_max_bytes <= 0:
             raise ValueError("conversation_memory_max_bytes must be positive or blank.")
-        if self.status_recent_job_limit < 1:
-            raise ValueError("status_recent_job_limit must be at least 1.")
         if self.job_timeout_seconds <= 0:
             raise ValueError("job_timeout_seconds must be positive.")
-        if self.conversation_recent_limit < 1:
-            raise ValueError("conversation_recent_limit must be at least 1.")
-        if not (
-            CONVERSATION_REPLY_SNIPPET_MAX_CHARS_MIN
-            <= self.conversation_reply_snippet_max_chars
-            <= CONVERSATION_REPLY_SNIPPET_MAX_CHARS_MAX
-        ):
-            raise ValueError(
-                "conversation_reply_snippet_max_chars must be between "
-                f"{CONVERSATION_REPLY_SNIPPET_MAX_CHARS_MIN} and "
-                f"{CONVERSATION_REPLY_SNIPPET_MAX_CHARS_MAX}.",
-            )
         return self
 
 
@@ -92,7 +83,8 @@ class FileAdvancedSettingsStore:
             raw = self._path.read_text(encoding="utf-8")
             data = json.loads(raw) if raw.strip() else {}
             if isinstance(data, dict):
-                data.pop("auto_pull_on_project_switch", None)
+                for removed_key in _REMOVED_SETTING_KEYS:
+                    data.pop(removed_key, None)
             self._cached = AdvancedSettings.model_validate(data)
             return self._cached.model_copy(deep=True)
 
