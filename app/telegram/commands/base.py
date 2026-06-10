@@ -170,6 +170,31 @@ def _button_rows(buttons: list[InlineButton], per_row: int = 2) -> list[list[Inl
     return [buttons[i : i + per_row] for i in range(0, len(buttons), per_row)]
 
 
+NAV_CLOSE_CALLBACK = "__close__"
+
+
+def with_nav_row(
+    rows: list[list[InlineButton]] | None,
+    *,
+    back_to: str | None = None,
+    closeable: bool = True,
+) -> list[list[InlineButton]]:
+    """Append a standard navigation row (‹ Back / ✖ Close) to a keyboard.
+
+    ``back_to`` is the parent view's command string (stateless; reconstructed on
+    the next callback). ``closeable`` adds a Close button that collapses the panel.
+    """
+    result = [list(row) for row in (rows or [])]
+    nav: list[InlineButton] = []
+    if back_to is not None:
+        nav.append(InlineButton("‹ Back", back_to))
+    if closeable:
+        nav.append(InlineButton("✖ Close", NAV_CLOSE_CALLBACK))
+    if nav:
+        result.append(nav)
+    return result
+
+
 def _job_button_label(job: Job) -> str:
     return f"{job.id} ({job.status.value})"
 

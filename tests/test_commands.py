@@ -188,6 +188,7 @@ def test_start_menu_places_model_under_manage(project_registry: ProjectRegistry)
         [InlineButton("Help", "/help"), InlineButton("Modes", "/start modes")],
         [InlineButton("Monitor", "/monitor"), InlineButton("Clean", "/clear")],
         [InlineButton("Manage", "/start manage"), InlineButton("Reports", "/reports")],
+        [InlineButton("✖ Close", "__close__")],
     ]
     assert manage_response is not None
     assert manage_response.inline_buttons == [
@@ -195,7 +196,7 @@ def test_start_menu_places_model_under_manage(project_registry: ProjectRegistry)
         [InlineButton("Rebase", "/rebase"), InlineButton("Open PR", "/pr")],
         [InlineButton("Stop", "/stop"), InlineButton("Status", "/status")],
         [InlineButton("Model", "/model"), InlineButton("Reset", "/init")],
-        [InlineButton("Back", "/start")],
+        [InlineButton("‹ Back", "/start"), InlineButton("✖ Close", "__close__")],
     ]
 
 
@@ -212,7 +213,7 @@ def test_start_modes_shows_mode_help_buttons(project_registry: ProjectRegistry):
             InlineButton("ASK mode", "/help ask"),
             InlineButton("FIX mode", "/help fix"),
         ],
-        [InlineButton("Back", "/start")],
+        [InlineButton("‹ Back", "/start"), InlineButton("✖ Close", "__close__")],
     ]
 
 
@@ -226,6 +227,7 @@ def test_start_model_topic_falls_back_to_main_menu(project_registry: ProjectRegi
         [InlineButton("Help", "/help"), InlineButton("Modes", "/start modes")],
         [InlineButton("Monitor", "/monitor"), InlineButton("Clean", "/clear")],
         [InlineButton("Manage", "/start manage"), InlineButton("Reports", "/reports")],
+        [InlineButton("✖ Close", "__close__")],
     ]
 
 
@@ -264,7 +266,7 @@ def test_help_plan_topic_shows_back_button(project_registry: ProjectRegistry):
         _ctx(project_registry),
     )
     assert response is not None
-    assert response.inline_buttons == [[InlineButton("← Back", "/help")]]
+    assert response.inline_buttons == [[InlineButton("‹ Back", "/help"), InlineButton("✖ Close", "__close__")]]
 
 
 def test_status_command_dispatch(project_registry: ProjectRegistry):

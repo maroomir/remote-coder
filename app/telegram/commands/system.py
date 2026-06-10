@@ -16,6 +16,7 @@ from app.telegram.commands.base import (
     effective_model_for_chat,
     effective_project_name_for_chat,
     format_usage,
+    with_nav_row,
 )
 
 
@@ -77,42 +78,34 @@ class StartCommand(TelegramCommand):
         topic = tokens[1].lower() if len(tokens) == 2 else ""
 
         if topic == "manage":
-            return [
+            return with_nav_row(
                 [
-                    InlineButton("Branch", "/branch"),
-                    InlineButton("Pull", "/pull"),
+                    [InlineButton("Branch", "/branch"), InlineButton("Pull", "/pull")],
+                    [InlineButton("Rebase", "/rebase"), InlineButton("Open PR", "/pr")],
+                    [InlineButton("Stop", "/stop"), InlineButton("Status", "/status")],
+                    [InlineButton("Model", "/model"), InlineButton("Reset", "/init")],
                 ],
-                [
-                    InlineButton("Rebase", "/rebase"),
-                    InlineButton("Open PR", "/pr"),
-                ],
-                [
-                    InlineButton("Stop", "/stop"),
-                    InlineButton("Status", "/status"),
-                ],
-                [
-                    InlineButton("Model", "/model"),
-                    InlineButton("Reset", "/init"),
-                ],
-                [
-                    InlineButton("Back", "/start"),
-                ],
-            ]
+                back_to="/start",
+            )
         if topic == "modes":
-            return [
+            return with_nav_row(
                 [
-                    InlineButton("AGENTS mode", "/help agent"),
-                    InlineButton("PLAN mode", "/help plan"),
-                    InlineButton("ASK mode", "/help ask"),
-                    InlineButton("FIX mode", "/help fix"),
+                    [
+                        InlineButton("AGENTS mode", "/help agent"),
+                        InlineButton("PLAN mode", "/help plan"),
+                        InlineButton("ASK mode", "/help ask"),
+                        InlineButton("FIX mode", "/help fix"),
+                    ],
                 ],
-                [InlineButton("Back", "/start")],
+                back_to="/start",
+            )
+        return with_nav_row(
+            [
+                [InlineButton("Help", "/help"), InlineButton("Modes", "/start modes")],
+                [InlineButton("Monitor", "/monitor"), InlineButton("Clean", "/clear")],
+                [InlineButton("Manage", "/start manage"), InlineButton("Reports", "/reports")],
             ]
-        return [
-            [InlineButton("Help", "/help"), InlineButton("Modes", "/start modes")],
-            [InlineButton("Monitor", "/monitor"), InlineButton("Clean", "/clear")],
-            [InlineButton("Manage", "/start manage"), InlineButton("Reports", "/reports")],
-        ]
+        )
 
 
 class HelpCommand(TelegramCommand):
@@ -151,11 +144,11 @@ class HelpCommand(TelegramCommand):
         if len(tokens) >= 2:
             topic = tokens[1].lower()
             if topic in ("agent", "agents", "plan", "ask", "fix"):
-                return [[InlineButton("← Back", "/help")]]
+                return with_nav_row(None, back_to="/help")
             subcmd = self._registry.get("/" + tokens[1])
             if subcmd is not None:
                 sub_buttons = subcmd.get_inline_buttons(None, ctx) or []
-                return sub_buttons + [[InlineButton("← Back", "/help")]]
+                return with_nav_row(sub_buttons, back_to="/help")
         menu_cmds = [
             cmd for name, cmd in self._registry.items()
             if name not in ("/help", "/start") and cmd.menu_text
@@ -163,7 +156,7 @@ class HelpCommand(TelegramCommand):
         if not menu_cmds:
             return None
         buttons = [InlineButton(cmd.name[1:], f"/help {cmd.name[1:]}") for cmd in menu_cmds]
-        return _button_rows(buttons, per_row=2)
+        return with_nav_row(_button_rows(buttons, per_row=2))
 
 
 class InitCommand(TelegramCommand):

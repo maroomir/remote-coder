@@ -22,6 +22,7 @@ from app.telegram.commands import (
     CommandResponse,
     FIX_SOURCE_AWAIT_ACTION,
     FIX_SOURCE_PENDING_ACTION,
+    NAV_CLOSE_CALLBACK,
     InlineButton,
     TelegramMessage,
     effective_project_name_for_chat,
@@ -70,7 +71,7 @@ _NATURAL_JOB_CONFIRMATION = "__natural_job__"
 _NATURAL_JOB_CONFIRM_YES = "__natural_job__:yes"
 _NATURAL_JOB_CONFIRM_NO = "__natural_job__:no"
 _NATURAL_JOB_MODE_INPUT = "__natural_job_mode_input__"
-_CLOSE_PANEL = "__close__"
+_CLOSE_PANEL = NAV_CLOSE_CALLBACK
 _TELEGRAM_TEXT_LIMIT = 4096
 
 

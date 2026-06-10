@@ -542,6 +542,7 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("설치: npm install -g @google/gemini-cli", "Install: npm install -g @google/gemini-cli"),
     ("...(생략)", "...(truncated)"),
     ("관리 UI는 로컬호스트에서만 사용할 수 있습니다.", "Admin UI is only available on localhost."),
+    ("닫았습니다.", "Closed."),
 )
 
 _MESSAGE_CATALOG_KO: dict[str, str] = {
@@ -675,6 +676,8 @@ _BUTTON_LABELS = {
     "Reset": "초기화",
     "Back": "뒤로",
     "← Back": "← 뒤로",
+    "‹ Back": "‹ 뒤로",
+    "✖ Close": "✖ 닫기",
     "Yes": "네",
     "No": "아니오",
     "Stop job": "작업 중단",

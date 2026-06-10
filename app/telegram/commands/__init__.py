@@ -1,5 +1,6 @@
 from app.telegram.commands.base import (
     MODEL_USAGE,
+    NAV_CLOSE_CALLBACK,
     CommandContext,
     CommandResponse,
     ConfirmableCommand,
@@ -10,6 +11,7 @@ from app.telegram.commands.base import (
     effective_model_selection_for_chat,
     effective_project_name_for_chat,
     format_usage,
+    with_nav_row,
 )
 from app.telegram.commands.branch import BranchCommand, PrCommand, PullCommand, RebaseCommand
 from app.telegram.commands.clear_stop import ClearCommand, StopCommand
@@ -30,6 +32,7 @@ from app.telegram.commands.system import HelpCommand, InitCommand, StartCommand
 
 __all__ = [
     "MODEL_USAGE",
+    "NAV_CLOSE_CALLBACK",
     "BranchCommand",
     "ClearCommand",
     "CommandContext",
@@ -59,4 +62,5 @@ __all__ = [
     "effective_model_selection_for_chat",
     "effective_project_name_for_chat",
     "format_usage",
+    "with_nav_row",
 ]

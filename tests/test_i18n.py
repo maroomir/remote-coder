@@ -1,10 +1,16 @@
 from app.models import UiLanguage
-from app.telegram.i18n import translate_text
+from app.telegram.i18n import translate_button_label, translate_text
 
 
 def test_translate_text_leaves_english_unchanged():
     text = "Model provider selected.\n\n- Default model: codex"
     assert translate_text(text, UiLanguage.ENGLISH) == text
+
+
+def test_nav_labels_localize_to_korean():
+    assert translate_button_label("‹ Back", UiLanguage.KOREAN) == "‹ 뒤로"
+    assert translate_button_label("✖ Close", UiLanguage.KOREAN) == "✖ 닫기"
+    assert translate_text("Closed.", UiLanguage.KOREAN) == "닫았습니다."
 
 
 def test_translate_text_codex_rate_limit_window_labels():
