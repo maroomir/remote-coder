@@ -8,6 +8,10 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
+### Changed
+
+- **Telegram message styling**: Outbound bot messages are now rendered BotFather-style with Telegram message entities — bold titles and section headings, monospace Job ID/branch/commit values — while the message text itself stays unchanged.
+
 ## [0.4.4] — 2026-06-10
 
 ### Added

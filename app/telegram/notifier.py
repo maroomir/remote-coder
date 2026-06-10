@@ -10,6 +10,7 @@ from app.ai.model_catalog import format_model_selection
 from app.ai.usage import format_token_usage
 from app.jobs.schemas import Job, JobMode
 from app.monitoring.events import EventLogger
+from app.telegram.formatting import build_message_entities
 from app.telegram.i18n import language_from_settings_store, translate_button_label, translate_text, ui_message
 
 _outbound = EventLogger("app.telegram.outbound", "telegram.outbound")
@@ -243,11 +244,15 @@ class TelegramNotifier:
                 time.sleep(attempt)
         return None
 
-    def _post_message(self, chat_id: int, text: str) -> int | None:
+    def _post_message(self, chat_id: int, text: str, *, with_entities: bool = True) -> int | None:
         _outbound.info("sendMessage start len=%d", len(text), chat_id=chat_id)
+        payload: dict = {"chat_id": chat_id, "text": text}
+        entities = build_message_entities(text) if with_entities else []
+        if entities:
+            payload["entities"] = entities
         response = self._post_with_retry(
             self._api_url,
-            {"chat_id": chat_id, "text": text},
+            payload,
             log_label="sendMessage",
             chat_id=chat_id,
         )
@@ -282,6 +287,9 @@ class TelegramNotifier:
             "text": out_text,
             "reply_markup": {"inline_keyboard": keyboard},
         }
+        entities = build_message_entities(out_text)
+        if entities:
+            payload["entities"] = entities
         button_count = sum(len(row) for row in inline_buttons)
         _outbound.info(
             "sendMessage buttons start len=%d rows=%d buttons=%d",
@@ -356,7 +364,7 @@ class TelegramNotifier:
                 len(chunk),
                 chat_id=chat_id,
             )
-            message_id = self._post_message(chat_id, chunk)
+            message_id = self._post_message(chat_id, chunk, with_entities=idx == 1)
             if message_id is not None:
                 message_ids.append(message_id)
         return message_ids
