@@ -64,7 +64,12 @@ class CommandRegistry:
         command = self._commands.get(head)
         buttons = command.get_inline_buttons(message, ctx) if command is not None else None
         skip_body = _help_response_skips_notifier_body_i18n(message.text)
-        return CommandResponse(text=text, inline_buttons=buttons, skip_notifier_body_i18n=skip_body)
+        return CommandResponse(
+            text=text,
+            inline_buttons=buttons,
+            skip_notifier_body_i18n=skip_body,
+            prefer_edit=buttons is not None,
+        )
 
     def bot_commands(self, language: UiLanguage = UiLanguage.ENGLISH) -> list[dict[str, str]]:
         base = [

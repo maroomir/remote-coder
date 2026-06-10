@@ -426,6 +426,60 @@ def test_notifier_answer_callback_query():
     assert route.called
     payload = json.loads(route.calls[0].request.content)
     assert payload["callback_query_id"] == "cq_abc"
+    assert "text" not in payload
+
+
+@respx.mock
+def test_notifier_answer_callback_query_with_toast_text():
+    route = respx.post("https://api.telegram.org/bottoken/answerCallbackQuery").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    store = type("Store", (), {"get": lambda self: AdvancedSettings(ui_language=UiLanguage.KOREAN)})()
+    notifier = TelegramNotifier("token", store)
+    notifier.answer_callback_query("cq_x", text="작업 중단 요청 완료", show_alert=True)
+    payload = json.loads(route.calls[0].request.content)
+    assert payload["text"]
+    assert payload["show_alert"] is True
+
+
+@respx.mock
+def test_notifier_edit_message_sends_entities_and_keyboard():
+    from app.telegram.commands import InlineButton
+
+    route = respx.post("https://api.telegram.org/bottoken/editMessageText").mock(
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 7}})
+    )
+    notifier = TelegramNotifier("token")
+    buttons = [[InlineButton("claude", "/model claude")]]
+    ok = notifier.edit_message(42, 7, "Model settings\n\n- Current default model: claude", buttons)
+    assert ok is True
+    payload = json.loads(route.calls[0].request.content)
+    assert payload["chat_id"] == 42
+    assert payload["message_id"] == 7
+    assert payload["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "/model claude"
+    assert payload["entities"][0]["type"] == "bold"
+
+
+@respx.mock
+def test_notifier_edit_message_not_modified_is_success_without_retry():
+    route = respx.post("https://api.telegram.org/bottoken/editMessageText").mock(
+        return_value=Response(400, json={"ok": False, "description": "Bad Request: message is not modified"})
+    )
+    notifier = TelegramNotifier("token")
+    ok = notifier.edit_message(1, 2, "same", [])
+    assert ok is True
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_notifier_edit_message_not_found_returns_false():
+    route = respx.post("https://api.telegram.org/bottoken/editMessageText").mock(
+        return_value=Response(400, json={"ok": False, "description": "Bad Request: message to edit not found"})
+    )
+    notifier = TelegramNotifier("token")
+    ok = notifier.edit_message(1, 2, "x", [])
+    assert ok is False
+    assert route.call_count == 1
 
 
 @respx.mock

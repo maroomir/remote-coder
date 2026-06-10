@@ -61,6 +61,7 @@ class CommandResponse:
     text: str
     inline_buttons: list[list["InlineButton"]] | None = None
     skip_notifier_body_i18n: bool = False
+    prefer_edit: bool = False
 
 
 def _help_response_skips_notifier_body_i18n(message_text: str) -> bool:

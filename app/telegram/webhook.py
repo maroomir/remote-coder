@@ -70,6 +70,8 @@ _NATURAL_JOB_CONFIRMATION = "__natural_job__"
 _NATURAL_JOB_CONFIRM_YES = "__natural_job__:yes"
 _NATURAL_JOB_CONFIRM_NO = "__natural_job__:no"
 _NATURAL_JOB_MODE_INPUT = "__natural_job_mode_input__"
+_CLOSE_PANEL = "__close__"
+_TELEGRAM_TEXT_LIMIT = 4096
 
 
 class _RecentUpdateTracker:
@@ -233,6 +235,7 @@ class TelegramCallbackQueryFrom(BaseModel):
 
 class TelegramCallbackQueryMessage(BaseModel):
     chat: TelegramChat
+    message_id: int | None = None
 
 
 class TelegramCallbackQuery(BaseModel):
@@ -313,8 +316,15 @@ def create_webhook_router(
             )
             background_tasks.add_task(notifier.answer_callback_query, cq.id)
             return {"status": "ignored"}
-        notifier.answer_callback_query(cq.id)
+        if cq.data == _CLOSE_PANEL:
+            notifier.answer_callback_query(cq.id, text="Closed.")
+            if cq.message.message_id is not None:
+                background_tasks.add_task(
+                    partial(notifier.edit_message, cq_chat_id, cq.message.message_id, "Closed.", [])
+                )
+            return {"status": "ok"}
         if cq.data in {_NATURAL_JOB_CONFIRM_YES, _NATURAL_JOB_CONFIRM_NO}:
+            notifier.answer_callback_query(cq.id)
             pending = command_context.confirmation_store.get(scope_project, cq_chat_id)
             if pending is None or pending.command_name != _NATURAL_JOB_CONFIRMATION:
                 background_tasks.add_task(notifier.send_text, cq_chat_id, "There is no pending confirmation.")
@@ -338,42 +348,61 @@ def create_webhook_router(
             return {"status": "accepted", "job_id": job.id}
         cq_message = TelegramMessage(chat_id=cq_chat_id, user_id=cq_user_id, text=cq.data)
         cq_response = command_registry.dispatch_rich(cq_message, command_context)
-        if cq_response:
-            button_rows = len(cq_response.inline_buttons or [])
-            _cmdlog.info(
-                "callback_query handled cmd=%s response_len=%d button_rows=%d",
-                cq_preview or "(empty)",
-                len(cq_response.text),
-                button_rows,
-                chat_id=cq_chat_id,
-                user_id=cq_user_id,
-            )
-            if cq_response.inline_buttons:
-                background_tasks.add_task(
-                    partial(
-                        notifier.send_with_buttons,
-                        cq_chat_id,
-                        cq_response.text,
-                        cq_response.inline_buttons,
-                        skip_body_i18n=cq_response.skip_notifier_body_i18n,
-                    )
-                )
-            else:
-                background_tasks.add_task(
-                    partial(
-                        notifier.send_text,
-                        cq_chat_id,
-                        cq_response.text,
-                        skip_body_i18n=cq_response.skip_notifier_body_i18n,
-                    )
-                )
-        else:
+        if cq_response is None:
+            notifier.answer_callback_query(cq.id)
             _cmdlog.info(
                 "callback_query no command response cmd=%s",
                 cq_preview or "(empty)",
                 chat_id=cq_chat_id,
                 user_id=cq_user_id,
             )
+            return {"status": "ok"}
+        buttons = cq_response.inline_buttons
+        mid = cq.message.message_id
+        skip = cq_response.skip_notifier_body_i18n
+        too_long = len(cq_response.text) > _TELEGRAM_TEXT_LIMIT
+        _cmdlog.info(
+            "callback_query handled cmd=%s response_len=%d button_rows=%d edit=%s",
+            cq_preview or "(empty)",
+            len(cq_response.text),
+            len(buttons or []),
+            cq_response.prefer_edit and mid is not None and not too_long,
+            chat_id=cq_chat_id,
+            user_id=cq_user_id,
+        )
+        if cq_response.prefer_edit and mid is not None and not too_long:
+            # Navigable panel: edit the originating message in place; fall back to a
+            # new message if the edit cannot be applied (message too old / not editable).
+            def _edit_or_send(
+                chat_id: int = cq_chat_id,
+                message_id: int = mid,
+                text: str = cq_response.text,
+                rows: list | None = buttons,
+                skip_body: bool = skip,
+            ) -> None:
+                if notifier.edit_message(chat_id, message_id, text, rows or [], skip_body_i18n=skip_body):
+                    return
+                if rows:
+                    notifier.send_with_buttons(chat_id, text, rows, skip_body_i18n=skip_body)
+                else:
+                    notifier.send_text(chat_id, text, skip_body_i18n=skip_body)
+
+            background_tasks.add_task(_edit_or_send)
+            notifier.answer_callback_query(cq.id)
+        elif buttons and not too_long:
+            background_tasks.add_task(
+                partial(notifier.send_with_buttons, cq_chat_id, cq_response.text, buttons, skip_body_i18n=skip)
+            )
+            notifier.answer_callback_query(cq.id)
+        else:
+            # Terminal result: keep it as a record (new message) with a lightweight toast.
+            if too_long:
+                background_tasks.add_task(notifier.send_long_text, cq_chat_id, cq_response.text)
+            else:
+                background_tasks.add_task(
+                    partial(notifier.send_text, cq_chat_id, cq_response.text, skip_body_i18n=skip)
+                )
+            notifier.answer_callback_query(cq.id, text=cq_response.text.split("\n", 1)[0])
         return {"status": "ok"}
 
     def _queue_natural_confirmation(req: _Req, request: JobRequest, original_text_stripped: str) -> bool:

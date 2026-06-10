@@ -28,7 +28,23 @@ class Notifier(Protocol):
         skip_body_i18n: bool = False,
     ) -> int | None: ...
 
-    def answer_callback_query(self, callback_query_id: str) -> None: ...
+    def edit_message(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        inline_buttons: list,
+        *,
+        skip_body_i18n: bool = False,
+    ) -> bool: ...
+
+    def answer_callback_query(
+        self,
+        callback_query_id: str,
+        *,
+        text: str | None = None,
+        show_alert: bool = False,
+    ) -> None: ...
 
     def send_job_accepted(self, job: Job) -> int | None: ...
 
@@ -191,8 +207,11 @@ class TelegramNotifier:
     _TELEGRAM_TEXT_LIMIT = 4096
     _MAX_ATTEMPTS = 3
 
+    _CALLBACK_TOAST_LIMIT = 200
+
     def __init__(self, bot_token: str, advanced_settings_store=None) -> None:
         self._api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        self._edit_url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
         self._callback_answer_url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
         self._advanced_settings_store = advanced_settings_store
 
@@ -314,11 +333,112 @@ class TelegramNotifier:
         )
         return self._extract_message_id(response)
 
-    def answer_callback_query(self, callback_query_id: str) -> None:
+    def edit_message(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        inline_buttons: list,
+        *,
+        skip_body_i18n: bool = False,
+    ) -> bool:
+        language = self._language
+        out_text = text if skip_body_i18n else translate_text(text, language)
+        keyboard = [
+            [
+                {"text": translate_button_label(btn.label, language), "callback_data": btn.callback_data}
+                for btn in row
+            ]
+            for row in inline_buttons
+        ]
+        payload = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": out_text,
+            "reply_markup": {"inline_keyboard": keyboard},
+        }
+        entities = build_message_entities(out_text)
+        if entities:
+            payload["entities"] = entities
+        _outbound.info(
+            "editMessageText start len=%d rows=%d",
+            len(out_text),
+            len(inline_buttons),
+            chat_id=chat_id,
+        )
+        return self._post_edit_with_retry(payload, chat_id=chat_id)
+
+    def _post_edit_with_retry(self, payload: dict, *, chat_id: int) -> bool:
+        for attempt in range(1, self._MAX_ATTEMPTS + 1):
+            try:
+                response = httpx.post(
+                    self._edit_url, json=payload, timeout=httpx.Timeout(10.0, connect=5.0)
+                )
+                response.raise_for_status()
+                _outbound.info("editMessageText ok status=%d", response.status_code, chat_id=chat_id)
+                return True
+            except httpx.HTTPStatusError as exc:
+                description = self._error_description(exc.response)
+                if "message is not modified" in description:
+                    # The target already shows this exact text+markup; treat as success.
+                    return True
+                if (
+                    "message to edit not found" in description
+                    or "message can't be edited" in description
+                    or "message_id_invalid" in description
+                ):
+                    _outbound.info(
+                        "editMessageText not applicable (%s); caller falls back to send",
+                        description or "unknown",
+                        chat_id=chat_id,
+                    )
+                    return False
+                _outbound.warning(
+                    "editMessageText http error attempt=%d/%d status=%d",
+                    attempt,
+                    self._MAX_ATTEMPTS,
+                    exc.response.status_code,
+                    chat_id=chat_id,
+                )
+                return False
+            except httpx.HTTPError as exc:
+                _outbound.warning(
+                    "editMessageText attempt failed attempt=%d/%d err=%s",
+                    attempt,
+                    self._MAX_ATTEMPTS,
+                    type(exc).__name__,
+                    chat_id=chat_id,
+                )
+                if attempt == self._MAX_ATTEMPTS:
+                    return False
+                time.sleep(attempt)
+        return False
+
+    @staticmethod
+    def _error_description(response: httpx.Response) -> str:
+        try:
+            data = response.json()
+        except ValueError:
+            return ""
+        description = data.get("description") if isinstance(data, dict) else None
+        return description.lower() if isinstance(description, str) else ""
+
+    def answer_callback_query(
+        self,
+        callback_query_id: str,
+        *,
+        text: str | None = None,
+        show_alert: bool = False,
+    ) -> None:
         _outbound.info("answerCallbackQuery start")
+        payload: dict = {"callback_query_id": callback_query_id}
+        if text:
+            payload["text"] = translate_text(text, self._language)[: self._CALLBACK_TOAST_LIMIT]
+            if show_alert:
+                payload["show_alert"] = True
         response = self._post_with_retry(
             self._callback_answer_url,
-            {"callback_query_id": callback_query_id},
+            payload,
             log_label="answerCallbackQuery",
         )
         if response is not None:

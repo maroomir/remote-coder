@@ -18,6 +18,7 @@ from app.telegram.commands import (
     CommandRegistry,
     HelpCommand,
     InitCommand,
+    InlineButton,
     ModelCommand,
     RebaseCommand,
     StartCommand,
@@ -145,7 +146,10 @@ class DummyNotifier:
     def __init__(self):
         self.sent: list[tuple[int, str]] = []
         self.sent_with_buttons: list[tuple[int, str, object]] = []
+        self.edited: list[tuple[int, int, str, object]] = []
         self.answered_callbacks: list[str] = []
+        self.answered_toasts: list[tuple[str, str | None, bool]] = []
+        self.edit_returns: bool = True
 
     def send_text(self, chat_id: int, text: str, **kwargs) -> None:
         self.sent.append((chat_id, text))
@@ -153,8 +157,17 @@ class DummyNotifier:
     def send_with_buttons(self, chat_id: int, text: str, inline_buttons, **kwargs) -> None:
         self.sent_with_buttons.append((chat_id, text, inline_buttons))
 
-    def answer_callback_query(self, callback_query_id: str) -> None:
+    def edit_message(self, chat_id: int, message_id: int, text: str, inline_buttons, **kwargs) -> bool:
+        self.edited.append((chat_id, message_id, text, inline_buttons))
+        return self.edit_returns
+
+    def send_long_text(self, chat_id: int, text: str) -> list[int]:
+        self.sent.append((chat_id, text))
+        return [1]
+
+    def answer_callback_query(self, callback_query_id: str, *, text=None, show_alert: bool = False) -> None:
         self.answered_callbacks.append(callback_query_id)
+        self.answered_toasts.append((callback_query_id, text, show_alert))
 
 
 def _webhook_url(project_registry: ProjectRegistry) -> str:
@@ -2258,7 +2271,7 @@ def test_webhook_callback_query_confirms_detail_model(project_registry):
     assert "cq_model_detail" in notifier.answered_callbacks
 
 
-def test_webhook_callback_query_answers_before_command_execution(project_registry):
+def test_webhook_callback_query_answers_within_request(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
@@ -2280,7 +2293,6 @@ def test_webhook_callback_query_answers_before_command_execution(project_registr
 
         def execute(self, message, ctx) -> str:
             _ = (message, ctx)
-            assert notifier.answered_callbacks == ["cq_order"]
             return "ack order ok"
 
     mgr = _bot_manager_for_project(
@@ -2317,7 +2329,145 @@ def test_webhook_callback_query_answers_before_command_execution(project_registr
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert notifier.answered_callbacks == ["cq_order"]
     assert notifier.sent == [(123, "ack order ok")]
+
+
+def _editable_panel_app(project_registry, notifier, commands):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=Mock(),
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE),
+            command_registry=CommandRegistry(commands),
+            job_manager=DummyJobManager(),
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    return app
+
+
+def _panel_command():
+    class PanelCommand(TelegramCommand):
+        name = "/panel"
+        description = "panel"
+
+        def execute(self, message, ctx) -> str:
+            return "Menu"
+
+        def get_inline_buttons(self, message=None, ctx=None):
+            return [[InlineButton("Go", "/panel")]]
+
+    return PanelCommand()
+
+
+def test_webhook_callback_navigation_edits_in_place(project_registry):
+    notifier = DummyNotifier()
+    app = _editable_panel_app(project_registry, notifier, [_panel_command()])
+    client = TestClient(app)
+    client.post(
+        _webhook_url(project_registry),
+        json={
+            "update_id": 60,
+            "callback_query": {
+                "id": "cq_nav",
+                "from": {"id": 999},
+                "message": {"chat": {"id": 123}, "message_id": 555},
+                "data": "/panel",
+            },
+        },
+    )
+    assert notifier.edited and notifier.edited[0][:3] == (123, 555, "Menu")
+    assert notifier.sent_with_buttons == []
+    assert "cq_nav" in notifier.answered_callbacks
+
+
+def test_webhook_callback_navigation_falls_back_to_send_when_edit_fails(project_registry):
+    notifier = DummyNotifier()
+    notifier.edit_returns = False
+    app = _editable_panel_app(project_registry, notifier, [_panel_command()])
+    client = TestClient(app)
+    client.post(
+        _webhook_url(project_registry),
+        json={
+            "update_id": 61,
+            "callback_query": {
+                "id": "cq_nav2",
+                "from": {"id": 999},
+                "message": {"chat": {"id": 123}, "message_id": 556},
+                "data": "/panel",
+            },
+        },
+    )
+    assert notifier.edited  # edit attempted
+    assert notifier.sent_with_buttons and notifier.sent_with_buttons[0][1] == "Menu"
+
+
+def test_webhook_callback_terminal_text_sends_new_with_toast(project_registry):
+    class LeafCommand(TelegramCommand):
+        name = "/leaf"
+        description = "leaf"
+
+        def execute(self, message, ctx) -> str:
+            return "Done line\nmore detail"
+
+    notifier = DummyNotifier()
+    app = _editable_panel_app(project_registry, notifier, [LeafCommand()])
+    client = TestClient(app)
+    client.post(
+        _webhook_url(project_registry),
+        json={
+            "update_id": 62,
+            "callback_query": {
+                "id": "cq_leaf",
+                "from": {"id": 999},
+                "message": {"chat": {"id": 123}, "message_id": 557},
+                "data": "/leaf",
+            },
+        },
+    )
+    assert notifier.edited == []
+    assert notifier.sent == [(123, "Done line\nmore detail")]
+    assert notifier.answered_toasts[-1][1] == "Done line"
+
+
+def test_webhook_callback_close_panel_clears_keyboard(project_registry):
+    notifier = DummyNotifier()
+    app = _editable_panel_app(project_registry, notifier, [_panel_command()])
+    client = TestClient(app)
+    client.post(
+        _webhook_url(project_registry),
+        json={
+            "update_id": 63,
+            "callback_query": {
+                "id": "cq_close",
+                "from": {"id": 999},
+                "message": {"chat": {"id": 123}, "message_id": 558},
+                "data": "__close__",
+            },
+        },
+    )
+    assert notifier.edited and notifier.edited[0] == (123, 558, "Closed.", [])
+    assert "cq_close" in notifier.answered_callbacks
 
 
 def test_recent_update_tracker_detects_duplicate_per_route_key():
