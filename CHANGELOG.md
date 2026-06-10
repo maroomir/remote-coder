@@ -8,8 +8,13 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
+### Added
+
+- **Easy setup wizard**: The admin dashboard now guides first-time users through a 4-step flow — verify bot token, auto-detect the Telegram chat, and create the project — so a new project can be live in about a minute. Backed by new localhost-only `POST /api/setup/validate-token` and `POST /api/setup/detect-chat` endpoints.
+
 ### Changed
 
+- **Admin UI redesign**: All admin pages share a responsive sidebar dashboard layout and a single stylesheet (`admin.css`) with a refreshed, modern theme. The home page is now a dashboard; project registration, advanced settings, logs, and the data browser keep their behavior under the new shell.
 - **Telegram message styling**: Outbound bot messages are now rendered BotFather-style with Telegram message entities — bold titles and section headings, monospace Job ID/branch/commit values — while the message text itself stays unchanged.
 
 ## [0.4.4] — 2026-06-10

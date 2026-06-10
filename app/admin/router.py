@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Callable
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, SecretStr
@@ -59,6 +60,25 @@ class ProjectUpsertBody(BaseModel):
 
 class DefaultProjectBody(BaseModel):
     name: str = Field(min_length=1)
+
+
+class SetupTokenBody(BaseModel):
+    bot_token: str = Field(min_length=1)
+
+
+def _telegram_get(token: str, method: str, params: dict | None = None) -> dict:
+    url = f"https://api.telegram.org/bot{token}/{method}"
+    try:
+        response = httpx.get(url, params=params, timeout=httpx.Timeout(10.0, connect=5.0))
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Could not reach Telegram.") from exc
+    try:
+        data = response.json()
+    except ValueError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    return data
 
 
 _ADMIN_ICON_NAMES = frozenset(
@@ -364,6 +384,50 @@ def create_admin_router(
         )
         return report.model_dump()
 
+    @router.post("/api/setup/validate-token")
+    def api_setup_validate_token(body: SetupTokenBody, _: LocalhostOnly) -> dict:
+        token = body.bot_token.strip()
+        if not token:
+            raise HTTPException(status_code=400, detail="bot_token is required")
+        data = _telegram_get(token, "getMe")
+        if not data.get("ok"):
+            _adminlog.warning("setup token validation rejected by Telegram")
+            raise HTTPException(status_code=400, detail="Telegram rejected the bot token.")
+        result = data.get("result") or {}
+        _adminlog.info("setup token validated bot=%s", result.get("username") or "-")
+        return {
+            "ok": True,
+            "bot_username": result.get("username"),
+            "bot_name": result.get("first_name"),
+        }
+
+    @router.post("/api/setup/detect-chat")
+    def api_setup_detect_chat(body: SetupTokenBody, _: LocalhostOnly) -> dict:
+        token = body.bot_token.strip()
+        if not token:
+            raise HTTPException(status_code=400, detail="bot_token is required")
+        data = _telegram_get(token, "getUpdates", {"timeout": 0, "limit": 100})
+        if not data.get("ok"):
+            _adminlog.warning("setup chat detection failed (getUpdates not ok)")
+            raise HTTPException(
+                status_code=409,
+                detail="Could not read updates for this bot (a webhook may already be set). "
+                "Enter the chat ID manually.",
+            )
+        for update in reversed(data.get("result") or []):
+            message = update.get("message") if isinstance(update, dict) else None
+            chat = (message or {}).get("chat") if isinstance(message, dict) else None
+            if isinstance(chat, dict) and chat.get("id") is not None:
+                sender = message.get("from") or {}
+                _adminlog.info("setup chat detected chat_id=%s", chat.get("id"))
+                return {
+                    "found": True,
+                    "chat_id": chat.get("id"),
+                    "chat_name": chat.get("title") or chat.get("username") or chat.get("first_name"),
+                    "user_id": sender.get("id"),
+                }
+        return {"found": False}
+
     @router.get("/api/projects")
     def api_projects_get(_: LocalhostOnly) -> JSONResponse:
         _adminlog.info("projects queried count=%d", len(registry.list_projects()))
@@ -504,6 +568,13 @@ def create_admin_router(
             saved.conversation_memory_limit_enabled,
         )
         return saved.model_dump(mode="json")
+
+    @router.get("/admin-static/admin.css")
+    def admin_css(_: LocalhostOnly) -> FileResponse:
+        path = Path(__file__).parent / "static" / "admin.css"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(path, media_type="text/css; charset=utf-8")
 
     @router.get("/admin-static/i18n.js")
     def admin_i18n_js(_: LocalhostOnly) -> FileResponse:

@@ -2,6 +2,8 @@ import re
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import respx
+from httpx import Response
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import app.admin.router as admin_router_module
@@ -863,6 +865,147 @@ def test_api_prerequisites_returns_report(
         "codex": False,
         "gemini": False,
     }
+
+
+def test_admin_css_served_for_localhost(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    app = FastAPI()
+    app.include_router(create_admin_router(
+        test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    ))
+    client = TestClient(app)
+    r = client.get("/admin-static/admin.css")
+    assert r.status_code == 200
+    assert "text/css" in (r.headers.get("content-type") or "")
+    assert ".sidebar" in r.text
+
+
+def test_admin_pages_link_shared_css(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    app = FastAPI()
+    app.include_router(create_admin_router(
+        test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    ))
+    client = TestClient(app)
+    for path in ("/", "/projects", "/advanced", "/logs", "/database"):
+        r = client.get(path)
+        assert r.status_code == 200
+        assert "/admin-static/admin.css" in r.text
+        assert 'class="sidebar"' in r.text
+
+
+def test_admin_home_includes_setup_wizard(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    app = FastAPI()
+    app.include_router(create_admin_router(
+        test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    ))
+    client = TestClient(app)
+    r = client.get("/")
+    assert r.status_code == 200
+    assert 'id="wizard-steps"' in r.text
+    assert 'id="wiz-token"' in r.text
+    assert 'id="wiz-btn-verify"' in r.text
+    assert "/api/setup/validate-token" in r.text
+    assert "/api/setup/detect-chat" in r.text
+
+
+@respx.mock
+def test_api_setup_validate_token_ok(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    respx.get("https://api.telegram.org/bottok/getMe").mock(
+        return_value=Response(200, json={"ok": True, "result": {"username": "my_bot", "first_name": "My Bot"}})
+    )
+    app = FastAPI()
+    app.include_router(create_admin_router(
+        test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    ))
+    client = TestClient(app)
+    r = client.post("/api/setup/validate-token", json={"bot_token": "tok"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["bot_username"] == "my_bot"
+
+
+@respx.mock
+def test_api_setup_validate_token_rejected(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    respx.get("https://api.telegram.org/botbad/getMe").mock(
+        return_value=Response(401, json={"ok": False, "description": "Unauthorized"})
+    )
+    app = FastAPI()
+    app.include_router(create_admin_router(
+        test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    ))
+    client = TestClient(app)
+    r = client.post("/api/setup/validate-token", json={"bot_token": "bad"})
+    assert r.status_code == 400
+
+
+@respx.mock
+def test_api_setup_detect_chat_finds_latest_chat(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    respx.get("https://api.telegram.org/bottok/getUpdates").mock(
+        return_value=Response(200, json={
+            "ok": True,
+            "result": [
+                {"update_id": 1, "message": {"chat": {"id": 111, "first_name": "Old"}, "from": {"id": 111}}},
+                {"update_id": 2, "message": {"chat": {"id": 222, "title": "Team"}, "from": {"id": 999}}},
+            ],
+        })
+    )
+    app = FastAPI()
+    app.include_router(create_admin_router(
+        test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    ))
+    client = TestClient(app)
+    r = client.post("/api/setup/detect-chat", json={"bot_token": "tok"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["found"] is True
+    assert body["chat_id"] == 222
+    assert body["chat_name"] == "Team"
+    assert body["user_id"] == 999
+
+
+@respx.mock
+def test_api_setup_detect_chat_not_found(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    respx.get("https://api.telegram.org/bottok/getUpdates").mock(
+        return_value=Response(200, json={"ok": True, "result": []})
+    )
+    app = FastAPI()
+    app.include_router(create_admin_router(
+        test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    ))
+    client = TestClient(app)
+    r = client.post("/api/setup/detect-chat", json={"bot_token": "tok"})
+    assert r.status_code == 200
+    assert r.json() == {"found": False}
+
+
+@respx.mock
+def test_api_setup_detect_chat_webhook_conflict(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+):
+    respx.get("https://api.telegram.org/bottok/getUpdates").mock(
+        return_value=Response(409, json={"ok": False, "description": "webhook is active"})
+    )
+    app = FastAPI()
+    app.include_router(create_admin_router(
+        test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+    ))
+    client = TestClient(app)
+    r = client.post("/api/setup/detect-chat", json={"bot_token": "tok"})
+    assert r.status_code == 409
 
 
 def test_admin_i18n_referenced_keys_exist_in_catalog():

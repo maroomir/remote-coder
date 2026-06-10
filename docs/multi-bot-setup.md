@@ -26,10 +26,22 @@ Create **one bot per project** if you manage more than one repository.
 
 ## 2. Register A Project In The Admin UI
 
-1. Start the server and open `http://127.0.0.1:8000/projects` on the same machine.
-2. Enter the **project name**, **repository root path**, and **default model**.
-3. Enter the bot's **bot_token**, optional **webhook_secret**, at least one **allowed Chat ID**, and optional **allowed User IDs**.
-4. Save the project. The server registers the bot instance without a restart.
+### Easy setup (recommended)
+
+1. Start the server and open `http://127.0.0.1:8000/` on the same machine. When no project is registered yet, the dashboard shows the **Easy setup** wizard automatically (or click **Easy setup** at the top right).
+2. Paste the **bot token** and click **Verify token**. The server validates it against Telegram (`getMe`).
+3. Open a chat with your new bot in Telegram and send it any message — the wizard detects the **chat ID** automatically (`getUpdates`). You can also type it in manually.
+4. Enter the **project name**, **repository root path**, and **default model**, then click **Create project**. The bot goes live without a restart.
+
+> Auto chat detection reads `getUpdates`, which Telegram disables while a webhook is set. During first-time setup the webhook is not registered yet, so detection works; if it fails (e.g. a webhook is already active), enter the chat ID manually.
+
+### Full form
+
+For multiple Chat IDs, allowed User IDs, or a webhook secret, use the **Projects** page (`http://127.0.0.1:8000/projects`):
+
+1. Enter the **project name**, **repository root path**, and **default model**.
+2. Enter the bot's **bot_token**, optional **webhook_secret**, at least one **allowed Chat ID**, and optional **allowed User IDs**.
+3. Save the project. The server registers the bot instance without a restart.
 
 Worktrees are created automatically under `~/.remote-coder/worktrees/<project>/`.
 

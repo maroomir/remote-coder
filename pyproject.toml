@@ -35,4 +35,4 @@ remote-coder = "app.cli:main"
 include = ["app*"]
 
 [tool.setuptools.package-data]
-"app.admin" = ["templates/*.html", "static/*.js", "static/icons/*.svg"]
+"app.admin" = ["templates/*.html", "static/*.js", "static/*.css", "static/icons/*.svg"]

@@ -4,518 +4,189 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title data-i18n="title.advanced">Remote AI Coder - Advanced Settings</title>
-  <style>
-    :root {
-      --bg: #0f1419;
-      --bg-elevated: #1a2332;
-      --surface: #243044;
-      --border: rgba(255, 255, 255, 0.08);
-      --text: #e8edf4;
-      --text-muted: #8b9cb3;
-      --accent: #3d9cf5;
-      --accent-dim: rgba(61, 156, 245, 0.15);
-      --success: #34c759;
-      --success-bg: rgba(52, 199, 89, 0.12);
-      --danger: #ff453a;
-      --danger-bg: rgba(255, 69, 58, 0.12);
-      --warning: #ffcc00;
-      --radius: 12px;
-      --radius-sm: 8px;
-      --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
-      --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-    }
-
-    *, *::before, *::after { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: var(--font);
-      font-size: 15px;
-      line-height: 1.5;
-      color: var(--text);
-      background: radial-gradient(ellipse 120% 80% at 50% -20%, #1e3a5f 0%, var(--bg) 55%);
-      padding: 1.25rem 1rem 2.5rem;
-    }
-
-    .wrap { max-width: 72rem; margin: 0 auto; }
-
-    .app-header {
-      margin-bottom: 1.5rem;
-      padding: 1.25rem 1.35rem;
-      background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--surface) 100%);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-
-    .app-header h1 {
-      margin: 0 0 0.35rem;
-      font-size: 1.5rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-
-    .app-header .tagline {
-      margin: 0;
-      color: var(--text-muted);
-      font-size: 0.9rem;
-    }
-
-    .localhost-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      margin-top: 0.75rem;
-      padding: 0.35rem 0.65rem;
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: var(--warning);
-      background: rgba(255, 204, 0, 0.1);
-      border: 1px solid rgba(255, 204, 0, 0.25);
-      border-radius: 999px;
-    }
-
-    .header-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 1rem;
-    }
-
-    .header-icon-nav {
-      display: flex;
-      flex-shrink: 0;
-      gap: 0.35rem;
-      align-items: center;
-    }
-
-    .header-icon-link {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 2.5rem;
-      height: 2.5rem;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--border);
-      background: rgba(0, 0, 0, 0.15);
-      transition: background 0.15s, border-color 0.15s;
-    }
-
-    .header-icon-link:hover {
-      background: #2d3d54;
-      border-color: rgba(255, 255, 255, 0.12);
-    }
-
-    .header-icon-link:focus-visible {
-      outline: none;
-      box-shadow: var(--focus);
-    }
-
-    .header-icon-link.is-current {
-      border-color: rgba(61, 156, 245, 0.45);
-      background: var(--accent-dim);
-    }
-
-    .header-icon-link img {
-      display: block;
-      width: 1.35rem;
-      height: 1.35rem;
-    }
-
-    .summary-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
-      gap: 0.75rem;
-      margin-bottom: 1.25rem;
-    }
-
-    .stat-card {
-      padding: 1rem 1.1rem;
-      background: var(--bg-elevated);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-    }
-
-    .stat-card .label {
-      margin: 0;
-      font-size: 0.72rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-muted);
-    }
-
-    .stat-card .value {
-      margin: 0.25rem 0 0;
-      font-size: 1.35rem;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .stat-card .sub {
-      margin: 0.2rem 0 0;
-      font-size: 0.78rem;
-      color: var(--text-muted);
-      word-break: break-all;
-    }
-
-    #global-msg {
-      margin-bottom: 1rem;
-      padding: 0.65rem 1rem;
-      border-radius: var(--radius-sm);
-      font-size: 0.9rem;
-      display: none;
-    }
-
-    #global-msg.is-visible { display: block; }
-
-    #global-msg.msg-err {
-      color: #ffb4b0;
-      background: var(--danger-bg);
-      border: 1px solid rgba(255, 69, 58, 0.35);
-    }
-
-    #global-msg.msg-ok {
-      color: #9ee6b0;
-      background: var(--success-bg);
-      border: 1px solid rgba(52, 199, 89, 0.35);
-    }
-
-    #global-msg.msg-info {
-      color: var(--text-muted);
-      background: var(--accent-dim);
-      border: 1px solid rgba(61, 156, 245, 0.25);
-    }
-
-    section.card {
-      margin-bottom: 1.25rem;
-      padding: 1.25rem 1.35rem;
-      background: var(--bg-elevated);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-
-    section.card h2 {
-      margin: 0 0 0.5rem;
-      font-size: 1.05rem;
-      font-weight: 700;
-    }
-
-    section.card > .lead {
-      margin: 0 0 1rem;
-      color: var(--text-muted);
-      font-size: 0.88rem;
-    }
-
-    section.card > .lead code {
-      padding: 0.12rem 0.35rem;
-      font-size: 0.82em;
-      background: var(--surface);
-      border-radius: 4px;
-      border: 1px solid var(--border);
-    }
-
-    .lead.danger {
-      color: #ffb4b0;
-      border-left: 3px solid var(--danger);
-      padding-left: 0.75rem;
-    }
-
-    label.field {
-      display: block;
-      margin-top: 0.85rem;
-      font-weight: 600;
-      font-size: 0.78rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--text-muted);
-    }
-
-    label.field:first-of-type { margin-top: 0; }
-
-    .hint {
-      margin: 0.2rem 0 0;
-      font-size: 0.78rem;
-      font-weight: 400;
-      color: var(--text-muted);
-      text-transform: none;
-      letter-spacing: normal;
-    }
-
-    input {
-      width: 100%;
-      max-width: 100%;
-      margin-top: 0.35rem;
-      padding: 0.55rem 0.65rem;
-      font-family: inherit;
-      font-size: 0.95rem;
-      color: var(--text);
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-    }
-
-    select {
-      width: 100%;
-      max-width: 18rem;
-      margin-top: 0.35rem;
-      padding: 0.55rem 0.65rem;
-      font-family: inherit;
-      font-size: 0.95rem;
-      color: var(--text);
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-    }
-
-    input:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-dim);
-    }
-
-    label.checkbox {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-top: 0.85rem;
-      font-weight: 600;
-      font-size: 0.9rem;
-      color: var(--text);
-      text-transform: none;
-      letter-spacing: normal;
-    }
-
-    label.checkbox input {
-      width: auto;
-      margin: 0;
-    }
-
-    .form-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-top: 1.25rem;
-    }
-
-    button {
-      font-family: inherit;
-      font-size: 0.82rem;
-      font-weight: 600;
-      padding: 0.45rem 0.75rem;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      cursor: pointer;
-      transition: background 0.15s, border-color 0.15s, opacity 0.15s;
-    }
-
-    button:hover:not(:disabled) {
-      background: #2d3d54;
-      border-color: rgba(255, 255, 255, 0.12);
-    }
-
-    button:focus-visible {
-      outline: none;
-      box-shadow: var(--focus);
-    }
-
-    button:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
-
-    button.btn-primary {
-      background: var(--accent);
-      border-color: transparent;
-      color: #0a1628;
-    }
-
-    button.btn-primary:hover:not(:disabled) {
-      background: #5aadf7;
-    }
-
-    button.btn-ghost {
-      background: transparent;
-    }
-
-    @media (max-width: 640px) {
-      .app-header h1 { font-size: 1.25rem; }
-    }
-  </style>
+  <link rel="stylesheet" href="/admin-static/admin.css" />
 </head>
 <body>
-  <div class="wrap">
-    <header class="app-header">
-      <div class="header-row">
+  <div class="app">
+    <aside class="sidebar">
+      <a class="brand" href="/">
+        <span class="brand-logo" aria-hidden="true">⌁</span>
+        <span class="brand-name">Remote AI Coder<small data-i18n="admin.tagline">Local admin UI</small></span>
+      </a>
+      <nav class="side-nav" aria-label="Page navigation" data-i18n-aria-label="nav.aria">
+        <a href="/" class="side-link" title="Admin home" data-i18n-title="nav.home">
+          <img src="/admin-static/icons/home.svg" width="20" height="20" alt="" />
+          <span data-i18n="nav.home">Admin home</span>
+        </a>
+        <a href="/projects" class="side-link" title="Projects" data-i18n-title="nav.projects">
+          <img src="/admin-static/icons/projects.svg" width="20" height="20" alt="" />
+          <span data-i18n="nav.projects">Projects</span>
+        </a>
+        <a href="/advanced" class="side-link is-current" title="Advanced settings" data-i18n-title="nav.advanced">
+          <img src="/admin-static/icons/advanced.svg" width="20" height="20" alt="" />
+          <span data-i18n="nav.advanced">Advanced settings</span>
+        </a>
+        <a href="/logs" class="side-link" title="Server logs" data-i18n-title="nav.logs">
+          <img src="/admin-static/icons/logs.svg" width="20" height="20" alt="" />
+          <span data-i18n="nav.logs">Server logs</span>
+        </a>
+        <a href="/database" class="side-link" title="Data browser" data-i18n-title="nav.database">
+          <img src="/admin-static/icons/database.svg" width="20" height="20" alt="" />
+          <span data-i18n="nav.database">Data browser</span>
+        </a>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="localhost-pill" data-i18n="common.localOnly">Local only</span>
+        <p class="foot-note" data-i18n-html="common.localhostNote">This page is only available from <strong>127.0.0.1</strong>.</p>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="page-head">
         <div>
           <h1 data-i18n="advanced.h1">Advanced Settings</h1>
           <p class="tagline" data-i18n="advanced.tagline">Options that can affect repositories and conversation memory.</p>
         </div>
-        <nav class="header-icon-nav" aria-label="Page navigation" data-i18n-aria-label="nav.aria">
-          <a href="/" class="header-icon-link" title="Admin home" aria-label="Admin home" data-i18n-title="nav.home" data-i18n-aria-label="nav.home">
-            <img src="/admin-static/icons/home.svg" width="22" height="22" alt="" />
-          </a>
-          <a href="/projects" class="header-icon-link" title="Projects" aria-label="Projects" data-i18n-title="nav.projects" data-i18n-aria-label="nav.projects">
-            <img src="/admin-static/icons/projects.svg" width="22" height="22" alt="" />
-          </a>
-          <a href="/advanced" class="header-icon-link is-current" title="Advanced settings" aria-label="Advanced settings" data-i18n-title="nav.advanced" data-i18n-aria-label="nav.advanced">
-            <img src="/admin-static/icons/advanced.svg" width="22" height="22" alt="" />
-          </a>
-          <a href="/logs" class="header-icon-link" title="Server logs" aria-label="Server logs" data-i18n-title="nav.logs" data-i18n-aria-label="nav.logs">
-            <img src="/admin-static/icons/logs.svg" width="22" height="22" alt="" />
-          </a>
-          <a href="/database" class="header-icon-link" title="Data browser" aria-label="Data browser" data-i18n-title="nav.database" data-i18n-aria-label="nav.database">
-            <img src="/admin-static/icons/database.svg" width="22" height="22" alt="" />
-          </a>
-        </nav>
-      </div>
-      <span class="localhost-pill" aria-hidden="true" data-i18n="common.localOnly">Local only</span>
-      <p class="tagline" style="margin-top:0.65rem" data-i18n-html="common.localhostNote">This page is only available from <strong>127.0.0.1</strong>.</p>
-    </header>
+      </header>
 
-    <div id="global-msg" role="status" aria-live="polite"></div>
+      <div id="global-msg" role="status" aria-live="polite"></div>
 
-    <div class="summary-grid" id="summary-grid" aria-label="Summary" data-i18n-aria-label="common.summaryAria"></div>
+      <div class="summary-grid" id="summary-grid" aria-label="Summary" data-i18n-aria-label="common.summaryAria"></div>
 
-    <form id="adv-form">
+      <form id="adv-form">
 
-      <!-- Telegram notifications -->
-      <section class="card" aria-labelledby="section-telegram">
-        <h2 id="section-telegram" data-i18n="advanced.secTelegram">Telegram Notifications</h2>
-        <p class="lead" data-i18n="advanced.secTelegramLead">Configure message display and server event notifications.</p>
+        <!-- Telegram notifications -->
+        <section class="card" aria-labelledby="section-telegram">
+          <h2 id="section-telegram" data-i18n="advanced.secTelegram">Telegram Notifications</h2>
+          <p class="lead" data-i18n="advanced.secTelegramLead">Configure message display and server event notifications.</p>
 
-        <label class="field" for="adv-ui-language" data-i18n="advanced.uiLangLabel">Interface language</label>
-        <p class="hint" data-i18n="advanced.uiLangHint">Default: English. Choose Korean here for the Telegram bot and this admin UI.</p>
-        <select id="adv-ui-language" name="ui_language">
-          <option value="en">English</option>
-          <option value="ko">한국어</option>
-        </select>
+          <label class="field" for="adv-ui-language" data-i18n="advanced.uiLangLabel">Interface language</label>
+          <p class="hint" data-i18n="advanced.uiLangHint">Default: English. Choose Korean here for the Telegram bot and this admin UI.</p>
+          <select id="adv-ui-language" name="ui_language">
+            <option value="en">English</option>
+            <option value="ko">한국어</option>
+          </select>
 
-        <label class="field" for="adv-status-job-limit" data-i18n="advanced.statusLimitLabel">Recent jobs shown by /status</label>
-        <p class="hint" data-i18n="advanced.statusLimitHint">Maximum number of recent jobs selectable with inline buttons in /status. Default: 10</p>
-        <input type="number" id="adv-status-job-limit" name="status_recent_job_limit" min="1" max="50" step="1" placeholder="Example: 10" data-i18n-placeholder="advanced.phStatus" autocomplete="off" />
+          <label class="field" for="adv-status-job-limit" data-i18n="advanced.statusLimitLabel">Recent jobs shown by /status</label>
+          <p class="hint" data-i18n="advanced.statusLimitHint">Maximum number of recent jobs selectable with inline buttons in /status. Default: 10</p>
+          <input type="number" id="adv-status-job-limit" name="status_recent_job_limit" min="1" max="50" step="1" placeholder="Example: 10" data-i18n-placeholder="advanced.phStatus" autocomplete="off" />
 
-        <label class="checkbox" style="margin-top:1.1rem">
-          <input type="checkbox" id="adv-natural-confirm-buttons" name="natural_job_confirmation_buttons_enabled" />
-          <span data-i18n-html="advanced.naturalConfirmLabel">Use inline buttons instead of <code>y</code>/<code>Y</code> for natural-language job confirmations</span>
-        </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.naturalConfirmHint">
-          Default: off. When enabled, job confirmation messages show <strong>Yes</strong>/<strong>No</strong> buttons.
-        </p>
+          <label class="checkbox" style="margin-top:1.1rem">
+            <input type="checkbox" id="adv-natural-confirm-buttons" name="natural_job_confirmation_buttons_enabled" />
+            <span data-i18n-html="advanced.naturalConfirmLabel">Use inline buttons instead of <code>y</code>/<code>Y</code> for natural-language job confirmations</span>
+          </label>
+          <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.naturalConfirmHint">
+            Default: off. When enabled, job confirmation messages show <strong>Yes</strong>/<strong>No</strong> buttons.
+          </p>
 
-        <label class="checkbox" style="margin-top:1.1rem">
-          <input type="checkbox" id="adv-lifecycle-notify" name="server_lifecycle_notify_enabled" />
-          <span data-i18n="advanced.lifecycleLabel">Send Telegram notifications when the server starts or stops</span>
-        </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n="advanced.lifecycleHint">
-          Default: on. When disabled, restarts do not send server start/stop messages.
-        </p>
-      </section>
+          <label class="checkbox" style="margin-top:1.1rem">
+            <input type="checkbox" id="adv-lifecycle-notify" name="server_lifecycle_notify_enabled" />
+            <span data-i18n="advanced.lifecycleLabel">Send Telegram notifications when the server starts or stops</span>
+          </label>
+          <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n="advanced.lifecycleHint">
+            Default: on. When disabled, restarts do not send server start/stop messages.
+          </p>
+        </section>
 
-      <!-- Job execution -->
-      <section class="card" aria-labelledby="section-job">
-        <h2 id="section-job" data-i18n="advanced.secJob">Job Execution</h2>
-        <p class="lead" data-i18n="advanced.secJobLead">Configure AI job execution limits.</p>
+        <!-- Job execution -->
+        <section class="card" aria-labelledby="section-job">
+          <h2 id="section-job" data-i18n="advanced.secJob">Job Execution</h2>
+          <p class="lead" data-i18n="advanced.secJobLead">Configure AI job execution limits.</p>
 
-        <label class="field" for="adv-job-timeout" data-i18n="advanced.jobTimeoutLabel">AI job timeout (seconds)</label>
-        <p class="hint" data-i18n="advanced.jobTimeoutHint">If a Claude/Codex/Gemini runner does not finish within this time, the job fails. Default: 1800.</p>
-        <input type="number" id="adv-job-timeout" name="job_timeout_seconds" min="1" step="1" placeholder="Example: 3600" data-i18n-placeholder="advanced.phTimeout" autocomplete="off" />
+          <label class="field" for="adv-job-timeout" data-i18n="advanced.jobTimeoutLabel">AI job timeout (seconds)</label>
+          <p class="hint" data-i18n="advanced.jobTimeoutHint">If a Claude/Codex/Gemini runner does not finish within this time, the job fails. Default: 1800.</p>
+          <input type="number" id="adv-job-timeout" name="job_timeout_seconds" min="1" step="1" placeholder="Example: 3600" data-i18n-placeholder="advanced.phTimeout" autocomplete="off" />
 
-        <label class="field" for="adv-conversation-recent" data-i18n="advanced.conversationRecentLabel">Recent conversation entries for ambiguous follow-ups</label>
-        <p class="hint" data-i18n="advanced.conversationRecentHint">How many recent SQLite conversation rows to include when parsing ambiguous follow-ups. Default: 10.</p>
-        <input type="number" id="adv-conversation-recent" name="conversation_recent_limit" min="1" step="1" placeholder="Example: 10" autocomplete="off" />
+          <label class="field" for="adv-conversation-recent" data-i18n="advanced.conversationRecentLabel">Recent conversation entries for ambiguous follow-ups</label>
+          <p class="hint" data-i18n="advanced.conversationRecentHint">How many recent SQLite conversation rows to include when parsing ambiguous follow-ups. Default: 10.</p>
+          <input type="number" id="adv-conversation-recent" name="conversation_recent_limit" min="1" step="1" placeholder="Example: 10" autocomplete="off" />
 
-        <label class="field" for="adv-reply-snippet-max" data-i18n="advanced.replySnippetMaxLabel">Reply/context snippet max length (characters)</label>
-        <p class="hint" data-i18n="advanced.replySnippetMaxHint">Maximum characters per reply chain, job result, or fallback reply message included in AI instructions. Default: 3000. Range: 200–20000.</p>
-        <input type="number" id="adv-reply-snippet-max" name="conversation_reply_snippet_max_chars" min="200" max="20000" step="1" placeholder="Example: 3000" autocomplete="off" />
+          <label class="field" for="adv-reply-snippet-max" data-i18n="advanced.replySnippetMaxLabel">Reply/context snippet max length (characters)</label>
+          <p class="hint" data-i18n="advanced.replySnippetMaxHint">Maximum characters per reply chain, job result, or fallback reply message included in AI instructions. Default: 3000. Range: 200–20000.</p>
+          <input type="number" id="adv-reply-snippet-max" name="conversation_reply_snippet_max_chars" min="200" max="20000" step="1" placeholder="Example: 3000" autocomplete="off" />
 
-        <label class="field" for="adv-codex-sandbox" data-i18n="advanced.codexSandboxLabel">Codex sandbox mode</label>
-        <p class="hint" data-i18n="advanced.codexSandboxHint">Codex exec --sandbox value. Default: workspace-write.</p>
-        <select id="adv-codex-sandbox" name="codex_sandbox">
-          <option value="workspace-write">workspace-write</option>
-          <option value="read-only">read-only</option>
-          <option value="danger-full-access">danger-full-access</option>
-        </select>
-      </section>
+          <label class="field" for="adv-codex-sandbox" data-i18n="advanced.codexSandboxLabel">Codex sandbox mode</label>
+          <p class="hint" data-i18n="advanced.codexSandboxHint">Codex exec --sandbox value. Default: workspace-write.</p>
+          <select id="adv-codex-sandbox" name="codex_sandbox">
+            <option value="workspace-write">workspace-write</option>
+            <option value="read-only">read-only</option>
+            <option value="danger-full-access">danger-full-access</option>
+          </select>
+        </section>
 
-      <!-- Git integration -->
-      <section class="card" aria-labelledby="section-git">
-        <h2 id="section-git" data-i18n="advanced.secGit">Git Integration</h2>
-        <p class="lead danger" data-i18n="advanced.secGitLead">
-          These options can broadly affect repositories. Use them only when you understand the impact.
-        </p>
+        <!-- Git integration -->
+        <section class="card" aria-labelledby="section-git">
+          <h2 id="section-git" data-i18n="advanced.secGit">Git Integration</h2>
+          <p class="lead danger" data-i18n="advanced.secGitLead">
+            These options can broadly affect repositories. Use them only when you understand the impact.
+          </p>
 
-        <label class="checkbox">
-          <input type="checkbox" id="adv-startup-pull" name="pull_projects_on_server_startup_enabled" />
-          <span data-i18n-html="advanced.startupPullLabel">Run <code>git pull</code> for registered active project repositories on server startup/restart</span>
-        </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n="advanced.startupPullHint">
-          Default: off. Pulls from the remote based on each active project's checked-out branch. Network errors, conflicts, or local changes can fail; the server still starts.
-        </p>
+          <label class="checkbox">
+            <input type="checkbox" id="adv-startup-pull" name="pull_projects_on_server_startup_enabled" />
+            <span data-i18n-html="advanced.startupPullLabel">Run <code>git pull</code> for registered active project repositories on server startup/restart</span>
+          </label>
+          <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n="advanced.startupPullHint">
+            Default: off. Pulls from the remote based on each active project's checked-out branch. Network errors, conflicts, or local changes can fail; the server still starts.
+          </p>
 
-        <label class="checkbox" style="margin-top:1.1rem">
-          <input type="checkbox" id="adv-merge-main" name="auto_merge_to_main_enabled" />
-          <span data-i18n-html="advanced.mergeMainLabel">Apply job results immediately to <code>main</code>/<code>master</code>, then push</span>
-        </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.mergeMainHint">
-          When disabled, jobs only commit and push to their work branch. When enabled, successful jobs run an integration similar to <code>/rebase</code> (rebase -> main fast-forward merge -> push).
-        </p>
+          <label class="checkbox" style="margin-top:1.1rem">
+            <input type="checkbox" id="adv-merge-main" name="auto_merge_to_main_enabled" />
+            <span data-i18n-html="advanced.mergeMainLabel">Apply job results immediately to <code>main</code>/<code>master</code>, then push</span>
+          </label>
+          <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.mergeMainHint">
+            When disabled, jobs only commit and push to their work branch. When enabled, successful jobs run an integration similar to <code>/rebase</code> (rebase -> main fast-forward merge -> push).
+          </p>
 
-        <label class="checkbox" style="margin-top:1.1rem">
-          <input type="checkbox" id="adv-delete-rebased-branch" name="delete_rebased_branch_enabled" />
-          <span data-i18n-html="advanced.deleteRebasedLabel">Delete the rebased branch locally and remotely after <code>/rebase</code></span>
-        </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.deleteRebasedHint">
-          Default: on. When disabled, <code>/rebase</code> only merges into main/master and pushes; the target branch remains.
-        </p>
+          <label class="checkbox" style="margin-top:1.1rem">
+            <input type="checkbox" id="adv-delete-rebased-branch" name="delete_rebased_branch_enabled" />
+            <span data-i18n-html="advanced.deleteRebasedLabel">Delete the rebased branch locally and remotely after <code>/rebase</code></span>
+          </label>
+          <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.deleteRebasedHint">
+            Default: on. When disabled, <code>/rebase</code> only merges into main/master and pushes; the target branch remains.
+          </p>
 
-        <label class="field" for="adv-git-remote" style="margin-top:1.1rem" data-i18n="advanced.gitRemoteLabel">Git remote name</label>
-        <p class="hint" data-i18n="advanced.gitRemoteHint">Remote used for push, /rebase, /pr, and /clear. Default: origin.</p>
-        <input type="text" id="adv-git-remote" name="git_remote_name" placeholder="origin" autocomplete="off" />
+          <label class="field" for="adv-git-remote" style="margin-top:1.1rem" data-i18n="advanced.gitRemoteLabel">Git remote name</label>
+          <p class="hint" data-i18n="advanced.gitRemoteHint">Remote used for push, /rebase, /pr, and /clear. Default: origin.</p>
+          <input type="text" id="adv-git-remote" name="git_remote_name" placeholder="origin" autocomplete="off" />
 
-        <label class="checkbox" style="margin-top:1.1rem">
-          <input type="checkbox" id="adv-keep-worktree" name="keep_worktree_on_success" />
-          <span data-i18n="advanced.keepWorktreeLabel">Keep worktrees after successful jobs</span>
-        </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n="advanced.keepWorktreeHint">
-          Default: on. When disabled, successful job worktrees are cleaned up automatically.
-        </p>
-      </section>
+          <label class="checkbox" style="margin-top:1.1rem">
+            <input type="checkbox" id="adv-keep-worktree" name="keep_worktree_on_success" />
+            <span data-i18n="advanced.keepWorktreeLabel">Keep worktrees after successful jobs</span>
+          </label>
+          <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n="advanced.keepWorktreeHint">
+            Default: on. When disabled, successful job worktrees are cleaned up automatically.
+          </p>
+        </section>
 
-      <!-- Conversation memory -->
-      <section class="card" aria-labelledby="section-memory">
-        <h2 id="section-memory" data-i18n="advanced.secMemory">Conversation Memory (SQLite)</h2>
-        <p class="lead danger" data-i18n="advanced.secMemoryLead">
-          These options can broadly affect the conversation memory SQLite database. Enable only when needed.
-        </p>
+        <!-- Conversation memory -->
+        <section class="card" aria-labelledby="section-memory">
+          <h2 id="section-memory" data-i18n="advanced.secMemory">Conversation Memory (SQLite)</h2>
+          <p class="lead danger" data-i18n="advanced.secMemoryLead">
+            These options can broadly affect the conversation memory SQLite database. Enable only when needed.
+          </p>
 
-        <label class="checkbox">
-          <input type="checkbox" id="adv-memory-enabled" name="conversation_memory_limit_enabled" />
-          <span data-i18n="advanced.memoryEnabledLabel">Limit SQLite conversation memory storage</span>
-        </label>
-        <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.memoryEnabledHint">
-          When enabled, old <code>conversation_entries</code> rows are deleted <strong>globally</strong>. Set at least one positive row-count or DB-size limit.
-        </p>
+          <label class="checkbox">
+            <input type="checkbox" id="adv-memory-enabled" name="conversation_memory_limit_enabled" />
+            <span data-i18n="advanced.memoryEnabledLabel">Limit SQLite conversation memory storage</span>
+          </label>
+          <p class="hint" style="margin:0.35rem 0 0 1.75rem" data-i18n-html="advanced.memoryEnabledHint">
+            When enabled, old <code>conversation_entries</code> rows are deleted <strong>globally</strong>. Set at least one positive row-count or DB-size limit.
+          </p>
 
-        <label class="field" for="adv-max-rows" data-i18n="advanced.maxRowsLabel">Maximum rows (blank disables)</label>
-        <input type="number" id="adv-max-rows" name="conversation_memory_max_rows" min="1" step="1" placeholder="Example: 5000" data-i18n-placeholder="advanced.phRows" autocomplete="off" />
+          <label class="field" for="adv-max-rows" data-i18n="advanced.maxRowsLabel">Maximum rows (blank disables)</label>
+          <input type="number" id="adv-max-rows" name="conversation_memory_max_rows" min="1" step="1" placeholder="Example: 5000" data-i18n-placeholder="advanced.phRows" autocomplete="off" />
 
-        <label class="field" for="adv-max-bytes" data-i18n="advanced.maxBytesLabel">Maximum DB size (bytes, blank disables)</label>
-        <input type="number" id="adv-max-bytes" name="conversation_memory_max_bytes" min="1" step="1" placeholder="Example: 10485760" data-i18n-placeholder="advanced.phBytes" autocomplete="off" />
-      </section>
+          <label class="field" for="adv-max-bytes" data-i18n="advanced.maxBytesLabel">Maximum DB size (bytes, blank disables)</label>
+          <input type="number" id="adv-max-bytes" name="conversation_memory_max_bytes" min="1" step="1" placeholder="Example: 10485760" data-i18n-placeholder="advanced.phBytes" autocomplete="off" />
+        </section>
 
-      <div class="form-actions">
-        <button type="submit" class="btn-primary" id="btn-adv-save" data-i18n="advanced.btnSave">Save</button>
-        <button type="button" class="btn-ghost" id="btn-adv-reload" data-i18n="advanced.btnReload">Reload</button>
-      </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="btn-adv-save" data-i18n="advanced.btnSave">Save</button>
+          <button type="button" class="btn-ghost" id="btn-adv-reload" data-i18n="advanced.btnReload">Reload</button>
+        </div>
 
-    </form>
+      </form>
+    </main>
   </div>
 
   <script src="/admin-static/i18n.js"></script>

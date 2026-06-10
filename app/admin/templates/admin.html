@@ -4,491 +4,151 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title data-i18n="title.admin">Remote AI Coder - Admin</title>
-  <style>
-    :root {
-      --bg: #0f1419;
-      --bg-elevated: #1a2332;
-      --surface: #243044;
-      --border: rgba(255, 255, 255, 0.08);
-      --text: #e8edf4;
-      --text-muted: #8b9cb3;
-      --accent: #3d9cf5;
-      --accent-dim: rgba(61, 156, 245, 0.15);
-      --success: #34c759;
-      --success-bg: rgba(52, 199, 89, 0.12);
-      --danger: #ff453a;
-      --danger-bg: rgba(255, 69, 58, 0.12);
-      --warning: #ffcc00;
-      --radius: 12px;
-      --radius-sm: 8px;
-      --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
-      --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-    }
-
-    *, *::before, *::after { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: var(--font);
-      font-size: 15px;
-      line-height: 1.5;
-      color: var(--text);
-      background: radial-gradient(ellipse 120% 80% at 50% -20%, #1e3a5f 0%, var(--bg) 55%);
-      padding: 1.25rem 1rem 2.5rem;
-    }
-
-    .wrap { max-width: 72rem; margin: 0 auto; }
-
-    .app-header {
-      margin-bottom: 1.5rem;
-      padding: 1.25rem 1.35rem;
-      background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--surface) 100%);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-
-    .app-header h1 {
-      margin: 0 0 0.35rem;
-      font-size: 1.5rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-
-    .app-header .tagline {
-      margin: 0;
-      color: var(--text-muted);
-      font-size: 0.9rem;
-    }
-
-    .localhost-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      margin-top: 0.75rem;
-      padding: 0.35rem 0.65rem;
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: var(--warning);
-      background: rgba(255, 204, 0, 0.1);
-      border: 1px solid rgba(255, 204, 0, 0.25);
-      border-radius: 999px;
-    }
-
-    #global-msg {
-      margin-bottom: 1rem;
-      padding: 0.65rem 1rem;
-      border-radius: var(--radius-sm);
-      font-size: 0.9rem;
-      display: none;
-    }
-
-    #global-msg.is-visible { display: block; }
-
-    #global-msg.msg-err {
-      color: #ffb4b0;
-      background: var(--danger-bg);
-      border: 1px solid rgba(255, 69, 58, 0.35);
-    }
-
-    #global-msg.msg-ok {
-      color: #9ee6b0;
-      background: var(--success-bg);
-      border: 1px solid rgba(52, 199, 89, 0.35);
-    }
-
-    #global-msg.msg-info {
-      color: var(--text-muted);
-      background: var(--accent-dim);
-      border: 1px solid rgba(61, 156, 245, 0.25);
-    }
-
-    .summary-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
-      gap: 0.75rem;
-      margin-bottom: 1.25rem;
-    }
-
-    .stat-card {
-      padding: 1rem 1.1rem;
-      background: var(--bg-elevated);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-    }
-
-    .stat-card .label {
-      margin: 0;
-      font-size: 0.72rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-muted);
-    }
-
-    .stat-card .value {
-      margin: 0.25rem 0 0;
-      font-size: 1.35rem;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .stat-card .sub {
-      margin: 0.2rem 0 0;
-      font-size: 0.78rem;
-      color: var(--text-muted);
-      word-break: break-all;
-    }
-
-    section.card {
-      margin-bottom: 1.25rem;
-      padding: 1.25rem 1.35rem;
-      background: var(--bg-elevated);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-
-    section.card h2 {
-      margin: 0 0 0.5rem;
-      font-size: 1.05rem;
-      font-weight: 700;
-    }
-
-    section.card > .lead {
-      margin: 0 0 1rem;
-      color: var(--text-muted);
-      font-size: 0.88rem;
-    }
-
-    section.card > .lead code {
-      padding: 0.12rem 0.35rem;
-      font-size: 0.82em;
-      background: var(--surface);
-      border-radius: 4px;
-      border: 1px solid var(--border);
-    }
-
-    .settings-meta {
-      display: grid;
-      gap: 0.65rem;
-      font-size: 0.88rem;
-      color: var(--text-muted);
-    }
-
-    .settings-meta dt {
-      margin: 0;
-      font-weight: 600;
-      color: var(--text);
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-
-    .settings-meta dd {
-      margin: 0.15rem 0 0;
-      word-break: break-word;
-    }
-
-    .settings-meta .mono {
-      font-family: ui-monospace, monospace;
-      font-size: 0.82rem;
-      color: var(--accent);
-    }
-
-    .section-head {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 0.75rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .section-head h2 {
-      margin: 0;
-    }
-
-    .link-manage {
-      font-size: 0.88rem;
-      font-weight: 600;
-      color: var(--accent);
-      text-decoration: none;
-    }
-
-    .link-manage:hover {
-      text-decoration: underline;
-    }
-
-    .active-proj-empty {
-      margin: 0;
-      color: var(--text-muted);
-      font-size: 0.9rem;
-    }
-
-    .active-proj-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.85rem;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    .active-proj-item {
-      padding: 0.85rem 1rem;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-    }
-
-    .active-proj-item h3 {
-      margin: 0 0 0.45rem;
-      font-size: 0.98rem;
-      font-weight: 700;
-    }
-
-    .active-proj-item h3 code {
-      font-family: ui-monospace, monospace;
-      font-size: 0.95em;
-    }
-
-    .active-proj-dl {
-      display: grid;
-      gap: 0.45rem;
-      margin: 0;
-      font-size: 0.82rem;
-      color: var(--text-muted);
-    }
-
-    .active-proj-dl > div {
-      margin: 0;
-    }
-
-    .active-proj-dl dt {
-      margin: 0;
-      font-weight: 600;
-      color: var(--text);
-      font-size: 0.72rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-
-    .active-proj-dl dd {
-      margin: 0.15rem 0 0;
-      word-break: break-word;
-    }
-
-    .active-proj-dl .mono {
-      font-family: ui-monospace, monospace;
-      font-size: 0.78rem;
-      color: var(--accent);
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 0.15rem 0.45rem;
-      font-size: 0.68rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      border-radius: 4px;
-      margin-left: 0.35rem;
-      vertical-align: middle;
-    }
-
-    .badge-default {
-      color: #7ec8ff;
-      background: var(--accent-dim);
-      border: 1px solid rgba(61, 156, 245, 0.35);
-    }
-
-    .header-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 1rem;
-    }
-
-    .header-icon-nav {
-      display: flex;
-      flex-shrink: 0;
-      gap: 0.35rem;
-      align-items: center;
-    }
-
-    .header-icon-link {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 2.5rem;
-      height: 2.5rem;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--border);
-      background: rgba(0, 0, 0, 0.15);
-      transition: background 0.15s, border-color 0.15s;
-    }
-
-    .header-icon-link:hover {
-      background: #2d3d54;
-      border-color: rgba(255, 255, 255, 0.12);
-    }
-
-    .header-icon-link:focus-visible {
-      outline: none;
-      box-shadow: var(--focus);
-    }
-
-    .header-icon-link.is-current {
-      border-color: rgba(61, 156, 245, 0.45);
-      background: var(--accent-dim);
-    }
-
-    .header-icon-link img {
-      display: block;
-      width: 1.35rem;
-      height: 1.35rem;
-    }
-
-    .setup-prereq-title {
-      margin: 0 0 0.5rem;
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--text-muted);
-    }
-
-    .setup-prereq {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: grid;
-      gap: 0.4rem;
-    }
-
-    .setup-prereq li {
-      display: flex;
-      gap: 0.5rem;
-      align-items: baseline;
-      font-size: 0.9rem;
-    }
-
-    .setup-prereq .mark { flex-shrink: 0; }
-
-    .setup-prereq .detail {
-      color: var(--text-muted);
-      font-size: 0.82rem;
-      word-break: break-word;
-    }
-
-    .setup-actions {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.6rem;
-      margin-top: 1rem;
-    }
-
-    .btn {
-      font-family: inherit;
-      font-size: 0.82rem;
-      font-weight: 600;
-      padding: 0.45rem 0.75rem;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      cursor: pointer;
-      transition: background 0.15s, border-color 0.15s;
-    }
-
-    .btn:hover {
-      background: #2d3d54;
-      border-color: rgba(255, 255, 255, 0.12);
-    }
-
-    .btn-cta {
-      display: inline-block;
-      padding: 0.5rem 0.9rem;
-      background: var(--accent);
-      border: 1px solid transparent;
-      color: #0a1628;
-      font-weight: 600;
-      text-decoration: none;
-      border-radius: var(--radius-sm);
-    }
-
-    .btn-cta:hover { background: #5aadf7; }
-
-    @media (max-width: 640px) {
-      .app-header h1 { font-size: 1.25rem; }
-    }
-  </style>
+  <link rel="stylesheet" href="/admin-static/admin.css" />
 </head>
 <body>
-  <div class="wrap">
-    <header class="app-header">
-      <div class="header-row">
+  <div class="app">
+    <aside class="sidebar">
+      <a class="brand" href="/">
+        <span class="brand-logo" aria-hidden="true">⌁</span>
+        <span class="brand-name">Remote AI Coder<small data-i18n="admin.tagline">Local admin UI</small></span>
+      </a>
+      <nav class="side-nav" aria-label="Page navigation" data-i18n-aria-label="nav.aria">
+        <a href="/" class="side-link is-current" title="Admin home" data-i18n-title="nav.home">
+          <img src="/admin-static/icons/home.svg" width="20" height="20" alt="" />
+          <span data-i18n="nav.home">Admin home</span>
+        </a>
+        <a href="/projects" class="side-link" title="Projects" data-i18n-title="nav.projects">
+          <img src="/admin-static/icons/projects.svg" width="20" height="20" alt="" />
+          <span data-i18n="nav.projects">Projects</span>
+        </a>
+        <a href="/advanced" class="side-link" title="Advanced settings" data-i18n-title="nav.advanced">
+          <img src="/admin-static/icons/advanced.svg" width="20" height="20" alt="" />
+          <span data-i18n="nav.advanced">Advanced settings</span>
+        </a>
+        <a href="/logs" class="side-link" title="Server logs" data-i18n-title="nav.logs">
+          <img src="/admin-static/icons/logs.svg" width="20" height="20" alt="" />
+          <span data-i18n="nav.logs">Server logs</span>
+        </a>
+        <a href="/database" class="side-link" title="Data browser" data-i18n-title="nav.database">
+          <img src="/admin-static/icons/database.svg" width="20" height="20" alt="" />
+          <span data-i18n="nav.database">Data browser</span>
+        </a>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="localhost-pill" data-i18n="common.localOnly">Local only</span>
+        <p class="foot-note" data-i18n-html="common.localhostNote">This page is only available from <strong>127.0.0.1</strong>.</p>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="page-head">
         <div>
-          <h1>Remote AI Coder</h1>
-          <p class="tagline" data-i18n="admin.tagline">Local admin UI</p>
+          <h1 data-i18n="admin.h1">Dashboard</h1>
+          <p class="tagline" data-i18n="admin.dashboardLead">Everything that is registered and running, at a glance.</p>
         </div>
-        <nav class="header-icon-nav" aria-label="Page navigation" data-i18n-aria-label="nav.aria">
-          <a href="/" class="header-icon-link is-current" title="Admin home" aria-label="Admin home" data-i18n-title="nav.home" data-i18n-aria-label="nav.home">
-            <img src="/admin-static/icons/home.svg" width="22" height="22" alt="" />
-          </a>
-          <a href="/projects" class="header-icon-link" title="Projects" aria-label="Projects" data-i18n-title="nav.projects" data-i18n-aria-label="nav.projects">
-            <img src="/admin-static/icons/projects.svg" width="22" height="22" alt="" />
-          </a>
-          <a href="/advanced" class="header-icon-link" title="Advanced settings" aria-label="Advanced settings" data-i18n-title="nav.advanced" data-i18n-aria-label="nav.advanced">
-            <img src="/admin-static/icons/advanced.svg" width="22" height="22" alt="" />
-          </a>
-          <a href="/logs" class="header-icon-link" title="Server logs" aria-label="Server logs" data-i18n-title="nav.logs" data-i18n-aria-label="nav.logs">
-            <img src="/admin-static/icons/logs.svg" width="22" height="22" alt="" />
-          </a>
-          <a href="/database" class="header-icon-link" title="Data browser" aria-label="Data browser" data-i18n-title="nav.database" data-i18n-aria-label="nav.database">
-            <img src="/admin-static/icons/database.svg" width="22" height="22" alt="" />
-          </a>
-        </nav>
-      </div>
-      <span class="localhost-pill" aria-hidden="true" data-i18n="common.localOnly">Local only</span>
-      <p class="tagline" style="margin-top:0.65rem" data-i18n-html="common.localhostNote">This page is only available from <strong>127.0.0.1</strong>.</p>
-    </header>
+        <div class="page-actions">
+          <button type="button" class="btn-primary" id="btn-open-setup" data-i18n="setup.easySetup">Easy setup</button>
+        </div>
+      </header>
 
-    <div id="global-msg" role="status" aria-live="polite"></div>
+      <div id="global-msg" role="status" aria-live="polite"></div>
 
-    <div class="summary-grid" id="summary-grid" aria-label="Summary" data-i18n-aria-label="common.summaryAria"></div>
+      <div class="summary-grid" id="summary-grid" aria-label="Summary" data-i18n-aria-label="common.summaryAria"></div>
 
-    <section class="card" id="setup-section" aria-labelledby="setup-heading" hidden>
-      <h2 id="setup-heading" data-i18n="setup.title">First-time setup</h2>
-      <p class="lead" data-i18n="setup.lead">No projects registered yet. Check the prerequisites below, then add your first project to bring a Telegram bot online.</p>
-      <p class="setup-prereq-title" data-i18n="setup.prereqTitle">Prerequisites</p>
-      <ul class="setup-prereq" id="setup-prereq" aria-live="polite"></ul>
-      <div class="setup-actions">
-        <a href="/projects" class="btn-cta" data-i18n="setup.cta">Add your first project</a>
-        <button type="button" class="btn" id="btn-prereq-recheck" data-i18n="setup.recheck">Re-check</button>
-      </div>
-      <p class="lead" style="margin:1rem 0 0" data-i18n="setup.nextNote">Once a project is added while the server is running, its bot goes live automatically.</p>
-    </section>
+      <section class="card" id="setup-section" aria-labelledby="setup-heading" hidden>
+        <h2 id="setup-heading" data-i18n="setup.title">First-time setup</h2>
+        <p class="lead" data-i18n="setup.lead">Connect a Telegram bot to a local repository in about a minute.</p>
 
-    <section class="card" aria-labelledby="active-projects-heading">
-      <div class="section-head">
-        <h2 id="active-projects-heading" data-i18n="admin.activeProjects">Active projects</h2>
-        <a href="/projects" class="link-manage" data-i18n="admin.manageLink">Manage</a>
-      </div>
-      <p class="lead" data-i18n="admin.activeLead">Only enabled projects are shown. Add, disable, or delete them on the Projects page.</p>
-      <div id="active-projects-view" aria-live="polite"></div>
-    </section>
+        <p class="setup-prereq-title" data-i18n="setup.prereqTitle">Prerequisites</p>
+        <ul class="setup-prereq" id="setup-prereq" aria-live="polite"></ul>
 
-    <section class="card" aria-labelledby="settings-heading">
-      <h2 id="settings-heading" data-i18n="admin.configSummary">Configuration files</h2>
-      <p class="lead" data-i18n="admin.configLead">Registry and advanced settings file paths. Project bots and allowlists live in the registry.</p>
-      <dl class="settings-meta" id="settings-meta"></dl>
-    </section>
+        <ol class="wizard-steps" id="wizard-steps">
+          <li class="is-active" data-step="1" data-i18n="setup.stepToken">Bot token</li>
+          <li data-step="2" data-i18n="setup.stepChat">Connect chat</li>
+          <li data-step="3" data-i18n="setup.stepProject">Project</li>
+          <li data-step="4" data-i18n="setup.stepDone">Done</li>
+        </ol>
+
+        <div class="wizard-panel" id="wiz-step-1">
+          <p class="lead" style="margin-bottom:0.5rem" data-i18n-html="setup.tokenLead">
+            Message <a class="wizard-link" href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a> in Telegram,
+            send <code>/newbot</code>, and paste the API token it gives you.
+          </p>
+          <label class="field" for="wiz-token" data-i18n="projects.botToken">Bot token</label>
+          <input id="wiz-token" type="password" autocomplete="new-password" placeholder="123456789:AA…" />
+          <div class="wizard-status" id="wiz-token-status" hidden></div>
+          <div class="wizard-nav">
+            <span class="spacer"></span>
+            <button type="button" class="btn-primary" id="wiz-btn-verify" data-i18n="setup.btnVerify">Verify token</button>
+          </div>
+        </div>
+
+        <div class="wizard-panel" id="wiz-step-2" hidden>
+          <p class="lead" style="margin-bottom:0.5rem" id="wiz-chat-lead" data-i18n="setup.chatLead">Open a chat with your new bot in Telegram and send it any message. The chat is detected automatically.</p>
+          <div class="wizard-status is-wait" id="wiz-detect-status"></div>
+          <label class="field" for="wiz-chat-id" data-i18n="setup.chatManualLabel">Chat ID (filled automatically — or enter manually)</label>
+          <input id="wiz-chat-id" type="text" inputmode="numeric" autocomplete="off" placeholder="123456789" />
+          <div class="wizard-nav">
+            <button type="button" class="btn-ghost" id="wiz-btn-back-2" data-i18n="setup.btnBack">Back</button>
+            <span class="spacer"></span>
+            <button type="button" class="btn-primary" id="wiz-btn-next-2" disabled data-i18n="setup.btnNext">Next</button>
+          </div>
+        </div>
+
+        <div class="wizard-panel" id="wiz-step-3" hidden>
+          <p class="lead" style="margin-bottom:0.5rem" data-i18n="setup.projectLead">Name the project and point it at a local Git repository.</p>
+          <label class="field" for="wiz-name" data-i18n="common.name">Name</label>
+          <input id="wiz-name" autocomplete="off" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="my-project" />
+          <label class="field" for="wiz-root" data-i18n="projects.gitRootPath">Git root path</label>
+          <p class="hint" data-i18n="projects.gitRootHint">Absolute path. The directory must exist to save.</p>
+          <input id="wiz-root" autocomplete="off" placeholder="/Users/me/Git/my-project" />
+          <label class="field" for="wiz-model" data-i18n="common.defaultModel">Default model</label>
+          <select id="wiz-model">
+            <option value="claude">claude</option>
+            <option value="codex">codex</option>
+            <option value="gemini">gemini</option>
+          </select>
+          <div class="wizard-status" id="wiz-create-status" hidden></div>
+          <div class="wizard-nav">
+            <button type="button" class="btn-ghost" id="wiz-btn-back-3" data-i18n="setup.btnBack">Back</button>
+            <span class="spacer"></span>
+            <button type="button" class="btn-primary" id="wiz-btn-create" data-i18n="setup.btnCreate">Create project</button>
+          </div>
+        </div>
+
+        <div class="wizard-panel wizard-done" id="wiz-step-4" hidden>
+          <div class="big" aria-hidden="true">🎉</div>
+          <h2 data-i18n="setup.doneTitle">All set!</h2>
+          <p class="lead" data-i18n="setup.doneLead">Your bot is live. Open it in Telegram and send /start.</p>
+          <div class="setup-actions" style="justify-content:center">
+            <a class="btn-cta" id="wiz-open-bot" href="#" target="_blank" rel="noopener" data-i18n="setup.openBot">Open the bot in Telegram</a>
+            <a class="btn" href="/projects" data-i18n="admin.manageLink">Manage</a>
+          </div>
+          <p class="lead" style="margin:1rem 0 0" data-i18n="setup.nextNote">Once a project is added while the server is running, its bot goes live automatically.</p>
+        </div>
+
+        <div class="setup-actions">
+          <button type="button" class="btn btn-ghost" id="btn-prereq-recheck" data-i18n="setup.recheck">Re-check</button>
+          <a href="/projects" class="link-manage" data-i18n="setup.skipWizard">Prefer the full form? Use the Projects page.</a>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="active-projects-heading">
+        <div class="section-head">
+          <h2 id="active-projects-heading" data-i18n="admin.activeProjects">Active projects</h2>
+          <a href="/projects" class="link-manage" data-i18n="admin.manageLink">Manage</a>
+        </div>
+        <p class="lead" data-i18n="admin.activeLead">Only enabled projects are shown. Add, disable, or delete them on the Projects page.</p>
+        <div id="active-projects-view" aria-live="polite"></div>
+      </section>
+
+      <section class="card" aria-labelledby="settings-heading">
+        <h2 id="settings-heading" data-i18n="admin.configSummary">Configuration files</h2>
+        <p class="lead" data-i18n="admin.configLead">Registry and advanced settings file paths. Project bots and allowlists live in the registry.</p>
+        <dl class="settings-meta" id="settings-meta"></dl>
+      </section>
+    </main>
   </div>
 
   <script src="/admin-static/i18n.js"></script>
@@ -616,14 +276,195 @@
         renderSettings(result.settings);
         renderActiveProjects(result.projectsPayload);
         const registeredCount = (result.projectsPayload.projects || []).length;
-        setupSection.hidden = registeredCount !== 0;
         if (registeredCount === 0) {
+          setupSection.hidden = false;
           await loadPrerequisites();
         }
       } catch (e) {
         setGlobalMsg("err", String(e));
       }
     }
+
+    /* ----- Easy setup wizard ----- */
+    const wiz = {
+      step: 1,
+      botUsername: "",
+      detectTimer: null,
+    };
+
+    function wizSetStatus(el, kind, text) {
+      if (!text) {
+        el.hidden = true;
+        el.textContent = "";
+        el.className = "wizard-status";
+        return;
+      }
+      el.hidden = false;
+      el.textContent = text;
+      el.className = "wizard-status " + (kind === "ok" ? "is-ok" : kind === "err" ? "is-err" : "is-wait");
+    }
+
+    function wizStopDetect() {
+      if (wiz.detectTimer) {
+        clearInterval(wiz.detectTimer);
+        wiz.detectTimer = null;
+      }
+    }
+
+    function wizGoto(step) {
+      wiz.step = step;
+      for (let i = 1; i <= 4; i++) {
+        $("#wiz-step-" + i).hidden = i !== step;
+      }
+      document.querySelectorAll("#wizard-steps li").forEach((li) => {
+        const n = Number(li.dataset.step);
+        li.className = n < step ? "is-done" : n === step ? "is-active" : "";
+      });
+      if (step !== 2) wizStopDetect();
+      if (step === 2) wizStartDetect();
+    }
+
+    async function wizVerifyToken() {
+      const token = $("#wiz-token").value.trim();
+      const status = $("#wiz-token-status");
+      if (!token) {
+        wizSetStatus(status, "err", i18n.t("projects.errBotToken"));
+        return;
+      }
+      wizSetStatus(status, "wait", i18n.t("setup.verifying"));
+      $("#wiz-btn-verify").disabled = true;
+      try {
+        const r = await fetch("/api/setup/validate-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bot_token: token }),
+        });
+        const t = await r.text();
+        if (!r.ok) {
+          wizSetStatus(status, "err", await parseApiError(r, t));
+          return;
+        }
+        const d = JSON.parse(t);
+        wiz.botUsername = d.bot_username || "";
+        wizSetStatus(status, "ok", i18n.t("setup.tokenOk", { bot: wiz.botUsername || d.bot_name || "bot" }));
+        const lead = $("#wiz-chat-lead");
+        lead.textContent = i18n.t("setup.chatLeadBot", { bot: wiz.botUsername || "your bot" });
+        wizGoto(2);
+      } catch (e) {
+        wizSetStatus(status, "err", String(e));
+      } finally {
+        $("#wiz-btn-verify").disabled = false;
+      }
+    }
+
+    function wizStartDetect() {
+      const status = $("#wiz-detect-status");
+      wizSetStatus(status, "wait", i18n.t("setup.detectWaiting"));
+      wizStopDetect();
+      let tries = 0;
+      const poll = async () => {
+        tries += 1;
+        if (tries > 60) {
+          wizStopDetect();
+          return;
+        }
+        try {
+          const r = await fetch("/api/setup/detect-chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bot_token: $("#wiz-token").value.trim() }),
+          });
+          const t = await r.text();
+          if (!r.ok) {
+            wizStopDetect();
+            wizSetStatus(status, "err", await parseApiError(r, t));
+            return;
+          }
+          const d = JSON.parse(t);
+          if (d.found && d.chat_id != null) {
+            wizStopDetect();
+            $("#wiz-chat-id").value = String(d.chat_id);
+            $("#wiz-btn-next-2").disabled = false;
+            wizSetStatus(status, "ok", i18n.t("setup.detectFound", {
+              name: d.chat_name || "-",
+              id: d.chat_id,
+            }));
+          }
+        } catch (e) {
+          wizStopDetect();
+          wizSetStatus(status, "err", String(e));
+        }
+      };
+      poll();
+      wiz.detectTimer = setInterval(poll, 2500);
+    }
+
+    async function wizCreateProject() {
+      const status = $("#wiz-create-status");
+      const name = $("#wiz-name").value.trim();
+      const root = $("#wiz-root").value.trim();
+      const chatId = parseInt($("#wiz-chat-id").value.trim(), 10);
+      if (!name || !root || Number.isNaN(chatId)) {
+        wizSetStatus(status, "err", i18n.t("setup.errFillAll"));
+        return;
+      }
+      wizSetStatus(status, "wait", i18n.t("setup.creating"));
+      $("#wiz-btn-create").disabled = true;
+      try {
+        const r = await fetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: name,
+            root_path: root,
+            default_model: $("#wiz-model").value,
+            enabled: true,
+            bot_token: $("#wiz-token").value.trim(),
+            webhook_secret: null,
+            allowed_chat_ids: [chatId],
+            allowed_user_ids: [],
+          }),
+        });
+        const t = await r.text();
+        if (!r.ok) {
+          wizSetStatus(status, "err", await parseApiError(r, t));
+          return;
+        }
+        wizSetStatus(status, "", "");
+        const openBot = $("#wiz-open-bot");
+        if (wiz.botUsername) {
+          openBot.href = "https://t.me/" + encodeURIComponent(wiz.botUsername);
+        } else {
+          openBot.removeAttribute("href");
+        }
+        wizGoto(4);
+        await loadHub();
+        setupSection.hidden = false;
+      } catch (e) {
+        wizSetStatus(status, "err", String(e));
+      } finally {
+        $("#wiz-btn-create").disabled = false;
+      }
+    }
+
+    $("#wiz-btn-verify").addEventListener("click", wizVerifyToken);
+    $("#wiz-token").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") wizVerifyToken();
+    });
+    $("#wiz-btn-back-2").addEventListener("click", () => wizGoto(1));
+    $("#wiz-btn-next-2").addEventListener("click", () => wizGoto(3));
+    $("#wiz-chat-id").addEventListener("input", () => {
+      $("#wiz-btn-next-2").disabled = !$("#wiz-chat-id").value.trim();
+    });
+    $("#wiz-btn-back-3").addEventListener("click", () => wizGoto(2));
+    $("#wiz-btn-create").addEventListener("click", wizCreateProject);
+
+    $("#btn-open-setup").addEventListener("click", async () => {
+      setupSection.hidden = false;
+      wizGoto(1);
+      setupSection.scrollIntoView({ behavior: "smooth" });
+      await loadPrerequisites();
+    });
 
     $("#btn-prereq-recheck").addEventListener("click", loadPrerequisites);
 

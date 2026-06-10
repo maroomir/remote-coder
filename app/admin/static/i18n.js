@@ -59,6 +59,11 @@
 
     // admin.html (hub)
     "admin.tagline": { en: "Local admin UI", ko: "로컬 관리 UI" },
+    "admin.h1": { en: "Dashboard", ko: "대시보드" },
+    "admin.dashboardLead": {
+      en: "Everything that is registered and running, at a glance.",
+      ko: "등록·실행 중인 모든 것을 한눈에 봅니다.",
+    },
     "admin.activeProjects": { en: "Active projects", ko: "활성 프로젝트" },
     "admin.manageLink": { en: "Manage", ko: "등록·편집" },
     "admin.activeLead": {
@@ -83,8 +88,56 @@
 
     "setup.title": { en: "First-time setup", ko: "최초 설정" },
     "setup.lead": {
-      en: "No projects registered yet. Check the prerequisites below, then add your first project to bring a Telegram bot online.",
-      ko: "아직 등록된 프로젝트가 없습니다. 아래 전제조건을 확인한 뒤 첫 프로젝트를 추가하면 Telegram 봇이 연결됩니다.",
+      en: "Connect a Telegram bot to a local repository in about a minute.",
+      ko: "약 1분 안에 Telegram 봇을 로컬 저장소에 연결합니다.",
+    },
+    "setup.easySetup": { en: "Easy setup", ko: "간편 설정" },
+    "setup.stepToken": { en: "Bot token", ko: "봇 토큰" },
+    "setup.stepChat": { en: "Connect chat", ko: "채팅 연결" },
+    "setup.stepProject": { en: "Project", ko: "프로젝트" },
+    "setup.stepDone": { en: "Done", ko: "완료" },
+    "setup.tokenLead": {
+      en: 'Message <a class="wizard-link" href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a> in Telegram, send <code>/newbot</code>, and paste the API token it gives you.',
+      ko: 'Telegram에서 <a class="wizard-link" href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>에게 <code>/newbot</code>을 보내고, 발급받은 API 토큰을 여기에 붙여넣으세요.',
+    },
+    "setup.btnVerify": { en: "Verify token", ko: "토큰 확인" },
+    "setup.verifying": { en: "Checking token…", ko: "토큰 확인 중…" },
+    "setup.tokenOk": { en: "Connected to @{bot}.", ko: "@{bot} 봇에 연결했습니다." },
+    "setup.chatLead": {
+      en: "Open a chat with your new bot in Telegram and send it any message. The chat is detected automatically.",
+      ko: "Telegram에서 새 봇과의 채팅을 열고 아무 메시지나 보내세요. 채팅이 자동으로 감지됩니다.",
+    },
+    "setup.chatLeadBot": {
+      en: "Open a chat with @{bot} in Telegram and send it any message. The chat is detected automatically.",
+      ko: "Telegram에서 @{bot} 채팅을 열고 아무 메시지나 보내세요. 채팅이 자동으로 감지됩니다.",
+    },
+    "setup.chatManualLabel": {
+      en: "Chat ID (filled automatically — or enter manually)",
+      ko: "Chat ID (자동 입력 — 직접 입력도 가능)",
+    },
+    "setup.detectWaiting": { en: "Waiting for your message…", ko: "메시지를 기다리는 중…" },
+    "setup.detectFound": { en: "Chat detected: {name} ({id})", ko: "채팅 감지됨: {name} ({id})" },
+    "setup.btnBack": { en: "Back", ko: "뒤로" },
+    "setup.btnNext": { en: "Next", ko: "다음" },
+    "setup.projectLead": {
+      en: "Name the project and point it at a local Git repository.",
+      ko: "프로젝트 이름을 정하고 로컬 Git 저장소 경로를 지정하세요.",
+    },
+    "setup.btnCreate": { en: "Create project", ko: "프로젝트 생성" },
+    "setup.creating": { en: "Creating…", ko: "생성 중…" },
+    "setup.errFillAll": {
+      en: "Enter the name, Git root path, and chat ID.",
+      ko: "이름, Git 루트 경로, Chat ID를 모두 입력하세요.",
+    },
+    "setup.doneTitle": { en: "All set!", ko: "설정 완료!" },
+    "setup.doneLead": {
+      en: "Your bot is live. Open it in Telegram and send /start.",
+      ko: "봇이 연결되었습니다. Telegram에서 봇을 열고 /start 를 보내보세요.",
+    },
+    "setup.openBot": { en: "Open the bot in Telegram", ko: "Telegram에서 봇 열기" },
+    "setup.skipWizard": {
+      en: "Prefer the full form? Use the Projects page.",
+      ko: "전체 폼이 필요하면 프로젝트 등록 페이지를 사용하세요.",
     },
     "setup.prereqTitle": { en: "Prerequisites", ko: "전제조건" },
     "setup.ngrok": { en: "ngrok tunnel", ko: "ngrok 터널" },
