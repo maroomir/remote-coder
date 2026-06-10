@@ -73,3 +73,55 @@ def test_claude_runner_passes_model_id(mock_popen):
         "--model",
         "sonnet",
     ]
+
+
+@patch("app.ai.base.subprocess.Popen")
+def test_claude_runner_sets_session_id_on_fresh_session(mock_popen):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("done", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
+
+    result = ClaudeRunner().run(
+        RunnerInput(
+            instruction="test",
+            cwd=Path("."),
+            timeout_seconds=10,
+            session_id="11111111-1111-1111-1111-111111111111",
+        )
+    )
+
+    assert mock_popen.call_args.args[0] == [
+        "claude",
+        "-p",
+        "test",
+        "--dangerously-skip-permissions",
+        "--session-id",
+        "11111111-1111-1111-1111-111111111111",
+    ]
+    assert result.session_id == "11111111-1111-1111-1111-111111111111"
+
+
+@patch("app.ai.base.subprocess.Popen")
+def test_claude_runner_resumes_with_token(mock_popen):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("done", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
+
+    result = ClaudeRunner().run(
+        RunnerInput(
+            instruction="test",
+            cwd=Path("."),
+            timeout_seconds=10,
+            session_id="11111111-1111-1111-1111-111111111111",
+            resume_token="11111111-1111-1111-1111-111111111111",
+        )
+    )
+
+    cmd = mock_popen.call_args.args[0]
+    assert "--resume" in cmd and "--session-id" not in cmd
+    assert cmd[cmd.index("--resume") + 1] == "11111111-1111-1111-1111-111111111111"
+    assert result.session_id == "11111111-1111-1111-1111-111111111111"

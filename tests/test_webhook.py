@@ -2602,3 +2602,109 @@ def test_webhook_callback_query_unauthorized_is_ignored(project_registry):
     assert response.json()["status"] == "ignored"
     assert not notifier.sent
     assert "cq_002" in notifier.answered_callbacks
+
+
+class SessionRecordingJobManager:
+    def __init__(self, branch: str, runner_session_id: str) -> None:
+        self.requests: list[JobRequest] = []
+        self.branch = branch
+        self.runner_session_id = runner_session_id
+
+    def submit(self, request):
+        self.requests.append(request)
+        return Job(id=f"job_{len(self.requests)}", request=request, accepted_message_id=200)
+
+    def run(self, job_id: str):
+        request = self.requests[-1]
+        return Job(
+            id=job_id,
+            request=request,
+            status=JobStatus.SUCCEEDED,
+            branch=self.branch,
+            commit_hash="abc1234",
+            runner_session_id=self.runner_session_id,
+            result_message_ids=[201],
+        )
+
+
+def test_webhook_reply_jobs_share_session_and_resume(project_registry, tmp_path):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    conversation_store = SQLiteConversationStore(tmp_path / "conv.sqlite3")
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    git_service.local_branch_exists.return_value = True
+    runner_session = "11111111-1111-1111-1111-111111111111"
+    job_manager = SessionRecordingJobManager(branch="remote-x", runner_session_id=runner_session)
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=conversation_store,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+                conversation_store=conversation_store,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=job_manager,
+            job_store=store,
+            conversation_store=conversation_store,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    client.post(
+        wh,
+        json={
+            "update_id": 40,
+            "message": {
+                "message_id": 40,
+                "text": "build the feature",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+            },
+        },
+    )
+    _confirm_via_button(client, wh, notifier, 41)
+
+    # First (root) job establishes a session id but has nothing to resume yet.
+    root_request = job_manager.requests[0]
+    assert root_request.session_id is not None
+    assert root_request.resume_session_token is None
+
+    client.post(
+        wh,
+        json={
+            "update_id": 42,
+            "message": {
+                "message_id": 42,
+                "text": "now extend it",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+                "reply_to_message": {"message_id": 40, "text": "build the feature"},
+            },
+        },
+    )
+    _confirm_via_button(client, wh, notifier, 43, message_id=901)
+
+    reply_request = job_manager.requests[1]
+    assert reply_request.session_id == root_request.session_id
+    assert reply_request.resume_session_token == runner_session

@@ -403,3 +403,88 @@ def test_format_reply_chain_context_and_collect_ids(tmp_path: Path):
 
     ids = store.collect_reply_chain_message_ids("p1", 1, 20)
     assert ids == {10, 20}
+
+
+def _seed_user(store, *, chat_id, message_id, job_id, reply_to=None, text="msg"):
+    store.append(
+        project="p1",
+        chat_id=chat_id,
+        role="user",
+        text=text,
+        job_id=job_id,
+        message_id=message_id,
+        reply_to_message_id=reply_to,
+    )
+
+
+def _seed_result(store, *, chat_id, message_id, job_id):
+    store.append(
+        project="p1",
+        chat_id=chat_id,
+        role="job_result",
+        text="status=succeeded",
+        job_id=job_id,
+        message_id=message_id,
+    )
+
+
+def test_resolve_session_reply_chain_shares_root_session(tmp_path: Path):
+    store = SQLiteConversationStore(tmp_path / "sess.sqlite3")
+
+    # M1 -> S1, M2 -> S2 (independent roots)
+    _seed_user(store, chat_id=1, message_id=101, job_id="j1")
+    s1 = store.resolve_or_create_session("p1", 1, 101, None)
+    _seed_user(store, chat_id=1, message_id=102, job_id="j2")
+    s2 = store.resolve_or_create_session("p1", 1, 102, None)
+
+    # Agent replies R1, R2 carry the originating job ids.
+    _seed_result(store, chat_id=1, message_id=201, job_id="j1")
+    _seed_result(store, chat_id=1, message_id=202, job_id="j2")
+
+    # M3 replies to the M1 user message -> same session as S1.
+    _seed_user(store, chat_id=1, message_id=103, job_id="j3", reply_to=101)
+    s3 = store.resolve_or_create_session("p1", 1, 103, 101)
+
+    # M4 replies to R2 (an agent message) -> resolves through job j2 back to S2.
+    _seed_user(store, chat_id=1, message_id=104, job_id="j4", reply_to=202)
+    s4 = store.resolve_or_create_session("p1", 1, 104, 202)
+
+    assert s1 != s2
+    assert s3 == s1
+    assert s4 == s2
+
+
+def test_resolve_session_is_stable_for_same_message(tmp_path: Path):
+    store = SQLiteConversationStore(tmp_path / "sess2.sqlite3")
+    _seed_user(store, chat_id=1, message_id=10, job_id="j1")
+    first = store.resolve_or_create_session("p1", 1, 10, None)
+    second = store.resolve_or_create_session("p1", 1, 10, None)
+    assert first == second
+
+
+def test_runner_resume_token_roundtrip(tmp_path: Path):
+    store = SQLiteConversationStore(tmp_path / "tok.sqlite3")
+    assert store.get_runner_resume_token("s1", "claude") is None
+    store.set_runner_resume_token("s1", "claude", "tok-a")
+    assert store.get_runner_resume_token("s1", "claude") == "tok-a"
+    store.set_runner_resume_token("s1", "claude", "tok-b")
+    assert store.get_runner_resume_token("s1", "claude") == "tok-b"
+    # Providers are tracked independently.
+    assert store.get_runner_resume_token("s1", "codex") is None
+    store.set_runner_resume_token("s1", "codex", "codex-tok")
+    assert store.get_runner_resume_token("s1", "codex") == "codex-tok"
+    assert store.get_runner_resume_token("s1", "claude") == "tok-b"
+
+
+def test_delete_chat_memory_clears_sessions(tmp_path: Path):
+    store = SQLiteConversationStore(tmp_path / "clr.sqlite3")
+    _seed_user(store, chat_id=1, message_id=10, job_id="j1")
+    session = store.resolve_or_create_session("p1", 1, 10, None)
+    store.set_runner_resume_token(session, "claude", "tok")
+
+    store.delete_chat_memory(project="p1", chat_id=1)
+
+    assert store.get_runner_resume_token(session, "claude") is None
+    _seed_user(store, chat_id=1, message_id=10, job_id="j1")
+    new_session = store.resolve_or_create_session("p1", 1, 10, None)
+    assert new_session != session

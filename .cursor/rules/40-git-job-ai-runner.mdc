@@ -45,3 +45,11 @@ alwaysApply: true
 - Always set `cwd` and timeout explicitly.
 - Keep runner selection behind Strategy or Factory so model conditionals do not spread through services.
 - Wrap Claude/Codex/Gemini CLI details in adapters so domain logic does not depend on subprocess specifics.
+
+## Reply Session Continuity Rules
+
+- Jobs linked by Telegram reply share one AI session anchored to the reply-chain **root** user message; non-reply messages start a fresh session.
+- Persist the logical `session_id` and per-provider native resume tokens in SQLite conversation memory, keyed back to job ids; `/clear memory` clears them.
+- Resolve the session and resume token at submit time, thread them through `RunnerInput`, and capture the runner's session id back into the job after each run.
+- Provider resume mechanics live only in each runner adapter: Claude sets `--session-id` then `--resume`; Codex captures its rollout session id and resumes via `codex exec resume <id>`; Gemini resumes via `--resume <id>` when a captured id exists.
+- Native resume is best-effort: when a provider cannot expose a resumable id, fall back to the existing reply-context injection rather than failing the job. Native Claude resume assumes the chain reuses the same worktree (cwd-scoped sessions).

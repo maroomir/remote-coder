@@ -13,6 +13,7 @@ Run Claude Code, Codex, or Gemini on your local development machine by sending a
 - One Telegram bot per registered project, with project-scoped allowlists and settings.
 - Request-specific Git worktrees, branch creation, commit, push, and result notifications.
 - Claude, Codex, and Gemini runners behind the same job flow.
+- Reply-linked jobs continue the same AI CLI session, so follow-ups build on prior context.
 - Local admin UI for project setup, advanced settings, logs, and conversation memory.
 - Read-only `plan:` and `ask:` modes when you want analysis without commits.
 
