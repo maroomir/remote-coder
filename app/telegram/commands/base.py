@@ -80,7 +80,8 @@ HELP_TEXT = "\n".join(
         "- no commit",
         "- plan: <natural language> or /plan <natural language> - plan mode (plan only; no code changes)",
         "- ask: <natural language> or /ask <natural language> - ask mode (analysis and answers; no code edits)",
-        "- Korean aliases 계획: and 질문: instead of plan:/ask: (colons `:` or full-width `：` allowed)",
+        "- fix: <natural language> or /fix <job_id> - fix mode (amends a previous job commit; reply to job result or choose job)",
+        "- Korean aliases 계획:, 질문:, and 수정: instead of plan:/ask:/fix: (colons `:` or full-width `：` allowed)",
         "",
         "Commands:",
         "- /model <claude|codex|gemini>: Change the default model",
@@ -94,7 +95,7 @@ HELP_TEXT = "\n".join(
         "- /reports [count]: Conversation memory report",
         "- /init: Reset this chat's settings",
         "- /stop <job_id>: Stop a running job",
-        "- /fix <commit|source> [job_id]: Re-do a job's commit/source (amend + force-with-lease push)",
+        "- /fix [job_id]: Fix a previous job's source (amend + force-with-lease push)",
         "- /start: Inline menu",
     ]
 )
@@ -142,6 +143,22 @@ HELP_ASK_TOPIC = "\n".join(
         "- ask: how do I run pytest in this project?",
         "- /ask explain JobManager.run stages",
         "- 질문：what this error line means",
+        "",
+        "See /help for more options.",
+    ]
+)
+
+HELP_FIX_TOPIC = "\n".join(
+    [
+        "Fix mode (fix)",
+        "",
+        "Apply follow-up fixes on top of a previous succeeded job. The agent amends the existing commit and "
+        "pushes with --force-with-lease. Reply to a job result with fix: or choose a job via /fix.",
+        "",
+        "Examples",
+        "- (reply to job result) fix: add missing tests",
+        "- /fix job_abc123 then send the fix instruction",
+        "- 수정：로그인 검증 버그도 고쳐줘",
         "",
         "See /help for more options.",
     ]

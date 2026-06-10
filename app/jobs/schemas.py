@@ -29,7 +29,6 @@ class JobMode(StrEnum):
 
 
 class FixKind(StrEnum):
-    COMMIT = "commit"
     SOURCE = "source"
 
 

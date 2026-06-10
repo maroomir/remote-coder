@@ -31,7 +31,7 @@ from app.telegram.bot_instances import BotInstanceManager
 from app.telegram.confirmations import PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.notifier import Notifier
-from app.telegram.parser import CommandParseError, CommandParser
+from app.telegram.parser import CommandParseError, CommandParser, _extract_reply_job_id
 
 _inbound = EventLogger("app.telegram.inbound", "telegram.inbound")
 _cmdlog = EventLogger("app.telegram.command", "telegram.command")
@@ -125,17 +125,6 @@ def _format_natural_job_confirmation(
     return "\n".join(lines)
 
 
-_FIX_REPLY_PREFIX_RE = re.compile(r"^(?:fix|수정)\s*[:：]\s*", re.IGNORECASE)
-
-
-def _match_fix_reply_prefix(text: str) -> str | None:
-    stripped = text.lstrip()
-    match = _FIX_REPLY_PREFIX_RE.match(stripped)
-    if match is None:
-        return None
-    return stripped[match.end() :]
-
-
 def _format_fix_source_confirmation(
     request: JobRequest,
     target_job: Job,
@@ -150,7 +139,7 @@ def _format_fix_source_confirmation(
         f"- Branch: {target_job.branch}",
         f"- Original commit: {target_job.commit_hash}",
         f"- Model: {format_model_selection(request.model, request.model_id)}",
-        "- Mode: agent_fix (source) - amends the existing commit and pushes with --force-with-lease",
+        "- Mode: fix (amends the existing commit and pushes with --force-with-lease)",
     ]
     if use_buttons:
         lines.extend(["", "Choose whether to run it."])
@@ -415,6 +404,168 @@ def create_webhook_router(
             req.background_tasks.add_task(req.notifier.send_text, req.chat_id, confirmation_text)
         return True
 
+    def _resolve_fix_target_from_reply(req: _Req) -> Job | None:
+        project_name = effective_project_name_for_chat(req.command_context, req.chat_id)
+        if project_name is None:
+            return None
+        linked_job_id: str | None = None
+        if req.reply_mid is not None and conversation_store is not None:
+            linked_job_id = conversation_store.get_job_id_for_message_id(
+                req.scope_project, req.chat_id, req.reply_mid
+            )
+            if linked_job_id is None and req.reply_txt:
+                linked_job_id = _extract_reply_job_id(req.reply_txt)
+        if linked_job_id is None:
+            return None
+        return job_manager.resolve_fix_target_job(linked_job_id, project_name, req.chat_id)
+
+    def _extract_fix_instruction(req: _Req) -> str | None:
+        text = req.message.text.strip()
+        tokens = text.split()
+        if tokens and tokens[0].lower() == "/fix":
+            if len(tokens) == 1:
+                return None
+            job_id = tokens[1]
+            project_name = effective_project_name_for_chat(req.command_context, req.chat_id)
+            if project_name is not None:
+                candidate = job_store.get(job_id)
+                if candidate is not None and job_manager.is_fix_candidate(
+                    candidate, project_name, req.chat_id
+                ):
+                    return None
+            return text.split(maxsplit=1)[1]
+        parsed = parser.parse_fix_instruction(text)
+        return parsed.instruction if parsed is not None else None
+
+    def _queue_fix_confirmation(req: _Req, fix_instruction: str, target_job: Job) -> dict[str, str]:
+        project_name = effective_project_name_for_chat(req.command_context, req.chat_id)
+        if project_name is None:
+            req.background_tasks.add_task(req.notifier.send_text, req.chat_id, "No project is registered.")
+            return {"status": "ignored"}
+        fix_request = JobRequest(
+            project=project_name,
+            model=target_job.request.model,
+            model_id=target_job.request.model_id,
+            instruction=fix_instruction,
+            mode=JobMode.AGENT_FIX,
+            fix_kind=FixKind.SOURCE,
+            parent_job_id=target_job.id,
+            branch=target_job.branch,
+            chat_id=req.chat_id,
+            requested_by=req.user_id,
+            message_id=req.update.message.message_id,
+            reply_to_message_id=req.reply_mid,
+        )
+        req.command_context.confirmation_store.set(
+            req.scope_project,
+            req.chat_id,
+            PendingConfirmation(
+                command_name="/fix",
+                action=FIX_SOURCE_PENDING_ACTION,
+                job_request=fix_request,
+                original_text=req.message.text.strip(),
+                target_job_id=target_job.id,
+            ),
+        )
+        use_buttons = _natural_job_confirmation_buttons_enabled(req.command_context)
+        confirmation_text = _format_fix_source_confirmation(
+            fix_request, target_job, use_buttons=use_buttons
+        )
+        if use_buttons:
+            req.background_tasks.add_task(
+                req.notifier.send_with_buttons,
+                req.chat_id,
+                confirmation_text,
+                _natural_job_confirmation_buttons(),
+            )
+        else:
+            req.background_tasks.add_task(req.notifier.send_text, req.chat_id, confirmation_text)
+        return {"status": "ok"}
+
+    def _handle_fix_intent(req: _Req) -> dict[str, str] | None:
+        try:
+            fix_instruction = _extract_fix_instruction(req)
+        except CommandParseError as exc:
+            req.background_tasks.add_task(req.notifier.send_text, req.chat_id, str(exc))
+            return {"status": "ignored"}
+        if fix_instruction is None:
+            return None
+        if not fix_instruction.strip():
+            return None
+        target_job = _resolve_fix_target_from_reply(req)
+        if target_job is None:
+            req.background_tasks.add_task(
+                req.notifier.send_text,
+                req.chat_id,
+                "Fix mode requires replying to a previous job result or /fix <job_id>.",
+            )
+            return {"status": "ignored"}
+        return _queue_fix_confirmation(req, fix_instruction.strip(), target_job)
+
+    def _submit_confirmed_fix_request(
+        request: JobRequest,
+        original_text: str,
+        background_tasks: BackgroundTasks,
+    ) -> None:
+        if conversation_store is not None:
+            conversation_store.append(
+                project=request.project,
+                chat_id=request.chat_id,
+                role="user",
+                text=original_text,
+                message_id=request.message_id,
+                reply_to_message_id=request.reply_to_message_id,
+            )
+            _cmdlog.info(
+                "conversation fix user message recorded message_id=%s",
+                request.message_id,
+                chat_id=request.chat_id,
+                user_id=request.requested_by,
+                project=request.project,
+            )
+
+        def run_and_record_fix() -> None:
+            final_job = job_manager.execute_fix_job(request)
+            _cmdlog.info(
+                "fix background run finished status=%s",
+                final_job.status.value,
+                chat_id=final_job.request.chat_id,
+                user_id=final_job.request.requested_by,
+                project=final_job.request.project,
+                job_id=final_job.id,
+            )
+            if conversation_store is None:
+                return
+            conversation_store.append(
+                project=final_job.request.project,
+                chat_id=final_job.request.chat_id,
+                role="job_accepted",
+                text=f"Job accepted: {final_job.id}",
+                job_id=final_job.id,
+                message_id=final_job.accepted_message_id,
+            )
+            summary = format_job_result_memory_summary(final_job)
+            conversation_store.append(
+                project=final_job.request.project,
+                chat_id=final_job.request.chat_id,
+                role="job_result",
+                text=summary,
+                job_id=final_job.id,
+                message_id=(
+                    final_job.result_message_ids[0] if final_job.result_message_ids else None
+                ),
+            )
+            if final_job.request.message_id is not None and final_job.branch is not None:
+                conversation_store.bind_message_branch(
+                    project=final_job.request.project,
+                    chat_id=final_job.request.chat_id,
+                    message_id=final_job.request.message_id,
+                    branch=final_job.branch,
+                    job_id=final_job.id,
+                )
+
+        background_tasks.add_task(run_and_record_fix)
+
     def _handle_pending(req: _Req, pending: PendingConfirmation | None) -> dict[str, str] | None:
         if pending is None:
             return None
@@ -520,15 +671,13 @@ def create_webhook_router(
             and not req.message.text.strip().startswith("/")
         ):
             cc.confirmation_store.pop(scope_project, chat_id)
-            target_job = (
-                job_store.get(pending.target_job_id) if pending.target_job_id is not None else None
-            )
             project_name = effective_project_name_for_chat(cc, chat_id)
-            if (
-                target_job is None
-                or project_name is None
-                or not job_manager.is_fix_candidate(target_job, project_name, chat_id)
-            ):
+            target_job = (
+                job_manager.resolve_fix_target_job(pending.target_job_id, project_name, chat_id)
+                if pending.target_job_id is not None and project_name is not None
+                else None
+            )
+            if target_job is None:
                 bt.add_task(notifier.send_text, chat_id, "Fix target job is no longer available.")
                 return {"status": "ignored"}
             fix_request = JobRequest(
@@ -585,7 +734,12 @@ def create_webhook_router(
                 ):
                     bt.add_task(notifier.send_text, chat_id, "Could not process the pending confirmation.")
                     return {"status": "ignored"}
-                bt.add_task(job_manager.execute_fix_job, confirmed.job_request, None)
+                bt.add_task(
+                    _submit_confirmed_fix_request,
+                    confirmed.job_request,
+                    confirmed.original_text or confirmed.job_request.instruction,
+                    bt,
+                )
                 return {"status": "accepted"}
             cc.confirmation_store.pop(scope_project, chat_id)
             bt.add_task(notifier.send_text, chat_id, "Cancelled the fix job.")
@@ -628,63 +782,6 @@ def create_webhook_router(
                     skip_body_i18n=command_response.skip_notifier_body_i18n,
                 )
             )
-        return {"status": "ok"}
-
-    def _handle_fix_reply(req: _Req) -> dict[str, str] | None:
-        fix_reply_match = _match_fix_reply_prefix(req.message.text)
-        if fix_reply_match is None or req.reply_mid is None or conversation_store is None:
-            return None
-        fix_instruction = fix_reply_match.strip()
-        project_name_for_fix = effective_project_name_for_chat(req.command_context, req.chat_id)
-        linked_job_id = conversation_store.get_job_id_for_message_id(
-            req.scope_project, req.chat_id, req.reply_mid
-        )
-        target_job = job_store.get(linked_job_id) if linked_job_id else None
-        if not (
-            fix_instruction
-            and project_name_for_fix is not None
-            and target_job is not None
-            and job_manager.is_fix_candidate(target_job, project_name_for_fix, req.chat_id)
-        ):
-            return None
-        fix_request = JobRequest(
-            project=project_name_for_fix,
-            model=target_job.request.model,
-            model_id=target_job.request.model_id,
-            instruction=fix_instruction,
-            mode=JobMode.AGENT_FIX,
-            fix_kind=FixKind.SOURCE,
-            parent_job_id=target_job.id,
-            branch=target_job.branch,
-            chat_id=req.chat_id,
-            requested_by=req.user_id,
-            message_id=req.update.message.message_id,
-            reply_to_message_id=req.reply_mid,
-        )
-        req.command_context.confirmation_store.set(
-            req.scope_project,
-            req.chat_id,
-            PendingConfirmation(
-                command_name="/fix",
-                action=FIX_SOURCE_PENDING_ACTION,
-                job_request=fix_request,
-                original_text=req.message.text.strip(),
-                target_job_id=target_job.id,
-            ),
-        )
-        use_buttons = _natural_job_confirmation_buttons_enabled(req.command_context)
-        confirmation_text = _format_fix_source_confirmation(
-            fix_request, target_job, use_buttons=use_buttons
-        )
-        if use_buttons:
-            req.background_tasks.add_task(
-                req.notifier.send_with_buttons,
-                req.chat_id,
-                confirmation_text,
-                _natural_job_confirmation_buttons(),
-            )
-        else:
-            req.background_tasks.add_task(req.notifier.send_text, req.chat_id, confirmation_text)
         return {"status": "ok"}
 
     def _handle_natural(req: _Req) -> dict[str, str]:
@@ -854,13 +951,13 @@ def create_webhook_router(
             background_tasks.add_task(notifier.send_text, chat_id, _format_mode_input_prompt(mode))
             return {"status": "ok"}
 
+        fix_intent_result = _handle_fix_intent(req)
+        if fix_intent_result is not None:
+            return fix_intent_result
+
         command_result = _handle_command(req)
         if command_result is not None:
             return command_result
-
-        fix_reply_result = _handle_fix_reply(req)
-        if fix_reply_result is not None:
-            return fix_reply_result
 
         return _handle_natural(req)
 

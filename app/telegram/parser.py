@@ -17,6 +17,8 @@ from app.telegram.i18n import (
     command_parse_error_disabled_project,
     command_parse_error_empty_instruction,
     command_parse_error_empty_instruction_plan_ask,
+    command_parse_error_empty_instruction_fix,
+    command_parse_error_fix_requires_target,
     command_parse_error_no_previous_job_context,
     command_parse_error_unknown_project,
     instruction_frame_labels,
@@ -32,9 +34,9 @@ class CommandParseError(ValueError):
 
 _MODEL_OPTION_PATTERN = "|".join(model.value for model in ModelName)
 
-_SLASH_PLAN_ASK = re.compile(r"^/(plan|ask)\b\s*", re.IGNORECASE)
-_PREFIX_PLAN_ASK = re.compile(
-    r"^(plan|ask|계획|질문)\s*[:：]\s*",
+_SLASH_PLAN_ASK_FIX = re.compile(r"^/(plan|ask|fix)\b\s*", re.IGNORECASE)
+_PREFIX_PLAN_ASK_FIX = re.compile(
+    r"^(plan|ask|fix|계획|질문|수정)\s*[:：]\s*",
     re.IGNORECASE,
 )
 _REPLY_JOB_ID_PATTERN = re.compile(
@@ -50,6 +52,17 @@ def _job_mode_from_plan_ask_keyword(key: str) -> JobMode:
     if lowered in ("ask", "질문"):
         return JobMode.ASK
     raise AssertionError(key)
+
+
+def is_fix_mode_keyword(key: str) -> bool:
+    return key.lower() in ("fix", "수정")
+
+
+class FixModeParseResult:
+    __slots__ = ("instruction",)
+
+    def __init__(self, instruction: str) -> None:
+        self.instruction = instruction
 
 
 def _extract_reply_job_id(text: str) -> str | None:
@@ -122,18 +135,34 @@ class CommandParser:
         return model, branch, commit, remaining
 
     @staticmethod
-    def _strip_leading_job_mode(text: str) -> tuple[JobMode, str]:
+    def _strip_leading_job_mode(text: str) -> tuple[JobMode | None, str, bool]:
         stripped = text.strip()
-        slash = _SLASH_PLAN_ASK.match(stripped)
+        slash = _SLASH_PLAN_ASK_FIX.match(stripped)
         if slash:
             key = slash.group(1).lower()
+            remainder = stripped[slash.end() :].strip()
+            if is_fix_mode_keyword(key):
+                return None, remainder, True
             mode = JobMode.PLAN if key == "plan" else JobMode.ASK
-            return mode, stripped[slash.end() :].strip()
-        prefix = _PREFIX_PLAN_ASK.match(stripped)
+            return mode, remainder, False
+        prefix = _PREFIX_PLAN_ASK_FIX.match(stripped)
         if prefix:
-            mode = _job_mode_from_plan_ask_keyword(prefix.group(1))
-            return mode, stripped[prefix.end() :].strip()
-        return JobMode.AGENT, stripped
+            key = prefix.group(1)
+            remainder = stripped[prefix.end() :].strip()
+            if is_fix_mode_keyword(key):
+                return None, remainder, True
+            mode = _job_mode_from_plan_ask_keyword(key)
+            return mode, remainder, False
+        return JobMode.AGENT, stripped, False
+
+    def parse_fix_instruction(self, text: str) -> FixModeParseResult | None:
+        _, remainder, is_fix = self._strip_leading_job_mode(text)
+        if not is_fix:
+            return None
+        lang = language_from_settings_store(self._advanced_settings_store)
+        if not remainder:
+            raise CommandParseError(command_parse_error_empty_instruction_fix(lang))
+        return FixModeParseResult(instruction=remainder)
 
     def parse_natural(
         self,
@@ -146,7 +175,11 @@ class CommandParser:
         reply_to_text: str | None = None,
     ) -> JobRequest:
         lang = language_from_settings_store(self._advanced_settings_store)
-        mode, stripped = self._strip_leading_job_mode(text)
+        mode, stripped, is_fix = self._strip_leading_job_mode(text)
+        if is_fix:
+            if not stripped:
+                raise CommandParseError(command_parse_error_empty_instruction_fix(lang))
+            raise CommandParseError(command_parse_error_fix_requires_target(lang))
 
         model, branch, commit, remaining = self._extract_options(stripped)
         if mode in (JobMode.PLAN, JobMode.ASK):

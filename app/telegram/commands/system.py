@@ -4,6 +4,7 @@ from app import __version__
 from app.telegram.commands.base import (
     HELP_AGENT_TOPIC,
     HELP_ASK_TOPIC,
+    HELP_FIX_TOPIC,
     HELP_PLAN_TOPIC,
     HELP_TEXT,
     CommandContext,
@@ -103,6 +104,7 @@ class StartCommand(TelegramCommand):
                     InlineButton("AGENTS mode", "/help agent"),
                     InlineButton("PLAN mode", "/help plan"),
                     InlineButton("ASK mode", "/help ask"),
+                    InlineButton("FIX mode", "/help fix"),
                 ],
                 [InlineButton("Back", "/start")],
             ]
@@ -122,7 +124,7 @@ class HelpCommand(TelegramCommand):
         tokens = message.text.strip().split()
         if len(tokens) >= 2:
             raw = tokens[1]
-            topic_aliases = {"에이전트": "agent", "계획": "plan", "질문": "ask"}
+            topic_aliases = {"에이전트": "agent", "계획": "plan", "질문": "ask", "수정": "fix"}
             topic = topic_aliases.get(raw, raw.lower())
             if topic in ("agent", "agents"):
                 return HELP_AGENT_TOPIC
@@ -130,6 +132,8 @@ class HelpCommand(TelegramCommand):
                 return HELP_PLAN_TOPIC
             if topic == "ask":
                 return HELP_ASK_TOPIC
+            if topic == "fix":
+                return HELP_FIX_TOPIC
         if len(tokens) >= 2 and self._registry is not None:
             subcmd = self._registry.get("/" + tokens[1])
             if subcmd is not None and subcmd.menu_text:
@@ -146,7 +150,7 @@ class HelpCommand(TelegramCommand):
         tokens = message.text.strip().split() if message else []
         if len(tokens) >= 2:
             topic = tokens[1].lower()
-            if topic in ("agent", "agents", "plan", "ask"):
+            if topic in ("agent", "agents", "plan", "ask", "fix"):
                 return [[InlineButton("← Back", "/help")]]
             subcmd = self._registry.get("/" + tokens[1])
             if subcmd is not None:

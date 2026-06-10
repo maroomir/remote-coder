@@ -129,6 +129,34 @@ def command_parse_error_empty_instruction_plan_ask(language: UiLanguage) -> str:
     )
 
 
+def command_parse_error_empty_instruction_fix(language: UiLanguage) -> str:
+    if language is UiLanguage.KOREAN:
+        return (
+            "수정 지시문이 비어 있습니다.\n\n"
+            "예: fix: 로그인 검증 버그 수정\n"
+            "예: /fix job_123 (Job 선택 후 지시문 입력)"
+        )
+    return (
+        "The fix instruction is empty.\n\n"
+        "Example: fix: patch the login validation bug\n"
+        "Example: /fix job_123 (choose a job, then send the instruction)"
+    )
+
+
+def command_parse_error_fix_requires_target(language: UiLanguage) -> str:
+    if language is UiLanguage.KOREAN:
+        return (
+            "fix 모드는 이전 Job 결과에 답장하거나 /fix로 대상 Job을 선택해야 합니다.\n\n"
+            "예: (Job 결과에 답장) fix: 테스트도 추가해줘\n"
+            "예: /fix"
+        )
+    return (
+        "Fix mode requires replying to a previous job result or choosing a target with /fix.\n\n"
+        "Example: (reply to job result) fix: add tests too\n"
+        "Example: /fix"
+    )
+
+
 def command_parse_error_empty_instruction(language: UiLanguage) -> str:
     return (
         "작업 지시문이 비어 있습니다."
@@ -169,7 +197,8 @@ HELP_MAIN_EN = "\n".join(
         "- no commit",
         "- plan: <natural language> or /plan <natural language> - plan mode (plan only; no code changes)",
         "- ask: <natural language> or /ask <natural language> - ask mode (analysis and answers; no code edits)",
-        "- Korean aliases 계획: and 질문: instead of plan:/ask: (colons `:` or full-width `：` allowed)",
+        "- fix: <natural language> or /fix <job_id> - fix mode (amends a previous job commit; reply to job result or choose job)",
+        "- Korean aliases 계획:, 질문:, and 수정: instead of plan:/ask:/fix: (colons `:` or full-width `：` allowed)",
         "",
         "Commands:",
         "- /model <claude|codex|gemini>: Change the default model",
@@ -183,7 +212,7 @@ HELP_MAIN_EN = "\n".join(
         "- /reports [count]: Conversation memory report",
         "- /init: Reset this chat's settings",
         "- /stop <job_id>: Stop a running job",
-        "- /fix <commit|source> [job_id]: Re-do a job's commit/source (amend + force-with-lease push)",
+        "- /fix [job_id]: Fix a previous job's source (amend + force-with-lease push)",
         "- /start: Inline menu",
     ]
 )
@@ -257,9 +286,9 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("모델, 메모리, 브랜치, worktree 상태를 점검합니다", "Check model, memory, branch, and worktree status"),
     ("브랜치, worktree, 대화 기억을 확인 후 정리합니다", "Clean branches, worktrees, or conversation memory after confirmation"),
     ("진행 중인 Job을 선택해 중단합니다", "Choose and stop a running job"),
-    ("이전 Job의 커밋 또는 소스를 다시 수정합니다", "Re-do the commit or source of a previous job"),
-    ("수정 대상을 선택하세요.", "Choose what to fix."),
-    ("수정할 항목을 선택하세요.", "Choose what to fix."),
+    ("이전 Job의 커밋 또는 소스를 다시 수정합니다", "Fix the source of a previous job"),
+    ("수정 대상을 선택하세요.", "Choose a job to fix."),
+    ("수정할 항목을 선택하세요.", "Choose a job to fix."),
     ("수정 대상 Job을 선택하세요.", "Choose a job to fix."),
     ("수정 가능한 Job이 없습니다.", "No job is available to fix."),
     ("수정 기능을 사용할 수 없습니다.", "Fix feature is not available."),
@@ -276,7 +305,7 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("대상 Job", "Target Job"),
     ("원본 커밋", "Original commit"),
     ("기존 커밋을 amend 후 --force-with-lease push", "amends the existing commit and pushes with --force-with-lease"),
-    ("커밋 수정 (commit)", "Fix commit"),
+    ("커밋 수정 (commit)", "Fix job"),
     ("소스 수정 (source)", "Fix source"),
     ("브랜치:", "Branch:"),
     (

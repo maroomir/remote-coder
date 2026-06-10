@@ -1719,6 +1719,137 @@ def test_webhook_records_bot_response_message_ids(project_registry, tmp_path):
     assert conv.get_job_id_for_message_id("remote-coder", 123, 201) == "job_recorded"
 
 
+def test_webhook_fix_reply_queues_confirmation_and_executes(project_registry, tmp_path):
+    from app.jobs.schemas import FixKind
+
+    db = tmp_path / "wh_fix_reply.sqlite3"
+    conv = SQLiteConversationStore(db)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=conv,
+    )
+    store = InMemoryJobStore()
+    parent_job = Job(
+        id="parent_job",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="original work",
+            chat_id=123,
+            requested_by=999,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-fix-1",
+        commit_hash="abc1234",
+        changed_files=["a.py"],
+    )
+    store.create(parent_job)
+    conv.append(
+        project="remote-coder",
+        chat_id=123,
+        role="job_result",
+        text="status=succeeded",
+        job_id=parent_job.id,
+        message_id=79,
+    )
+
+    fix_manager = Mock()
+    fix_manager.is_fix_candidate.return_value = True
+    fix_manager.resolve_fix_target_job.return_value = parent_job
+    fix_result = Job(
+        id="fix_job",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="add tests",
+            chat_id=123,
+            requested_by=999,
+            mode=JobMode.AGENT_FIX,
+            fix_kind=FixKind.SOURCE,
+            parent_job_id=parent_job.id,
+            branch=parent_job.branch,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch=parent_job.branch,
+        commit_hash="def5678",
+        result_message_ids=[202],
+        accepted_message_id=201,
+    )
+    fix_manager.execute_fix_job.return_value = fix_result
+
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=conv,
+        confirmation_store=InMemoryConfirmationStore(),
+        job_manager=fix_manager,
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app = FastAPI()
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=parser,
+            command_registry=_commands_with_clear(),
+            job_manager=fix_manager,
+            job_store=store,
+            conversation_store=conv,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    response = client.post(
+        wh,
+        json={
+            "update_id": 70,
+            "message": {
+                "message_id": 80,
+                "text": "fix: add tests",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+                "reply_to_message": {"message_id": 79, "text": "Job done parent_job"},
+            },
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert any("Confirm the fix job" in text for _, text in notifier.sent)
+    pending = command_context.confirmation_store.get("remote-coder", 123)
+    assert pending is not None
+    assert pending.job_request is not None
+    assert pending.job_request.instruction == "add tests"
+    assert pending.job_request.parent_job_id == parent_job.id
+
+    confirm = client.post(
+        wh,
+        json={
+            "update_id": 71,
+            "message": {"message_id": 81, "text": "y", "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert confirm.status_code == 200
+    assert confirm.json()["status"] == "accepted"
+    fix_manager.execute_fix_job.assert_called_once()
+    submitted = fix_manager.execute_fix_job.call_args.args[0]
+    assert submitted.parent_job_id == parent_job.id
+    assert submitted.instruction == "add tests"
+
+
 def test_telegram_update_preserves_reply_message_text():
     update = TelegramUpdate.model_validate(
         {

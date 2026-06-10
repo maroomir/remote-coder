@@ -14,7 +14,6 @@ from app.telegram.commands.base import (
 from app.telegram.commands.branch import BranchCommand, PrCommand, PullCommand, RebaseCommand
 from app.telegram.commands.clear_stop import ClearCommand, StopCommand
 from app.telegram.commands.fix import (
-    FIX_COMMIT_PENDING_ACTION,
     FIX_SOURCE_AWAIT_ACTION,
     FIX_SOURCE_PENDING_ACTION,
     FixCommand,
@@ -37,7 +36,6 @@ __all__ = [
     "CommandRegistry",
     "CommandResponse",
     "ConfirmableCommand",
-    "FIX_COMMIT_PENDING_ACTION",
     "FIX_SOURCE_AWAIT_ACTION",
     "FIX_SOURCE_PENDING_ACTION",
     "FixCommand",

@@ -986,23 +986,34 @@ def _seed_parent_job(store, *, project="remote-coder", chat_id=1, branch="remote
     return parent
 
 
-def test_execute_fix_job_commit_uses_prepared_message_and_force_lease(
-    test_settings, project_registry
-):
-    from app.jobs.schemas import FixKind, JobMode
+def test_resolve_fix_target_job_uses_parent_for_fix_child(test_settings, project_registry):
+    from app.jobs.schemas import FixKind, Job, JobMode, JobStatus
 
     store = InMemoryJobStore()
     parent = _seed_parent_job(store)
+    fix_child = Job(
+        id="fix_child",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="follow-up fix",
+            chat_id=1,
+            requested_by=1,
+            mode=JobMode.AGENT_FIX,
+            fix_kind=FixKind.SOURCE,
+            parent_job_id=parent.id,
+            branch=parent.branch,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch=parent.branch,
+        commit_hash="child123",
+    )
+    store.create(fix_child)
+
     git_service = Mock()
-    git_service.find_linked_worktree_for_branch.return_value = None
-    git_service.prepare_branch_worktree.return_value = Path("/tmp/wt-fix")
-    git_service.amend_commit.return_value = "def5678"
     factory = Mock()
     branch_strategy = Mock()
     notifier = Mock()
-    notifier.send_job_accepted.return_value = 99
-    notifier.send_job_result.return_value = [100]
-
     manager = JobManager(
         test_settings,
         store,
@@ -1012,35 +1023,10 @@ def test_execute_fix_job_commit_uses_prepared_message_and_force_lease(
         lambda _: notifier,
         project_registry,
     )
-    request = JobRequest(
-        project="remote-coder",
-        model=ModelName.CLAUDE,
-        instruction="ignored",
-        chat_id=1,
-        requested_by=1,
-        mode=JobMode.AGENT_FIX,
-        fix_kind=FixKind.COMMIT,
-        parent_job_id=parent.id,
-        branch=parent.branch,
-    )
-    prepared = (
-        f"feat: refreshed\n\n- bullet\n\ncommitted by remote-coder: {parent.id}"
-    )
-    final = manager.execute_fix_job(request, prepared_message=prepared)
 
-    assert final.status.value == "succeeded"
-    assert final.commit_hash == "def5678"
-    assert final.branch == parent.branch
-    git_service.amend_commit.assert_called_once_with(Path("/tmp/wt-fix"), prepared)
-    project_root = project_registry.get("remote-coder").root_path
-    git_service.push_branch_force_with_lease.assert_called_once_with(
-        project_root, "origin", parent.branch
-    )
-    # Runner should not be invoked for commit-only mode
-    factory.create.assert_not_called()
-    # Parent job now points at the amended commit for later status/fix flows.
-    refreshed_parent = store.get(parent.id)
-    assert refreshed_parent.commit_hash == "def5678"
+    resolved = manager.resolve_fix_target_job(fix_child.id, "remote-coder", 1)
+    assert resolved is not None
+    assert resolved.id == parent.id
 
 
 def test_execute_fix_job_source_runs_runner_and_amends(test_settings, project_registry):
@@ -1193,10 +1179,9 @@ def test_execute_fix_job_rejects_failed_parent(test_settings, project_registry):
             chat_id=1,
             requested_by=1,
             mode=JobMode.AGENT_FIX,
-            fix_kind=FixKind.COMMIT,
+            fix_kind=FixKind.SOURCE,
             parent_job_id=failed_parent.id,
-        ),
-        prepared_message="msg",
+        )
     )
 
     assert final.status.value == "failed"

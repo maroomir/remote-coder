@@ -694,6 +694,32 @@ def test_parse_natural_korean_prefix_aliases(project_registry: ProjectRegistry):
     assert req2.instruction == "설명해줘"
 
 
+def test_parse_fix_instruction_prefix(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    parsed = parser.parse_fix_instruction("fix: patch login validation")
+    assert parsed is not None
+    assert parsed.instruction == "patch login validation"
+
+
+def test_parse_fix_instruction_korean_alias(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    parsed = parser.parse_fix_instruction("수정: 테스트 추가해줘")
+    assert parsed is not None
+    assert parsed.instruction == "테스트 추가해줘"
+
+
+def test_parse_fix_instruction_empty_raises(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    with pytest.raises(CommandParseError, match="empty"):
+        parser.parse_fix_instruction("fix:")
+
+
+def test_parse_natural_fix_prefix_requires_target(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    with pytest.raises(CommandParseError, match="replying to a previous job"):
+        parser.parse_natural("fix: patch login", "remote-coder", chat_id=1, user_id=2)
+
+
 def test_parse_natural_plan_empty_body_shows_examples(project_registry: ProjectRegistry):
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
     with pytest.raises(CommandParseError, match="Example"):
