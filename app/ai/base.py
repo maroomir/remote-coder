@@ -17,6 +17,26 @@ _SESSION_UUID_PATTERN = re.compile(
 )
 
 
+class RunnerExecutionError(RuntimeError):
+    # Carries the partial output captured before a runner was killed (timeout/cancel) so the
+    # job layer can still persist and surface what the model produced.
+    def __init__(
+        self,
+        message: str,
+        *,
+        stdout: str = "",
+        stderr: str = "",
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.stdout = stdout
+        self.stderr = stderr
+        self.started_at = started_at or datetime.now(UTC)
+        self.finished_at = finished_at or datetime.now(UTC)
+
+
+
 _PLAN_DECISIONS_INSTRUCTION = (
     "You are in PLAN mode. Read the codebase and produce a concrete change plan. "
     "Do not modify files.\n\n"
@@ -180,7 +200,7 @@ class BaseCliRunner(AiRunner):
             threading.Thread(target=_watch, daemon=True).start()
         try:
             stdout_data, stderr_data = proc.communicate(timeout=runner_input.timeout_seconds)
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
             proc.kill()
             stdout_data, stderr_data = proc.communicate()
             self._log.warning(
@@ -189,10 +209,21 @@ class BaseCliRunner(AiRunner):
                 len(stdout_data),
                 len(stderr_data),
             )
-            raise
+            raise RunnerExecutionError(
+                f"runner timed out after {runner_input.timeout_seconds}s",
+                stdout=stdout_data,
+                stderr=stderr_data,
+                started_at=started_at,
+            ) from exc
         finished_at = datetime.now(UTC)
         if cancelled.is_set():
-            raise RuntimeError("The job was cancelled.")
+            raise RunnerExecutionError(
+                "The job was cancelled.",
+                stdout=stdout_data,
+                stderr=stderr_data,
+                started_at=started_at,
+                finished_at=finished_at,
+            )
         dur_ms = int((finished_at - started_at).total_seconds() * 1000)
         self._log.info(
             "done exit=%d dur_ms=%d stdout_len=%d stderr_len=%d",

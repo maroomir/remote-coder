@@ -7,6 +7,7 @@ from app.jobs.plan_decisions import (
     PlanDecisionAnswer,
     PlanDecisionOption,
     PlanDecisionQuestion,
+    compose_execute_plan_instruction,
     compose_phase_b_instruction,
     parse_plan_decisions,
 )
@@ -82,6 +83,13 @@ def test_compose_phase_b_instruction_embeds_answers():
     assert "Which database?" in text
     assert "PostgreSQL" in text
     assert "Do not ask any more questions" in text
+
+
+def test_compose_execute_plan_instruction_embeds_request_and_plan():
+    text = compose_execute_plan_instruction("Add caching", "1. add a Cache class\n2. wire it up")
+    assert "Add caching" in text
+    assert "add a Cache class" in text
+    assert "Implement the approved plan" in text
 
 
 def test_plan_instruction_includes_decision_contract():

@@ -564,6 +564,8 @@ _MESSAGE_CATALOG_KO: dict[str, str] = {
     "job.mode_line": "\n- 모드: {mode}",
     "job.session_line": "\n- Session ID: {session_id}",
     "job.stop_button": "작업 중단",
+    "job.run_plan_button": "계획 실행",
+    "job.heartbeat": "{accepted}\n\n⏳ 실행 중 ({minutes}분 경과)",
     "job.cancelled": "{mode_prefix}⛔ 작업 중단됨\n\n- Job ID: {job_id}{session_line}\n- 프로젝트: {project}",
     "job.readonly_completed": (
         "[{mode}] 응답 완료\n\n"

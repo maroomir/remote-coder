@@ -1312,3 +1312,135 @@ def test_list_fix_candidates_only_includes_succeeded_with_branch_and_commit(
     candidates = manager.list_fix_candidates("remote-coder", 7, limit=10)
     candidate_ids = {job.id for job in candidates}
     assert candidate_ids == {"ok"}
+
+
+def test_run_preserves_partial_output_on_runner_error(test_settings, project_registry):
+    import time as _time
+
+    from app.ai.base import RunnerExecutionError
+
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = (
+        project_registry.get("remote-coder").worktree_base_dir / "wt"
+    )
+    factory = Mock()
+    runner = Mock()
+    runner.run.side_effect = RunnerExecutionError(
+        "runner timed out after 5s", stdout="partial model output", stderr="warn"
+    )
+    factory.create.return_value = runner
+    notifier = Mock()
+    manager = JobManager(
+        test_settings, store, git_service, factory, Mock(), lambda _: notifier, project_registry
+    )
+    request = JobRequest(
+        project="remote-coder", model=ModelName.CLAUDE, instruction="do", chat_id=1, requested_by=1
+    )
+    job = manager.submit(request)
+    final = manager.run(job.id)
+
+    assert final.status.value == "failed"
+    assert final.error_stage == "runner"
+    assert final.runner_stdout_summary == "partial model output"
+    assert final.log_path is not None
+    notifier.send_job_result.assert_called_once()
+    _ = _time
+
+
+def test_run_emits_heartbeat_updates(test_settings, project_registry):
+    import time as _time
+
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = (
+        project_registry.get("remote-coder").worktree_base_dir / "wt"
+    )
+    git_service.collect_changes.return_value = []
+    factory = Mock()
+    runner = Mock()
+
+    def _slow_run(_runner_input):
+        _time.sleep(0.06)
+        return RunnerResult(exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None)
+
+    runner.run.side_effect = _slow_run
+    factory.create.return_value = runner
+    notifier = Mock()
+    notifier.send_job_accepted.return_value = 77
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        Mock(),
+        lambda _: notifier,
+        project_registry,
+        heartbeat_interval_seconds=0.01,
+    )
+    request = JobRequest(
+        project="remote-coder", model=ModelName.CLAUDE, instruction="do", chat_id=1, requested_by=1
+    )
+    job = manager.submit(request)
+    final = manager.run(job.id)
+    assert final.status.value == "succeeded"
+
+    # Give the daemon heartbeat thread time to perform its restore edit.
+    deadline = _time.time() + 1.0
+    while _time.time() < deadline and notifier.edit_message.call_count == 0:
+        _time.sleep(0.01)
+    assert notifier.edit_message.call_count >= 1
+    # At least one heartbeat edit targeted the accepted message id with a Stop button.
+    assert any(call.args[1] == 77 for call in notifier.edit_message.call_args_list)
+
+
+def test_no_heartbeat_when_accepted_message_id_missing(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = (
+        project_registry.get("remote-coder").worktree_base_dir / "wt"
+    )
+    git_service.collect_changes.return_value = []
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    notifier = Mock()
+    notifier.send_job_accepted.return_value = None
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        Mock(),
+        lambda _: notifier,
+        project_registry,
+        heartbeat_interval_seconds=0.01,
+    )
+    request = JobRequest(
+        project="remote-coder", model=ModelName.CLAUDE, instruction="do", chat_id=1, requested_by=1
+    )
+    job = manager.submit(request)
+    manager.run(job.id)
+    notifier.edit_message.assert_not_called()
+
+
+def test_base_cli_runner_timeout_preserves_partial_stdout():
+    import pytest
+
+    from app.ai.base import BaseCliRunner, RunnerExecutionError, RunnerInput
+    from app.monitoring.events import EventLogger
+
+    class _EchoThenSleepRunner(BaseCliRunner):
+        name = "echo-sleep"
+        _log = EventLogger("app.ai.test", "ai.runner")
+
+        def build_argv(self, runner_input):
+            return ["bash", "-c", "echo hello; sleep 5"]
+
+    runner = _EchoThenSleepRunner()
+    with pytest.raises(RunnerExecutionError) as exc_info:
+        runner.run(RunnerInput(instruction="x", cwd=Path("."), timeout_seconds=1))
+    assert "hello" in exc_info.value.stdout

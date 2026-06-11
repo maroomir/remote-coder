@@ -8,6 +8,9 @@ _MAX_QUESTIONS = 3
 _MIN_OPTIONS = 2
 _MAX_OPTIONS = 4
 
+# Callback data prefix for the "Run plan" button attached to a successful PLAN result.
+PLAN_EXECUTE_CALLBACK_PREFIX = "__plan_exec__"
+
 # The PLAN-phase model emits decisions inside a fenced ```plan-decisions block (see
 # instruction_for_runner_mode). Match the first such block anywhere in the output.
 _DECISIONS_BLOCK_PATTERN = re.compile(
@@ -98,6 +101,22 @@ def parse_plan_decisions(stdout: str) -> list[PlanDecisionQuestion] | None:
         if len(questions) >= _MAX_QUESTIONS:
             break
     return questions or None
+
+
+def compose_execute_plan_instruction(original_instruction: str, plan_text: str) -> str:
+    """Build the AGENT instruction that implements an approved PLAN result."""
+    return "\n".join(
+        [
+            "[Original request]",
+            original_instruction.strip(),
+            "",
+            "[Approved plan]",
+            plan_text.strip(),
+            "",
+            "Implement the approved plan above. Make the code changes it describes; do not "
+            "re-plan or ask for further decisions.",
+        ]
+    )
 
 
 def compose_phase_b_instruction(

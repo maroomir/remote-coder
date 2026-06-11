@@ -8,6 +8,7 @@ import httpx
 
 from app.ai.model_catalog import format_model_selection
 from app.ai.usage import format_token_usage
+from app.jobs.plan_decisions import PLAN_EXECUTE_CALLBACK_PREFIX
 from app.jobs.schemas import Job, JobMode
 from app.monitoring.events import EventLogger
 from app.telegram.formatting import build_message_entities
@@ -50,7 +51,7 @@ class Notifier(Protocol):
 
     def send_job_result(self, job: Job) -> list[int]: ...
 
-    def send_long_text(self, chat_id: int, text: str) -> list[int]: ...
+    def send_long_text(self, chat_id: int, text: str, inline_buttons: list | None = None) -> list[int]: ...
 
 
 @dataclass
@@ -79,6 +80,25 @@ def build_job_accepted_message(job: Job) -> tuple[str, list[list[_OutboundButton
     )
     buttons = [[_OutboundButton(ui_message("job.stop_button", "Stop job"), f"/stop {job.id}")]]
     return text, buttons
+
+
+def build_job_heartbeat_message(job: Job, elapsed_minutes: int) -> str:
+    accepted_text, _ = build_job_accepted_message(job)
+    return ui_message(
+        "job.heartbeat",
+        "{accepted}\n\n⏳ Running ({minutes}m elapsed)",
+        accepted=accepted_text,
+        minutes=elapsed_minutes,
+    )
+
+
+def build_job_result_buttons(job: Job) -> list[list[_OutboundButton]]:
+    # A successful PLAN result can be turned into an AGENT implementation with one tap.
+    if job.status.value == "succeeded" and job.request.mode is JobMode.PLAN:
+        return [
+            [_OutboundButton(ui_message("job.run_plan_button", "Run plan"), f"{PLAN_EXECUTE_CALLBACK_PREFIX}:{job.id}")]
+        ]
+    return []
 
 
 def _ui_response_block(summary: str | None) -> str:
@@ -475,16 +495,25 @@ class TelegramNotifier:
             job_id=job.id,
             project=job.request.project,
         )
-        return self.send_long_text(job.request.chat_id, build_job_result_message(job))
+        return self.send_long_text(
+            job.request.chat_id,
+            build_job_result_message(job),
+            build_job_result_buttons(job),
+        )
 
-    def send_long_text(self, chat_id: int, text: str) -> list[int]:
-        """Split text across Telegram messages when it exceeds the 4096-character limit."""
+    def send_long_text(self, chat_id: int, text: str, inline_buttons: list | None = None) -> list[int]:
+        """Split text across Telegram messages when it exceeds the 4096-character limit.
+
+        When inline_buttons are given they are attached to the final chunk only, so a
+        multi-part result still ends with a single actionable keyboard.
+        """
         outgoing = translate_text(text, self._language)
         chunks = self._chunk_text(outgoing, self._TELEGRAM_TEXT_LIMIT)
         _outbound.info(
-            "send_long_text chunks=%d total_len=%d",
+            "send_long_text chunks=%d total_len=%d buttons=%s",
             len(chunks),
             len(outgoing),
+            bool(inline_buttons),
             chat_id=chat_id,
         )
         message_ids: list[int] = []
@@ -496,7 +525,12 @@ class TelegramNotifier:
                 len(chunk),
                 chat_id=chat_id,
             )
-            message_id = self._post_message(chat_id, chunk, with_entities=idx == 1)
+            if inline_buttons and idx == len(chunks):
+                message_id = self.send_with_buttons(
+                    chat_id, chunk, inline_buttons, skip_body_i18n=True
+                )
+            else:
+                message_id = self._post_message(chat_id, chunk, with_entities=idx == 1)
             if message_id is not None:
                 message_ids.append(message_id)
         return message_ids
