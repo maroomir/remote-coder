@@ -605,3 +605,73 @@ def test_notifier_keeps_session_id_under_korean_ui():
     payload = json.loads(route.calls[0].request.content.decode())
     assert "작업 완료" in payload["text"]
     assert f"- Session ID: {sid}" in payload["text"]
+
+
+def _job(mode=JobMode.PLAN, status=JobStatus.SUCCEEDED, summary="plan body", **kw):
+    return Job(
+        id="j-btn",
+        request=JobRequest(
+            project="proj", model=ModelName.CLAUDE, instruction="x", chat_id=1, requested_by=1, mode=mode
+        ),
+        status=status,
+        runner_stdout_summary=summary,
+        **kw,
+    )
+
+
+def test_build_job_result_buttons_for_plan_success():
+    from app.telegram.notifier import build_job_result_buttons
+
+    rows = build_job_result_buttons(_job(mode=JobMode.PLAN, status=JobStatus.SUCCEEDED))
+    assert len(rows) == 1 and len(rows[0]) == 1
+    assert rows[0][0].callback_data == "__plan_exec__:j-btn"
+
+
+def test_build_job_result_buttons_empty_for_non_plan_or_failure():
+    from app.telegram.notifier import build_job_result_buttons
+
+    assert build_job_result_buttons(_job(mode=JobMode.ASK, status=JobStatus.SUCCEEDED)) == []
+    assert build_job_result_buttons(_job(mode=JobMode.AGENT, status=JobStatus.SUCCEEDED)) == []
+    assert build_job_result_buttons(_job(mode=JobMode.PLAN, status=JobStatus.FAILED)) == []
+
+
+@respx.mock
+def test_notifier_plan_result_attaches_run_plan_button():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 5}})
+    )
+    notifier = TelegramNotifier("token")
+    notifier.send_job_result(_job(mode=JobMode.PLAN, status=JobStatus.SUCCEEDED))
+    payload = json.loads(route.calls[-1].request.content)
+    kb = payload["reply_markup"]["inline_keyboard"]
+    assert kb[0][0]["text"] == "Run plan"
+    assert kb[0][0]["callback_data"] == "__plan_exec__:j-btn"
+
+
+@respx.mock
+def test_notifier_long_plan_result_button_only_on_last_chunk():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 5}})
+    )
+    notifier = TelegramNotifier("token")
+    notifier.send_job_result(_job(mode=JobMode.PLAN, status=JobStatus.SUCCEEDED, summary="B" * 5000))
+    assert len(route.calls) >= 2
+    for call in route.calls[:-1]:
+        assert "reply_markup" not in json.loads(call.request.content)
+    assert "reply_markup" in json.loads(route.calls[-1].request.content)
+
+
+def test_build_job_heartbeat_message_includes_elapsed_and_accepted():
+    from app.telegram.notifier import build_job_heartbeat_message
+
+    text = build_job_heartbeat_message(_job(mode=JobMode.AGENT, status=JobStatus.QUEUED), 3)
+    assert "Job accepted" in text
+    assert "Running (3m elapsed)" in text
+
+
+def test_build_job_heartbeat_message_korean():
+    from app.telegram.i18n import translate_text
+    from app.telegram.notifier import build_job_heartbeat_message
+
+    text = build_job_heartbeat_message(_job(mode=JobMode.AGENT, status=JobStatus.QUEUED), 2)
+    assert "실행 중 (2분 경과)" in translate_text(text, UiLanguage.KOREAN)

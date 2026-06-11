@@ -2900,3 +2900,133 @@ def test_plan_decisions_cancelled_by_typed_message(project_registry):
         },
     )
     assert resp.json()["status"] == "ignored"
+
+
+def _build_plan_exec_app(project_registry, notifier, job_manager, store):
+    app = FastAPI()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE),
+            command_registry=_commands_with_clear(),
+            job_manager=job_manager,
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    return app
+
+
+def _seed_plan_job(store, *, status=JobStatus.SUCCEEDED, chat_id=123, project="remote-coder", mode=JobMode.PLAN):
+    job = Job(
+        id="job_plan_x",
+        request=JobRequest(
+            project=project,
+            model=ModelName.CLAUDE,
+            instruction="plan the storage layer",
+            mode=mode,
+            chat_id=chat_id,
+            requested_by=999,
+        ),
+        status=status,
+        runner_stdout_summary="1. add Store class\n2. wire it",
+    )
+    store.create(job)
+    return job
+
+
+def _tap_exec(client, wh, update_id, job_id="job_plan_x"):
+    return client.post(
+        wh,
+        json={
+            "update_id": update_id,
+            "callback_query": {
+                "id": f"cq_{update_id}",
+                "from": {"id": 999},
+                "message": {"chat": {"id": 123}, "message_id": 800 + update_id},
+                "data": f"__plan_exec__:{job_id}",
+            },
+        },
+    )
+
+
+def test_plan_execute_button_submits_agent_job(project_registry):
+    notifier = DummyNotifier()
+    job_manager = CaptureJobManager()
+    store = InMemoryJobStore()
+    _seed_plan_job(store)
+    app = _build_plan_exec_app(project_registry, notifier, job_manager, store)
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    resp = _tap_exec(client, wh, 1)
+    assert resp.json()["status"] == "accepted"
+    submitted = job_manager.last_request
+    assert submitted is not None
+    assert submitted.mode == JobMode.AGENT
+    assert submitted.parent_job_id == "job_plan_x"
+    assert "add Store class" in submitted.instruction
+    assert "plan the storage layer" in submitted.instruction
+
+
+def test_plan_execute_double_tap_ignored(project_registry):
+    notifier = DummyNotifier()
+    job_manager = CaptureJobManager()
+    store = InMemoryJobStore()
+    _seed_plan_job(store)
+    app = _build_plan_exec_app(project_registry, notifier, job_manager, store)
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    assert _tap_exec(client, wh, 1).json()["status"] == "accepted"
+    job_manager.last_request = None
+    second = _tap_exec(client, wh, 2)
+    assert second.json()["status"] == "ignored"
+    assert job_manager.last_request is None
+
+
+def test_plan_execute_rejects_non_succeeded_plan(project_registry):
+    notifier = DummyNotifier()
+    job_manager = CaptureJobManager()
+    store = InMemoryJobStore()
+    _seed_plan_job(store, status=JobStatus.FAILED)
+    app = _build_plan_exec_app(project_registry, notifier, job_manager, store)
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    resp = _tap_exec(client, wh, 1)
+    assert resp.json()["status"] == "ignored"
+    assert job_manager.last_request is None
+    assert any("can no longer be run" in text for _, text in notifier.sent)
+
+
+def test_plan_execute_unknown_job_ignored(project_registry):
+    notifier = DummyNotifier()
+    job_manager = CaptureJobManager()
+    store = InMemoryJobStore()
+    app = _build_plan_exec_app(project_registry, notifier, job_manager, store)
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    resp = _tap_exec(client, wh, 1, job_id="job_missing")
+    assert resp.json()["status"] == "ignored"
+    assert job_manager.last_request is None

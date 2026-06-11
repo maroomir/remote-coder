@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.admin.advanced_settings import FileAdvancedSettingsStore
-from app.ai.base import RunnerInput
+from app.ai.base import RunnerExecutionError, RunnerInput, RunnerResult
 from app.ai.factory import AiRunnerFactory
 from app.ai.usage import extract_runner_usage
 from app.config import Settings
@@ -22,7 +22,11 @@ from app.jobs.schemas import FixKind, Job, JobMode, JobRequest, JobStatus
 from app.jobs.store import JobStore
 from app.monitoring.events import EventLogger
 from app.projects.registry import ProjectRegistry
-from app.telegram.notifier import Notifier
+from app.telegram.notifier import (
+    Notifier,
+    build_job_accepted_message,
+    build_job_heartbeat_message,
+)
 
 _joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
 
@@ -55,8 +59,10 @@ class JobManager:
         advanced_settings_store: FileAdvancedSettingsStore | None = None,
         ai_commit_body_generator: AiCommitBodyGenerator | None = None,
         plan_decision_router: Callable[[Job, list[PlanDecisionQuestion]], bool] | None = None,
+        heartbeat_interval_seconds: float = 60,
     ) -> None:
         self._settings = settings
+        self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._job_store = job_store
         self._git_service = git_service
         self._runner_factory = runner_factory
@@ -72,6 +78,33 @@ class JobManager:
 
     def _notifier_for(self, project: str) -> Notifier:
         return self._notifier_resolver(project)
+
+    def _start_heartbeat(self, job: Job) -> threading.Event:
+        # Periodically edit the "Job accepted" message so a long run shows live progress.
+        # No-op when there is no message to edit (e.g. notifier returned no id).
+        stop = threading.Event()
+        if job.accepted_message_id is None:
+            return stop
+        notifier = self._notifier_for(job.request.project)
+        chat_id = job.request.chat_id
+        message_id = job.accepted_message_id
+        interval = self._heartbeat_interval_seconds
+        started = datetime.now(UTC)
+        accepted_text, stop_buttons = build_job_accepted_message(job)
+        edited = threading.Event()
+
+        def _beat() -> None:
+            while not stop.wait(interval):
+                elapsed_minutes = int((datetime.now(UTC) - started).total_seconds() // 60)
+                text = build_job_heartbeat_message(job, elapsed_minutes)
+                notifier.edit_message(chat_id, message_id, text, stop_buttons)
+                edited.set()
+            if edited.is_set():
+                # Restore the original accepted body without the now-useless Stop button.
+                notifier.edit_message(chat_id, message_id, accepted_text, [])
+
+        threading.Thread(target=_beat, daemon=True).start()
+        return stop
 
     @staticmethod
     def _job_ctx(job: Job) -> dict[str, object]:
@@ -274,19 +307,23 @@ class JobManager:
                 len(job.request.instruction),
                 **self._job_ctx(job),
             )
-            runner_result = runner.run(
-                RunnerInput(
-                    instruction=job.request.instruction,
-                    cwd=worktree_path,
-                    timeout_seconds=timeout_seconds,
-                    model_id=job.request.model_id,
-                    env=None,
-                    cancel_event=cancel_event,
-                    mode=job.request.mode,
-                    session_id=job.request.session_id,
-                    resume_token=job.request.resume_session_token,
+            heartbeat = self._start_heartbeat(job)
+            try:
+                runner_result = runner.run(
+                    RunnerInput(
+                        instruction=job.request.instruction,
+                        cwd=worktree_path,
+                        timeout_seconds=timeout_seconds,
+                        model_id=job.request.model_id,
+                        env=None,
+                        cancel_event=cancel_event,
+                        mode=job.request.mode,
+                        session_id=job.request.session_id,
+                        resume_token=job.request.resume_session_token,
+                    )
                 )
-            )
+            finally:
+                heartbeat.set()
             self._save_runner_log(job, runner_result, worktree_base)
             _joblog.info(
                 "runner exit=%d stdout_len=%d stderr_len=%d",
@@ -405,6 +442,7 @@ class JobManager:
                         **self._job_ctx(job),
                     )
         except Exception as exc:  # pylint: disable=broad-except
+            self._preserve_partial_output(job, exc, worktree_base)
             if job_id in self._cancelled_job_ids:
                 _joblog.info("runner stopped by cancellation", **self._job_ctx(job))
                 if job.status.value != "cancelled":
@@ -609,19 +647,23 @@ class JobManager:
             runner = self._runner_factory.create(job.request.model)
             timeout_seconds = self._effective_job_timeout_seconds()
             fix_prompt = self.compose_fix_source_prompt(parent_job, job.request.instruction)
-            runner_result = runner.run(
-                RunnerInput(
-                    instruction=fix_prompt,
-                    cwd=worktree_path,
-                    timeout_seconds=timeout_seconds,
-                    model_id=job.request.model_id,
-                    env=None,
-                    cancel_event=cancel_event,
-                    mode=JobMode.AGENT,
-                    session_id=job.request.session_id,
-                    resume_token=job.request.resume_session_token,
+            heartbeat = self._start_heartbeat(job)
+            try:
+                runner_result = runner.run(
+                    RunnerInput(
+                        instruction=fix_prompt,
+                        cwd=worktree_path,
+                        timeout_seconds=timeout_seconds,
+                        model_id=job.request.model_id,
+                        env=None,
+                        cancel_event=cancel_event,
+                        mode=JobMode.AGENT,
+                        session_id=job.request.session_id,
+                        resume_token=job.request.resume_session_token,
+                    )
                 )
-            )
+            finally:
+                heartbeat.set()
             self._save_runner_log(job, runner_result, worktree_base)
             if runner_result.exit_code != 0:
                 raise RuntimeError(runner_result.stderr.strip() or "runner failed")
@@ -677,6 +719,7 @@ class JobManager:
                 job.mark_succeeded()
                 self._job_store.update(job)
         except Exception as exc:  # pylint: disable=broad-except
+            self._preserve_partial_output(job, exc, worktree_base)
             _joblog.exception(
                 "fix failed stage=%s parent=%s: %s",
                 failed_stage or "unknown",
@@ -726,6 +769,25 @@ class JobManager:
         if self._advanced_settings_store is None:
             return True
         return self._advanced_settings_store.get().keep_worktree_on_success
+
+    def _preserve_partial_output(
+        self, job: Job, exc: BaseException, worktree_base: Path
+    ) -> None:
+        # A timed-out or cancelled runner still produced output; persist it so the failure
+        # notification can surface the log path and an output summary.
+        if not isinstance(exc, RunnerExecutionError):
+            return
+        self._save_runner_log(
+            job,
+            RunnerResult(
+                exit_code=-1,
+                stdout=exc.stdout,
+                stderr=exc.stderr,
+                started_at=exc.started_at,
+                finished_at=exc.finished_at,
+            ),
+            worktree_base,
+        )
 
     def _save_runner_log(self, job: Job, runner_result, worktree_base: Path) -> None:
         log_dir = worktree_base / "_logs"
