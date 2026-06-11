@@ -591,6 +591,44 @@ def test_build_job_accepted_includes_session_id():
     assert f"- Session ID: {sid}" in text
 
 
+def test_build_job_accepted_includes_session_id_for_all_job_modes():
+    from app.telegram.notifier import build_job_accepted_message
+
+    sid = "44444444-4444-4444-4444-444444444444"
+    for mode in (JobMode.AGENT, JobMode.PLAN, JobMode.ASK, JobMode.AGENT_FIX):
+        text, _ = build_job_accepted_message(
+            _job_with_session(sid, mode=mode, status=JobStatus.QUEUED)
+        )
+        assert f"- Session ID: {sid}" in text
+
+
+def test_build_job_result_includes_session_id_for_all_job_modes():
+    from app.telegram.notifier import build_job_result_message
+
+    sid = "55555555-5555-5555-5555-555555555555"
+    for mode in (JobMode.AGENT, JobMode.PLAN, JobMode.ASK, JobMode.AGENT_FIX):
+        job = _job_with_session(sid, mode=mode)
+        if mode in (JobMode.AGENT, JobMode.AGENT_FIX):
+            job.branch = "remote-x"
+            job.commit_hash = "abc1234"
+            job.changed_files = ["app.py"]
+        else:
+            job.runner_stdout_summary = "readonly result"
+        assert f"- Session ID: {sid}" in build_job_result_message(job)
+
+
+def test_build_job_result_includes_session_id_for_failed_and_cancelled_modes():
+    from app.telegram.notifier import build_job_result_message
+
+    sid = "66666666-6666-6666-6666-666666666666"
+    for mode in (JobMode.AGENT, JobMode.PLAN, JobMode.ASK, JobMode.AGENT_FIX):
+        failed = _job_with_session(sid, mode=mode, status=JobStatus.FAILED, error="boom")
+        assert f"- Session ID: {sid}" in build_job_result_message(failed)
+
+        cancelled = _job_with_session(sid, mode=mode, status=JobStatus.CANCELLED)
+        assert f"- Session ID: {sid}" in build_job_result_message(cancelled)
+
+
 @respx.mock
 def test_notifier_keeps_session_id_under_korean_ui():
     route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
@@ -713,8 +751,12 @@ def test_notifier_long_agent_result_pr_button_only_on_last_chunk():
 def test_build_job_heartbeat_message_includes_elapsed_and_accepted():
     from app.telegram.notifier import build_job_heartbeat_message
 
-    text = build_job_heartbeat_message(_job(mode=JobMode.AGENT, status=JobStatus.QUEUED), 3)
+    sid = "77777777-7777-7777-7777-777777777777"
+    text = build_job_heartbeat_message(
+        _job_with_session(sid, mode=JobMode.AGENT, status=JobStatus.QUEUED), 3
+    )
     assert "Job accepted" in text
+    assert f"- Session ID: {sid}" in text
     assert "Running (3m elapsed)" in text
 
 

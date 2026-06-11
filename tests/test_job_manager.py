@@ -909,12 +909,14 @@ def test_job_manager_notifier_resolver_invoked_with_job_project(test_settings, p
         resolver,
         project_registry,
     )
+    session_id = "22222222-2222-2222-2222-222222222222"
     request = JobRequest(
         project="remote-coder",
         model=ModelName.CLAUDE,
         instruction="noop",
         chat_id=123,
         requested_by=123,
+        session_id=session_id,
     )
     job = manager.submit(request)
     manager.run(job.id)
@@ -922,6 +924,12 @@ def test_job_manager_notifier_resolver_invoked_with_job_project(test_settings, p
     assert resolved == ["remote-coder", "remote-coder"]
     notifier.send_job_accepted.assert_called_once()
     notifier.send_job_result.assert_called_once()
+    accepted_job = notifier.send_job_accepted.call_args.args[0]
+    result_job = notifier.send_job_result.call_args.args[0]
+    assert accepted_job.id == job.id
+    assert result_job.id == job.id
+    assert accepted_job.request.session_id == session_id
+    assert result_job.request.session_id == session_id
 
 
 def test_job_manager_forwards_selected_model_to_ai_commit_generator(test_settings, project_registry):

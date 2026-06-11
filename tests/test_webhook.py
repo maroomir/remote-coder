@@ -1954,6 +1954,131 @@ def test_webhook_fix_reply_queues_confirmation_and_executes(project_registry, tm
     submitted = fix_manager.execute_fix_job.call_args.args[0]
     assert submitted.parent_job_id == parent_job.id
     assert submitted.instruction == "add tests"
+    assert submitted.session_id is not None
+
+
+def test_webhook_fix_reply_to_job_result_reuses_parent_session(project_registry, tmp_path):
+    from app.jobs.schemas import FixKind
+
+    db = tmp_path / "wh_fix_reply_session.sqlite3"
+    conv = SQLiteConversationStore(db)
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=conv,
+    )
+    store = InMemoryJobStore()
+    parent_session = conv.resolve_or_create_session("remote-coder", 123, 40, None)
+    conv.set_runner_resume_token(parent_session, ModelName.CLAUDE.value, "runner-parent")
+    parent_job = Job(
+        id="parent_job",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="original work",
+            chat_id=123,
+            requested_by=999,
+            message_id=40,
+            session_id=parent_session,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-fix-1",
+        commit_hash="abc1234",
+        changed_files=["a.py"],
+    )
+    store.create(parent_job)
+    conv.append(
+        project="remote-coder",
+        chat_id=123,
+        role="user",
+        text="original work",
+        job_id=parent_job.id,
+        message_id=40,
+    )
+    conv.append(
+        project="remote-coder",
+        chat_id=123,
+        role="job_result",
+        text="status=succeeded",
+        job_id=parent_job.id,
+        message_id=79,
+    )
+
+    fix_manager = Mock()
+    fix_manager.is_fix_candidate.return_value = True
+    fix_manager.resolve_fix_target_job.return_value = parent_job
+
+    def _execute_fix_job(request):
+        return Job(
+            id="fix_job",
+            request=request,
+            status=JobStatus.SUCCEEDED,
+            branch=parent_job.branch,
+            commit_hash="def5678",
+            result_message_ids=[202],
+            accepted_message_id=201,
+        )
+
+    fix_manager.execute_fix_job.side_effect = _execute_fix_job
+
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=conv,
+        confirmation_store=InMemoryConfirmationStore(),
+        job_manager=fix_manager,
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app = FastAPI()
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=parser,
+            command_registry=_commands_with_clear(),
+            job_manager=fix_manager,
+            job_store=store,
+            conversation_store=conv,
+        )
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    response = client.post(
+        wh,
+        json={
+            "update_id": 72,
+            "message": {
+                "message_id": 80,
+                "text": "fix: add tests",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+                "reply_to_message": {"message_id": 79, "text": "Job done parent_job"},
+            },
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+    confirm = _confirm_via_button(client, wh, notifier, 73)
+    assert confirm.status_code == 200
+    assert confirm.json()["status"] == "accepted"
+    fix_manager.execute_fix_job.assert_called_once()
+    submitted = fix_manager.execute_fix_job.call_args.args[0]
+    assert submitted.session_id == parent_session
+    assert submitted.resume_session_token == "runner-parent"
 
 
 def test_telegram_update_preserves_reply_message_text():
