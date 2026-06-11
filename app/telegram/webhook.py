@@ -537,16 +537,13 @@ def create_webhook_router(
             request.reply_to_message_id,
         )
         token = conversation_store.get_runner_resume_token(session_id, request.model.value)
-        # Native resume needs a stable worktree (CLI sessions are cwd-scoped). A bound branch
-        # guarantees the reply reuses the parent's worktree; otherwise resuming could target a
-        # missing session, so only establish a brand-new session and fall back to context
-        # injection for the rest.
-        if request.branch is not None:
-            request.session_id = session_id
-            request.resume_session_token = token
-        elif token is None:
-            request.session_id = session_id
-            request.resume_session_token = None
+        # Always expose the logical session id so users can see the same value persist across a
+        # reply chain. Native resume needs a stable worktree (CLI sessions are cwd-scoped); a
+        # bound branch guarantees the reply reuses the parent's worktree, so only resume there.
+        # Without a branch we fall back to context injection rather than risk resuming a session
+        # the provider cannot find in a fresh worktree.
+        request.session_id = session_id
+        request.resume_session_token = token if request.branch is not None else None
 
     def _persist_session_token(final_job: Job) -> None:
         if (
