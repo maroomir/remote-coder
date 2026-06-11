@@ -52,6 +52,35 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 conda run -n remote-coder pytest -q -p pytest_a
 
 Run focused tests first for narrow changes. Mock Telegram API, AI CLI, real Git repos, and external networks in unit tests.
 
+## Commit Message Style
+
+Write all commit messages in English. Use this format:
+
+```text
+type: Title
+
+- Body sentence.
+- Body sentence.
+```
+
+- Subject format is `type: title`.
+- Subject must be 50 characters or less.
+- Subject must clearly describe what changed.
+- Do not end the subject with a period.
+- Keep one blank line between the subject and body.
+- Start each body line with `-`.
+- Write each body bullet as a complete sentence, preferably 100 characters or less.
+
+Allowed types:
+
+- `feat`: new feature.
+- `fix`: bug fix.
+- `docs`: documentation change.
+- `test`: test code addition or update.
+- `refact`: code refactoring.
+- `style`: change that does not affect code meaning.
+- `chore`: build or package manager change.
+
 ## Release Preparation
 
 When the user asks to prepare a release or bump the version:
