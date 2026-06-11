@@ -6,6 +6,11 @@ from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsSt
 from app.models import UiLanguage
 import app.telegram.conversation as conversation_facade
 import app.telegram.conversation.store as conversation_store_facade
+from app.telegram.conversation.collaborators import (
+    ConversationContextFormatter,
+    ConversationReplyChainResolver,
+    ConversationSessionResolver,
+)
 from app.telegram.conversation import context as conversation_context
 from app.telegram.conversation import models as conversation_models
 from app.telegram.conversation import (
@@ -45,6 +50,20 @@ def test_conversation_facades_reexport_internal_objects():
         conversation_store_facade.ConversationContextBuilder
         is conversation_context.ConversationContextBuilder
     )
+
+
+def test_sqlite_store_preserves_context_public_methods(tmp_path: Path):
+    store = SQLiteConversationStore(tmp_path / "public_methods.sqlite3")
+
+    for name in (
+        "format_job_context",
+        "format_reply_context",
+        "format_reply_chain_context",
+        "collect_reply_chain_message_ids",
+        "get_reply_chain_user_entries_newest_first",
+        "resolve_or_create_session",
+    ):
+        assert callable(getattr(store, name))
 
 
 def test_is_ambiguous_followup():
@@ -440,6 +459,73 @@ def test_format_reply_chain_context_and_collect_ids(tmp_path: Path):
     assert ids == {10, 20}
 
 
+def test_reply_chain_resolver_handles_cycles_depth_limit_and_missing_entries(tmp_path: Path):
+    store = SQLiteConversationStore(tmp_path / "chain_resolver.sqlite3")
+    store.append(
+        project="p1",
+        chat_id=1,
+        role="user",
+        text="msg A",
+        message_id=10,
+        reply_to_message_id=20,
+    )
+    store.append(
+        project="p1",
+        chat_id=1,
+        role="user",
+        text="msg B",
+        message_id=20,
+        reply_to_message_id=10,
+    )
+
+    resolver = ConversationReplyChainResolver(store, max_depth=4)
+    limited = ConversationReplyChainResolver(store, max_depth=1)
+
+    assert [entry.message_id for entry in resolver.entries_newest_first("p1", 1, 10)] == [
+        10,
+        20,
+    ]
+    assert resolver.collect_message_ids("p1", 1, 10) == {10, 20}
+    assert [entry.message_id for entry in limited.entries_newest_first("p1", 1, 10)] == [10]
+    assert resolver.entries_newest_first("p1", 1, 999) == []
+
+
+def test_context_formatter_matches_store_facade_output(tmp_path: Path):
+    store = SQLiteConversationStore(tmp_path / "formatter.sqlite3")
+    store.append(
+        project="p1",
+        chat_id=1,
+        role="user",
+        text="original task",
+        job_id="job-1",
+        message_id=10,
+    )
+    store.append(
+        project="p1",
+        chat_id=1,
+        role="job_result",
+        text="status=succeeded",
+        job_id="job-1",
+        message_id=11,
+    )
+    resolver = ConversationReplyChainResolver(store)
+    formatter = ConversationContextFormatter(
+        store.db_path,
+        store._lock,
+        store,
+        resolver,
+        store.snippet_max_chars,
+        store.get_latest_job_result_text_for_user_message,
+    )
+
+    assert formatter.format_job_context("p1", 1, "job-1") == store.format_job_context(
+        "p1", 1, "job-1"
+    )
+    assert formatter.format_reply_context("p1", 1, 11) == store.format_reply_context(
+        "p1", 1, 11
+    )
+
+
 def _seed_user(store, *, chat_id, message_id, job_id, reply_to=None, text="msg"):
     store.append(
         project="p1",
@@ -487,6 +573,22 @@ def test_resolve_session_reply_chain_shares_root_session(tmp_path: Path):
     assert s1 != s2
     assert s3 == s1
     assert s4 == s2
+
+
+def test_session_resolver_reuses_root_sessions_for_reply_paths(tmp_path: Path):
+    store = SQLiteConversationStore(tmp_path / "session_resolver.sqlite3")
+    resolver = ConversationSessionResolver(
+        store.db_path,
+        store._lock,
+        store,
+        ConversationReplyChainResolver(store),
+    )
+    _seed_user(store, chat_id=1, message_id=101, job_id="j1")
+    s1 = resolver.resolve_or_create_session("p1", 1, 101, None)
+    _seed_result(store, chat_id=1, message_id=201, job_id="j1")
+    _seed_user(store, chat_id=1, message_id=102, job_id="j2", reply_to=201)
+
+    assert resolver.resolve_or_create_session("p1", 1, 102, 201) == s1
 
 
 def test_resolve_session_is_stable_for_same_message(tmp_path: Path):

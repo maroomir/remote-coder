@@ -6,7 +6,7 @@ from app.admin.advanced_settings import AdvancedSettings
 from app.jobs.schemas import JobMode
 from app.models import ModelName, UiLanguage
 from app.projects.registry import ProjectRecord, ProjectRegistry
-from app.telegram.conversation import SQLiteConversationStore
+from app.telegram.conversation import ConversationEntry, SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore, ModelPreference
 from app.telegram.parser import CommandParseError, CommandParser
 
@@ -212,6 +212,66 @@ def test_parse_natural_ambiguous_followup_merges_conversation(project_registry: 
     assert "README" in req.instruction
     assert "[Previous conversation/job context]" in req.instruction
     assert "작업 시작해줘" in req.instruction
+
+
+def test_parse_natural_accepts_protocol_shaped_conversation_store(
+    project_registry: ProjectRegistry,
+):
+    class ProtocolShapedConversationStore:
+        def snippet_max_chars(self) -> int:
+            return 1000
+
+        def get_bound_branch(self, project: str, chat_id: int, message_id: int) -> str | None:
+            return None
+
+        def format_job_context(
+            self, project: str, chat_id: int, job_id: str, language=UiLanguage.ENGLISH
+        ) -> str:
+            return ""
+
+        def format_reply_context(
+            self, project: str, chat_id: int, reply_to_message_id: int, language=UiLanguage.ENGLISH
+        ) -> str:
+            return ""
+
+        def collect_reply_chain_message_ids(
+            self, project: str, chat_id: int, reply_to_message_id: int
+        ) -> set[int]:
+            return set()
+
+        def list_recent(
+            self, project: str, chat_id: int, limit: int
+        ) -> list[ConversationEntry]:
+            return [
+                ConversationEntry(
+                    id=1,
+                    project=project,
+                    chat_id=chat_id,
+                    role="user",
+                    text="protocol-backed history",
+                    job_id=None,
+                )
+            ]
+
+        def get_entry_by_message_id(
+            self, project: str, chat_id: int, message_id: int
+        ) -> ConversationEntry | None:
+            return None
+
+        def get_user_entry_by_message_id(
+            self, project: str, chat_id: int, message_id: int
+        ) -> ConversationEntry | None:
+            return None
+
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+        conversation_store=ProtocolShapedConversationStore(),
+    )
+
+    req = parser.parse_natural("작업 시작해줘", "remote-coder", chat_id=99, user_id=1)
+
+    assert "protocol-backed history" in req.instruction
 
 
 def test_parse_natural_ambiguous_without_history_raises(project_registry: ProjectRegistry):

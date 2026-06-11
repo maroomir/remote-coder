@@ -9,10 +9,10 @@ from app.projects.registry import ProjectRegistry
 from app.admin.advanced_settings import CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT
 from app.telegram.conversation import (
     ConversationContextBuilder,
-    SQLiteConversationStore,
     is_ambiguous_followup,
     truncate_snippet,
 )
+from app.telegram.conversation.protocols import ConversationContextStore
 from app.telegram.i18n import (
     command_parse_error_disabled_project,
     command_parse_error_empty_instruction,
@@ -76,7 +76,7 @@ class CommandParser:
         project_registry: ProjectRegistry,
         default_model: ModelName,
         model_preferences: InMemoryModelPreferenceStore | None = None,
-        conversation_store: SQLiteConversationStore | None = None,
+        conversation_store: ConversationContextStore | None = None,
         conversation_recent_limit: int = 10,
         advanced_settings_store=None,
     ) -> None:
