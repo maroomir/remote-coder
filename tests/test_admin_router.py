@@ -168,7 +168,28 @@ def test_admin_api_projects_post_and_delete(test_settings, project_registry, adv
     stored = project_registry.get("extra")
     assert stored is not None
     assert stored.webhook_secret is not None
-    assert stored.webhook_secret.get_secret_value() == "optional-secret"
+    generated_secret = stored.webhook_secret.get_secret_value()
+    assert re.fullmatch(r"[A-Za-z0-9_-]{43}", generated_secret)
+
+    second_root = tmp_path / "second_repo"
+    second_root.mkdir()
+    second_response = client.post(
+        "/api/projects",
+        json={
+            "name": "second",
+            "root_path": str(second_root),
+            "default_model": "claude",
+            "enabled": True,
+            "bot_token": "654321:ABC-second-bot",
+            "allowed_chat_ids": [456],
+            "allowed_user_ids": [],
+        },
+    )
+    assert second_response.status_code == 200
+    second = project_registry.get("second")
+    assert second is not None
+    assert second.webhook_secret is not None
+    assert second.webhook_secret.get_secret_value() != generated_secret
 
     del_r = client.delete("/api/projects/extra")
     assert del_r.status_code == 200
@@ -215,7 +236,7 @@ def test_admin_api_projects_syncs_bot_instance_manager(
     reg_arg = bot_mgr.register.call_args[0][0]
     assert reg_arg.name == "bimproj"
     assert reg_arg.webhook_secret is not None
-    assert reg_arg.webhook_secret.get_secret_value() == "optional-secret"
+    assert re.fullmatch(r"[A-Za-z0-9_-]{43}", reg_arg.webhook_secret.get_secret_value())
     webhook_registrar.sync_project.assert_called_once()
     wh_arg = webhook_registrar.sync_project.call_args[0][0]
     assert wh_arg.name == "bimproj"

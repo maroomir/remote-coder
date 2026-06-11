@@ -33,6 +33,7 @@ alwaysApply: true
 - In multi-bot setups, job listings and cancel flows (`/status`, `/stop`) filter by the **bot-bound project** as well as chat; the same Telegram `chat_id` talking to two bots keeps separate job views.
 - Every job must have a unique Job ID.
 - Job state must support at least `queued`, `running`, `succeeded`, `failed`, and `cancelled`.
+- Serialize AGENT, PLAN, ASK, and AGENT_FIX execution per project so two jobs never mutate or inspect the same project worktree state concurrently. Different projects may run concurrently.
 - Apply per-job timeouts.
 - Record the stage where a failure occurred.
 - Store commit hash, branch name, changed files, observed detailed model name, and token usage when available.

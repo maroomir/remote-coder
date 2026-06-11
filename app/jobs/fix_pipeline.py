@@ -17,6 +17,14 @@ def run_fix_job(manager, job_id: str) -> Job:
         _joblog.warning("run_fix requested for missing job job_id=%s", job_id)
         raise ValueError("job not found")
 
+    if job_id in manager._cancelled_job_ids:
+        if job.status.value != "cancelled":
+            job.mark_cancelled()
+            manager._job_store.update(job)
+        manager._cancelled_job_ids.discard(job_id)
+        manager._send_result(job)
+        return job
+
     cancel_event = threading.Event()
     manager._cancel_events[job_id] = cancel_event
 

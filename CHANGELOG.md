@@ -31,6 +31,11 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 - **Button-only confirmations**: Job, fix, and clear confirmations always use inline Yes/No buttons; the `y`/`Y` text path and the related advanced setting were removed.
 - **Slimmer Advanced Settings**: Removed five rarely-used options — confirmation-button toggle, server start/stop notification toggle, `/status` recent-job count, ambiguous follow-up conversation count, and reply-snippet max length — and hardcoded them to their previous defaults. Existing config files drop the old keys on load.
 
+### Security
+
+- **Random webhook secrets**: New projects now receive a unique 256-bit URL-safe Telegram webhook secret when the admin UI leaves the field blank, replacing the shared predictable default.
+- **Per-project job serialization**: AGENT, PLAN, ASK, and source-fix jobs for the same project now run under one in-memory project lock, preventing concurrent reuse or mutation of a linked worktree. Jobs for different projects remain independent.
+
 ## [0.4.4] — 2026-06-10
 
 ### Added

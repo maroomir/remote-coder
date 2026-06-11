@@ -40,7 +40,7 @@ Create **one bot per project** if you manage more than one repository.
 For multiple Chat IDs, allowed User IDs, or a webhook secret, use the **Projects** page (`http://127.0.0.1:8000/projects`):
 
 1. Enter the **project name**, **repository root path**, and **default model**.
-2. Enter the bot's **bot_token**, optional **webhook_secret**, at least one **allowed Chat ID**, and optional **allowed User IDs**.
+2. Enter the bot's **bot_token**, optional **webhook_secret**, at least one **allowed Chat ID**, and optional **allowed User IDs**. When creating a project, leaving the secret blank makes the admin API generate a unique 256-bit URL-safe value automatically.
 3. Save the project. The server registers the bot instance without a restart.
 
 Worktrees are created automatically under `~/.remote-coder/worktrees/<project>/`.

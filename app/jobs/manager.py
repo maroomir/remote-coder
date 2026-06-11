@@ -36,6 +36,8 @@ from app.projects.registry import ProjectRegistry
 from app.telegram.notifier import Notifier
 
 _joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
+
+
 class JobManager:
     def __init__(
         self,
@@ -65,6 +67,8 @@ class JobManager:
         self.plan_decision_router = plan_decision_router
         self._cancel_events: dict[str, threading.Event] = {}
         self._cancelled_job_ids: set[str] = set()
+        self._project_locks: dict[str, threading.Lock] = {}
+        self._project_locks_guard = threading.Lock()
 
     def _notifier_for(self, project: str) -> Notifier:
         return self._notifier_resolver(project)
@@ -147,7 +151,19 @@ class JobManager:
         )
 
     def run(self, job_id: str) -> Job:
-        return run_job(self, job_id)
+        job = self._job_store.get(job_id)
+        if job is None:
+            return run_job(self, job_id)
+        with self._project_lock(job.request.project):
+            return run_job(self, job_id)
+
+    def _project_lock(self, project: str) -> threading.Lock:
+        with self._project_locks_guard:
+            lock = self._project_locks.get(project)
+            if lock is None:
+                lock = threading.Lock()
+                self._project_locks[project] = lock
+            return lock
 
     def _route_plan_decisions(
         self, job: Job, questions: list[PlanDecisionQuestion] | None
@@ -202,7 +218,8 @@ class JobManager:
         if accepted_message_id is not None:
             job.accepted_message_id = accepted_message_id
             self._job_store.update(job)
-        return self._run_fix(job.id)
+        with self._project_lock(request.project):
+            return self._run_fix(job.id)
 
     def _run_fix(self, job_id: str) -> Job:
         return run_fix_job(self, job_id)

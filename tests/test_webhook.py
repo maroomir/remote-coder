@@ -293,7 +293,7 @@ def test_webhook_accepts_natural_message(project_registry):
     assert confirm_response.json()["status"] == "accepted"
 
 
-def test_webhook_plan_mode_requires_confirmation_then_accepts_y(project_registry):
+def test_webhook_plan_mode_requires_confirmation_button(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
@@ -429,7 +429,7 @@ def test_webhook_binds_confirmed_plan_user_message_to_job_id(project_registry, t
     assert user_entries[0].job_id == "job_1"
 
 
-def test_webhook_slash_plan_requires_confirmation_then_accepts_y(project_registry):
+def test_webhook_slash_plan_requires_confirmation_button(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
@@ -712,7 +712,7 @@ def test_webhook_init_cancels_empty_slash_plan_wait(project_registry):
     assert "were reset" in notifier.sent[-1][1]
 
 
-def test_webhook_ask_mode_requires_confirmation_then_accepts_y(project_registry):
+def test_webhook_ask_mode_requires_confirmation_button(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()

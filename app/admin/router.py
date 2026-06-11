@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Callable
@@ -44,7 +45,7 @@ def require_localhost(request: Request) -> None:
 
 LocalhostOnly = Annotated[None, Depends(require_localhost)]
 
-_DEFAULT_NEW_PROJECT_WEBHOOK_SECRET = "optional-secret"
+_WEBHOOK_SECRET_BYTES = 32
 
 
 class ProjectUpsertBody(BaseModel):
@@ -440,7 +441,7 @@ def create_admin_router(
             raise HTTPException(status_code=400, detail="allowed_chat_ids must have at least one entry")
         wh_stripped = (body.webhook_secret or "").strip()
         webhook_secret = SecretStr(
-            wh_stripped if wh_stripped else _DEFAULT_NEW_PROJECT_WEBHOOK_SECRET
+            wh_stripped if wh_stripped else secrets.token_urlsafe(_WEBHOOK_SECRET_BYTES)
         )
         record = ProjectRecord(
             name=body.name,

@@ -1,12 +1,13 @@
 import logging
 from pathlib import Path
+from threading import Event, Thread
 from unittest.mock import Mock
 
 from app.admin.advanced_settings import AdvancedSettings
 from app.ai.base import RunnerResult
 from app.git.commit_message import CommitMessageFormatter
 from app.jobs.manager import JobManager
-from app.jobs.schemas import JobMode, JobRequest
+from app.jobs.schemas import FixKind, JobMode, JobRequest
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
 
@@ -66,6 +67,145 @@ def test_job_manager_submit_and_run_success(test_settings, project_registry):
     assert call.args[0] == project_root
     assert call.kwargs.get("worktree_base_dir") == project_registry.get("remote-coder").worktree_base_dir
     assert call.kwargs.get("base_branch") is None
+
+
+def test_job_manager_serializes_jobs_for_same_project(
+    test_settings, project_registry, monkeypatch
+):
+    store = InMemoryJobStore()
+    manager = JobManager(
+        test_settings,
+        store,
+        Mock(),
+        Mock(),
+        Mock(),
+        lambda _: Mock(),
+        project_registry,
+    )
+    first = manager.submit(
+        JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="first",
+            chat_id=123,
+            requested_by=123,
+        )
+    )
+    second = manager.submit(
+        JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="second",
+            chat_id=123,
+            requested_by=123,
+        )
+    )
+    first_entered = Event()
+    second_started = Event()
+    second_entered = Event()
+    release_first = Event()
+
+    def fake_run(_manager, job_id):
+        if job_id == first.id:
+            first_entered.set()
+            assert release_first.wait(timeout=2)
+        else:
+            second_entered.set()
+        return store.get(job_id)
+
+    monkeypatch.setattr("app.jobs.manager.run_job", fake_run)
+    first_thread = Thread(target=manager.run, args=(first.id,))
+
+    def run_second():
+        second_started.set()
+        manager.run(second.id)
+
+    second_thread = Thread(target=run_second)
+    first_thread.start()
+    assert first_entered.wait(timeout=1)
+    second_thread.start()
+    assert second_started.wait(timeout=1)
+    assert not second_entered.wait(timeout=0.1)
+
+    release_first.set()
+    first_thread.join(timeout=1)
+    second_thread.join(timeout=1)
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert second_entered.is_set()
+
+
+def test_cancelled_fix_does_not_run_after_waiting_for_project_lock(
+    test_settings, project_registry, monkeypatch
+):
+    store = InMemoryJobStore()
+    notifier = Mock()
+    factory = Mock()
+    manager = JobManager(
+        test_settings,
+        store,
+        Mock(),
+        factory,
+        Mock(),
+        lambda _: notifier,
+        project_registry,
+    )
+    blocking = manager.submit(
+        JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="blocking",
+            chat_id=123,
+            requested_by=123,
+        )
+    )
+    blocker_entered = Event()
+    release_blocker = Event()
+
+    def fake_run(_manager, job_id):
+        assert job_id == blocking.id
+        blocker_entered.set()
+        assert release_blocker.wait(timeout=2)
+        return store.get(job_id)
+
+    monkeypatch.setattr("app.jobs.manager.run_job", fake_run)
+    blocker_thread = Thread(target=manager.run, args=(blocking.id,))
+    blocker_thread.start()
+    assert blocker_entered.wait(timeout=1)
+
+    fix_submitted = Event()
+    notifier.send_job_accepted.side_effect = lambda _job: fix_submitted.set()
+    fix_request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="fix source",
+        mode=JobMode.AGENT_FIX,
+        job_id="queued-fix",
+        parent_job_id="parent-job",
+        fix_kind=FixKind.SOURCE,
+        chat_id=123,
+        requested_by=123,
+    )
+    fix_result = []
+    fix_thread = Thread(
+        target=lambda: fix_result.append(manager.execute_fix_job(fix_request))
+    )
+    fix_thread.start()
+
+    assert fix_submitted.wait(timeout=1)
+    assert store.get("queued-fix") is not None
+    assert manager.cancel("queued-fix") is True
+
+    release_blocker.set()
+    blocker_thread.join(timeout=1)
+    fix_thread.join(timeout=1)
+
+    assert not blocker_thread.is_alive()
+    assert not fix_thread.is_alive()
+    assert fix_result[0].status.value == "cancelled"
+    factory.create.assert_not_called()
+    notifier.send_job_result.assert_called_once()
 
 
 def test_job_manager_threads_session_into_runner_and_captures_result(
