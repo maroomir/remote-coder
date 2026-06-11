@@ -14,6 +14,7 @@ from app.telegram.commands.base import (
     effective_project_name_for_chat,
     format_usage,
 )
+from app.telegram.i18n import ui_message
 
 
 class BranchCommand(TelegramCommand):
@@ -257,15 +258,25 @@ class PrCommand(TelegramCommand):
         if len(tokens) == 2:
             branch = tokens[1]
         else:
-            branches = self._list_pr_candidates(message, ctx)
+            try:
+                branches = self._load_pr_candidates(message, ctx)
+            except RuntimeError as exc:
+                return f"/pr failed: {exc}"
             if not branches:
-                return "No branch is available for PR creation. Specify one with /pr <branch>."
+                return ui_message(
+                    "pr.no_candidates",
+                    "No succeeded Job branch from this project and chat remains "
+                    "on `{remote}`.",
+                    remote=effective_git_remote_name(ctx),
+                )
             return "Choose a branch for the PR."
         from app.git.service import GitWorktreeService
 
         err = GitWorktreeService.validate_branch_token(branch)
         if err:
             return err
+        if branch in {"main", "master"}:
+            return f"`{branch}` is not a succeeded Job branch for this project and chat."
 
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
@@ -273,6 +284,32 @@ class PrCommand(TelegramCommand):
         entry = ctx.project_registry.get(project_name)
         if not entry or not entry.enabled:
             return f"Project not found or disabled: {project_name}"
+
+        succeeded_branches = ctx.job_store.list_succeeded_branches_for_project_chat(
+            project_name, message.chat_id
+        )
+        if branch not in succeeded_branches:
+            return ui_message(
+                "pr.not_job_branch",
+                "`{branch}` is not a succeeded Job branch for this project and chat.",
+                branch=branch,
+            )
+
+        remote = effective_git_remote_name(ctx)
+        try:
+            remote_branches = ctx.git_service.list_remote_branches_matching(
+                entry.root_path, remote, ""
+            )
+        except RuntimeError as exc:
+            return f"/pr failed: {exc}"
+        if branch not in remote_branches:
+            return ui_message(
+                "pr.remote_branch_missing",
+                "Remote branch `{branch}` was not found on `{remote}`. "
+                "It may have been deleted after the Job completed.",
+                branch=branch,
+                remote=remote,
+            )
 
         try:
             base_branch = ctx.git_service.resolve_integrate_branch(entry.root_path)
@@ -308,26 +345,34 @@ class PrCommand(TelegramCommand):
         return _button_rows(buttons, per_row=1) if buttons else None
 
     def _list_pr_candidates(self, message: TelegramMessage, ctx: CommandContext) -> list[str]:
+        try:
+            return self._load_pr_candidates(message, ctx)
+        except RuntimeError:
+            return []
+
+    def _load_pr_candidates(self, message: TelegramMessage, ctx: CommandContext) -> list[str]:
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
             return []
         entry = ctx.project_registry.get(project_name)
         if not entry or not entry.enabled:
             return []
-        try:
-            main_branch = ctx.git_service.resolve_integrate_branch(entry.root_path)
-            branches = ctx.git_service.list_local_branches(entry.root_path)
-        except RuntimeError:
-            return []
-        if not isinstance(branches, list):
-            return []
+        branches = ctx.job_store.list_succeeded_branches_for_project_chat(
+            project_name, message.chat_id
+        )
+        remote_branches = set(
+            ctx.git_service.list_remote_branches_matching(
+                entry.root_path, effective_git_remote_name(ctx), ""
+            )
+        )
         from app.git.service import GitWorktreeService
 
-        excluded = {main_branch, "main", "master"}
         return [
             branch
             for branch in branches
-            if branch not in excluded and GitWorktreeService.validate_branch_token(branch) is None
+            if branch in remote_branches
+            and branch not in {"main", "master"}
+            and GitWorktreeService.validate_branch_token(branch) is None
         ]
 
     def _build_pr_content(

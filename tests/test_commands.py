@@ -337,6 +337,35 @@ def test_status_detail_succeeded_job_shows_pr_and_rebase(project_registry: Proje
     ]
 
 
+def test_status_detail_succeeded_job_without_commit_hides_pr(project_registry: ProjectRegistry):
+    registry = CommandRegistry([StatusCommand()])
+    ctx = _ctx(project_registry)
+    ctx.job_store.create(
+        Job(
+            id="jno-commit",
+            request=JobRequest(
+                project="remote-coder",
+                model=ModelName.CLAUDE,
+                instruction="x",
+                chat_id=1,
+                requested_by=1,
+            ),
+            status=JobStatus.SUCCEEDED,
+            branch="remote-no-commit",
+        )
+    )
+
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="/status jno-commit"), ctx
+    )
+
+    assert response is not None
+    assert response.inline_buttons == [
+        [InlineButton("Rebase", "/rebase remote-no-commit")],
+        [InlineButton("‹ Back", "/status"), InlineButton("✖ Close", "__close__")],
+    ]
+
+
 def test_model_command_updates_preference(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     ctx = _ctx(project_registry)
@@ -677,6 +706,116 @@ def test_pr_command_rejects_non_ascii_branch(project_registry: ProjectRegistry):
 
     assert text == "Branch names may only use letters, numbers, /, ., _, and -."
     ctx.git_service.create_github_pr.assert_not_called()
+
+
+def _add_succeeded_job_branch(
+    ctx: CommandContext,
+    branch: str,
+    *,
+    chat_id: int = 42,
+    project: str = "remote-coder",
+    job_id: str | None = None,
+    commit_hash: str = "abc1234",
+) -> None:
+    ctx.job_store.create(
+        Job(
+            id=job_id or f"job-{branch.replace('/', '-')}",
+            request=JobRequest(
+                project=project,
+                model=ModelName.CLAUDE,
+                instruction="x",
+                chat_id=chat_id,
+                requested_by=1,
+            ),
+            status=JobStatus.SUCCEEDED,
+            branch=branch,
+            commit_hash=commit_hash,
+        )
+    )
+
+
+def test_pr_candidates_only_include_current_chat_succeeded_remote_job_branches(
+    project_registry: ProjectRegistry,
+):
+    ctx = _ctx(project_registry)
+    _add_succeeded_job_branch(ctx, "remote-current")
+    _add_succeeded_job_branch(ctx, "remote-only", job_id="job-remote-only")
+    _add_succeeded_job_branch(ctx, "remote-other-chat", chat_id=99)
+    _add_succeeded_job_branch(ctx, "remote-other-project", project="other")
+    ctx.job_store.create(
+        Job(
+            id="failed",
+            request=JobRequest(
+                project="remote-coder",
+                model=ModelName.CLAUDE,
+                instruction="x",
+                chat_id=42,
+                requested_by=1,
+            ),
+            status=JobStatus.FAILED,
+            branch="remote-failed",
+        )
+    )
+    ctx.git_service.list_remote_branches_matching.return_value = [
+        "remote-current",
+        "remote-only",
+        "remote-other-chat",
+        "remote-other-project",
+        "remote-failed",
+        "unrelated",
+    ]
+    registry = CommandRegistry([PrCommand()])
+
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=42, user_id=1, text="/pr"), ctx
+    )
+
+    assert response is not None
+    assert response.text == "Choose a branch for the PR."
+    assert response.inline_buttons == [
+        [InlineButton("remote-only", "/pr remote-only")],
+        [InlineButton("remote-current", "/pr remote-current")],
+    ]
+    ctx.git_service.list_local_branches.assert_not_called()
+
+
+def test_pr_direct_branch_validates_job_scope_and_remote_presence(
+    project_registry: ProjectRegistry,
+):
+    ctx = _ctx(project_registry)
+    _add_succeeded_job_branch(ctx, "remote-current")
+    registry = CommandRegistry([PrCommand()])
+
+    arbitrary = registry.dispatch(
+        TelegramMessage(chat_id=42, user_id=1, text="/pr arbitrary"), ctx
+    )
+    assert arbitrary == "`arbitrary` is not a succeeded Job branch for this project and chat."
+    ctx.git_service.list_remote_branches_matching.assert_not_called()
+
+    ctx.git_service.list_remote_branches_matching.return_value = []
+    missing = registry.dispatch(
+        TelegramMessage(chat_id=42, user_id=1, text="/pr remote-current"), ctx
+    )
+    assert "was not found on `origin`" in missing
+    ctx.git_service.create_github_pr.assert_not_called()
+
+
+def test_pr_command_creates_pr_for_remote_succeeded_job_branch(
+    project_registry: ProjectRegistry,
+):
+    ctx = _ctx(project_registry)
+    _add_succeeded_job_branch(ctx, "remote-current")
+    ctx.git_service.list_remote_branches_matching.return_value = ["remote-current"]
+    ctx.git_service.resolve_integrate_branch.return_value = "main"
+    ctx.git_service.create_github_pr.return_value = "https://github.com/acme/repo/pull/7"
+    registry = CommandRegistry([PrCommand()])
+
+    text = registry.dispatch(
+        TelegramMessage(chat_id=42, user_id=1, text="/pr remote-current"), ctx
+    )
+
+    assert text == "PR created:\nhttps://github.com/acme/repo/pull/7"
+    ctx.git_service.create_github_pr.assert_called_once()
 
 
 def test_pr_content_uses_ascii_fallback_for_non_ascii_conversation(project_registry: ProjectRegistry):

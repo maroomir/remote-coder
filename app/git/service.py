@@ -14,6 +14,8 @@ _gitlog = EventLogger("app.git.service", "git.operation")
 
 
 class GitWorktreeService:
+    _GH_TIMEOUT_SECONDS = 30
+
     def __init__(self, base_dir: Path) -> None:
         self._base_dir = base_dir
         self._base_dir.mkdir(parents=True, exist_ok=True)
@@ -637,16 +639,12 @@ class GitWorktreeService:
         body: str,
     ) -> str:
         _gitlog.info("create_github_pr branch=%s base=%s", branch, base_branch)
-        result = subprocess.run(
+        result = self._run_gh(
+            project_path,
             ["gh", "pr", "create", "--base", base_branch, "--head", branch,
              "--title", title, "--body", body],
-            cwd=project_path,
-            capture_output=True,
-            text=True,
-            check=False,
-            shell=False,
         )
-        if result.returncode == 0:
+        if result.returncode == 0 and result.stdout.strip():
             url = result.stdout.strip()
             _gitlog.info("create_github_pr created url=%s", url)
             return url
@@ -654,16 +652,43 @@ class GitWorktreeService:
         stdout = result.stdout.strip()
         combined = (stderr + stdout).lower()
         if "already exists" in combined:
-            view = subprocess.run(
+            view = self._run_gh(
+                project_path,
                 ["gh", "pr", "view", branch, "--json", "url", "--jq", ".url"],
-                cwd=project_path,
-                capture_output=True,
-                text=True,
-                check=False,
-                shell=False,
             )
             if view.returncode == 0 and view.stdout.strip():
                 existing_url = view.stdout.strip()
                 _gitlog.info("create_github_pr already exists url=%s", existing_url)
                 return existing_url
-        raise RuntimeError(f"gh pr create failed: {stderr or stdout}")
+            detail = view.stderr.strip() or view.stdout.strip() or "existing PR URL was not returned"
+            raise RuntimeError(
+                f"gh pr view failed: {detail}. Check `gh auth status` and repository access."
+            )
+        detail = stderr or stdout or "no output"
+        raise RuntimeError(
+            f"gh pr create failed: {detail}. Check `gh auth status` and repository access."
+        )
+
+    def _run_gh(
+        self, project_path: Path, args: list[str]
+    ) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                args,
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                check=False,
+                shell=False,
+                timeout=self._GH_TIMEOUT_SECONDS,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "GitHub CLI (`gh`) is not installed or not available on PATH."
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"GitHub CLI command timed out after {self._GH_TIMEOUT_SECONDS} seconds."
+            ) from exc
+        except OSError as exc:
+            raise RuntimeError(f"GitHub CLI could not be executed: {exc}") from exc

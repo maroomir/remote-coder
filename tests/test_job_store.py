@@ -84,6 +84,50 @@ def test_get_latest_succeeded_branch_for_project_chat_same_chat_different_projec
     assert store.get_latest_succeeded_branch_for_project_chat("proj-b", 42) == "remote-b"
 
 
+def test_list_succeeded_branches_for_project_chat_filters_orders_and_deduplicates():
+    store = InMemoryJobStore()
+    base = datetime.now(UTC)
+
+    def add(
+        job_id: str,
+        branch: str | None,
+        *,
+        project: str = "p",
+        chat_id: int = 5,
+        status: JobStatus = JobStatus.SUCCEEDED,
+        offset: int = 0,
+    ) -> None:
+        store.create(
+            Job(
+                id=job_id,
+                request=JobRequest(
+                    project=project,
+                    model=ModelName.CLAUDE,
+                    instruction="i",
+                    chat_id=chat_id,
+                    requested_by=chat_id,
+                ),
+                status=status,
+                branch=branch,
+                created_at=base + timedelta(seconds=offset),
+                finished_at=base + timedelta(seconds=offset),
+            )
+        )
+
+    add("old", "remote-shared", offset=1)
+    add("new", "remote-new", offset=4)
+    add("shared-new", "remote-shared", offset=3)
+    add("failed", "remote-failed", status=JobStatus.FAILED, offset=6)
+    add("other-chat", "remote-other-chat", chat_id=9, offset=7)
+    add("other-project", "remote-other-project", project="q", offset=8)
+    add("no-branch", None, offset=9)
+
+    assert store.list_succeeded_branches_for_project_chat("p", 5) == [
+        "remote-new",
+        "remote-shared",
+    ]
+
+
 def test_list_recent_for_chat_filters_by_chat():
     store = InMemoryJobStore()
     old = Job(
@@ -207,7 +251,41 @@ def test_sqlite_job_store_persists_jobs_across_instances(tmp_path: Path):
 
     assert fetched == job
     assert reopened.get_latest_succeeded_branch_for_project_chat("p", 5) == "remote-persist"
+    assert reopened.list_succeeded_branches_for_project_chat("p", 5) == ["remote-persist"]
     assert [item.id for item in reopened.list_recent_for_project_chat("p", 5)] == ["job-persist"]
+
+
+def test_sqlite_list_succeeded_branches_is_latest_first_and_unique(tmp_path: Path):
+    db_path = tmp_path / "jobs.sqlite3"
+    store = SQLiteJobStore(db_path)
+    base = datetime.now(UTC)
+    for job_id, branch, offset in (
+        ("old-shared", "remote-shared", 1),
+        ("new", "remote-new", 3),
+        ("new-shared", "remote-shared", 2),
+    ):
+        store.create(
+            Job(
+                id=job_id,
+                request=JobRequest(
+                    project="p",
+                    model=ModelName.CLAUDE,
+                    instruction="i",
+                    chat_id=5,
+                    requested_by=5,
+                ),
+                status=JobStatus.SUCCEEDED,
+                branch=branch,
+                created_at=base + timedelta(seconds=offset),
+                finished_at=base + timedelta(seconds=offset),
+            )
+        )
+
+    reopened = SQLiteJobStore(db_path)
+    assert reopened.list_succeeded_branches_for_project_chat("p", 5) == [
+        "remote-new",
+        "remote-shared",
+    ]
 
 
 def test_sqlite_job_store_keeps_multiple_runs_for_reused_job_id(tmp_path: Path):

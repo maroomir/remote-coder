@@ -26,6 +26,11 @@ class JobStore(Protocol):
     ) -> str | None:
         ...
 
+    def list_succeeded_branches_for_project_chat(
+        self, project: str, chat_id: int
+    ) -> list[str]:
+        ...
+
     def list_recent_for_chat(self, chat_id: int, limit: int = 20) -> list[Job]:
         ...
 
@@ -106,6 +111,31 @@ class InMemoryJobStore:
                 reverse=True,
             )
             return candidates[0].branch
+
+    def list_succeeded_branches_for_project_chat(
+        self, project: str, chat_id: int
+    ) -> list[str]:
+        with self._lock:
+            candidates = [
+                job
+                for job in self._all_jobs()
+                if job.request.project == project
+                and job.request.chat_id == chat_id
+                and job.status == JobStatus.SUCCEEDED
+                and job.branch
+            ]
+            candidates.sort(
+                key=lambda job: (job.finished_at or job.created_at, job.created_at),
+                reverse=True,
+            )
+            branches: list[str] = []
+            seen: set[str] = set()
+            for job in candidates:
+                branch = job.branch
+                if branch is not None and branch not in seen:
+                    seen.add(branch)
+                    branches.append(branch)
+            return branches
 
 
 def _job_to_payload(job: Job) -> str:
@@ -291,6 +321,35 @@ class SQLiteJobStore:
             finally:
                 conn.close()
         return str(row[0]) if row else None
+
+    def list_succeeded_branches_for_project_chat(
+        self, project: str, chat_id: int
+    ) -> list[str]:
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT branch
+                    FROM jobs
+                    WHERE request_project = ?
+                      AND request_chat_id = ?
+                      AND status = ?
+                      AND branch IS NOT NULL
+                    ORDER BY COALESCE(finished_at, created_at) DESC, created_at DESC, row_id DESC
+                    """,
+                    (project, chat_id, JobStatus.SUCCEEDED.value),
+                ).fetchall()
+            finally:
+                conn.close()
+        branches: list[str] = []
+        seen: set[str] = set()
+        for row in rows:
+            branch = str(row[0])
+            if branch not in seen:
+                seen.add(branch)
+                branches.append(branch)
+        return branches
 
     @staticmethod
     def _row_values(job: Job) -> tuple[str, str | None, str, int, str, str | None, str | None, str]:

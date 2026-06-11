@@ -635,6 +635,33 @@ def test_build_job_result_buttons_empty_for_non_plan_or_failure():
     assert build_job_result_buttons(_job(mode=JobMode.PLAN, status=JobStatus.FAILED)) == []
 
 
+def test_build_job_result_buttons_for_committed_agent_and_fix_success():
+    from app.telegram.notifier import build_job_result_buttons
+
+    for mode in (JobMode.AGENT, JobMode.AGENT_FIX):
+        rows = build_job_result_buttons(
+            _job(
+                mode=mode,
+                status=JobStatus.SUCCEEDED,
+                branch="remote-fix",
+                commit_hash="abc1234",
+            )
+        )
+        assert rows[0][0].label == "Open PR"
+        assert rows[0][0].callback_data == "/pr remote-fix"
+
+
+def test_build_job_result_buttons_requires_agent_commit_and_branch():
+    from app.telegram.notifier import build_job_result_buttons
+
+    assert build_job_result_buttons(
+        _job(mode=JobMode.AGENT, status=JobStatus.SUCCEEDED, branch="remote-no-commit")
+    ) == []
+    assert build_job_result_buttons(
+        _job(mode=JobMode.AGENT, status=JobStatus.SUCCEEDED, commit_hash="abc1234")
+    ) == []
+
+
 @respx.mock
 def test_notifier_plan_result_attaches_run_plan_button():
     route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
@@ -659,6 +686,28 @@ def test_notifier_long_plan_result_button_only_on_last_chunk():
     for call in route.calls[:-1]:
         assert "reply_markup" not in json.loads(call.request.content)
     assert "reply_markup" in json.loads(route.calls[-1].request.content)
+
+
+@respx.mock
+def test_notifier_long_agent_result_pr_button_only_on_last_chunk():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 5}})
+    )
+    notifier = TelegramNotifier("token")
+    notifier.send_job_result(
+        _job(
+            mode=JobMode.AGENT,
+            status=JobStatus.SUCCEEDED,
+            summary="B" * 5000,
+            branch="remote-fix",
+            commit_hash="abc1234",
+        )
+    )
+    assert len(route.calls) >= 2
+    for call in route.calls[:-1]:
+        assert "reply_markup" not in json.loads(call.request.content)
+    keyboard = json.loads(route.calls[-1].request.content)["reply_markup"]["inline_keyboard"]
+    assert keyboard[0][0]["callback_data"] == "/pr remote-fix"
 
 
 def test_build_job_heartbeat_message_includes_elapsed_and_accepted():

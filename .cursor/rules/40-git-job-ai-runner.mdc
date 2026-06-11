@@ -23,6 +23,9 @@ alwaysApply: true
 - `/monitor branch` summarizes branch lists and counts.
 - `/branch` shows the current branch.
 - `/branch <name>` switches only to an existing local branch in the project bound to the current bot instance.
+- `/pr` candidates come from succeeded Job branches for the current project/chat intersected with live heads from `git ls-remote`; local branch presence is not required.
+- Revalidate the selected `/pr` branch against both Job history and the configured remote immediately before invoking `gh`.
+- Normalize missing `gh`, timeout, authentication, and command failures to user-facing `RuntimeError` messages; reuse the existing PR URL when GitHub reports that a PR already exists.
 - `/rebase`, `/clear`, and other broad Git/state-changing commands must run only when the user explicitly calls them.
 
 ## Job Rules

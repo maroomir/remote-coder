@@ -1,4 +1,5 @@
 import logging
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -364,6 +365,81 @@ def test_list_remote_branches_matching_raises_on_failure(mock_run, tmp_path: Pat
     except RuntimeError as exc:
         assert "failed to list remote branches" in str(exc)
         assert "connection refused" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+
+@patch("app.git.service.subprocess.run")
+def test_create_github_pr_returns_new_pr_url(mock_run, tmp_path: Path):
+    mock_run.return_value = Mock(
+        returncode=0,
+        stdout="https://github.com/acme/repo/pull/1\n",
+        stderr="",
+    )
+    service = GitWorktreeService(base_dir=tmp_path / "wt")
+
+    url = service.create_github_pr(tmp_path, "remote-x", "main", "Title", "Body")
+
+    assert url == "https://github.com/acme/repo/pull/1"
+    assert mock_run.call_args.kwargs["timeout"] == 30
+
+
+@patch("app.git.service.subprocess.run")
+def test_create_github_pr_reuses_existing_pr_url(mock_run, tmp_path: Path):
+    mock_run.side_effect = [
+        Mock(returncode=1, stdout="", stderr="a pull request already exists"),
+        Mock(returncode=0, stdout="https://github.com/acme/repo/pull/2\n", stderr=""),
+    ]
+    service = GitWorktreeService(base_dir=tmp_path / "wt")
+
+    url = service.create_github_pr(tmp_path, "remote-x", "main", "Title", "Body")
+
+    assert url == "https://github.com/acme/repo/pull/2"
+    assert mock_run.call_args_list[1].args[0][:4] == ["gh", "pr", "view", "remote-x"]
+
+
+@patch("app.git.service.subprocess.run", side_effect=FileNotFoundError("gh"))
+def test_create_github_pr_normalizes_missing_gh(_mock_run, tmp_path: Path):
+    service = GitWorktreeService(base_dir=tmp_path / "wt")
+
+    try:
+        service.create_github_pr(tmp_path, "remote-x", "main", "Title", "Body")
+    except RuntimeError as exc:
+        assert "not installed" in str(exc)
+        assert "PATH" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+
+@patch(
+    "app.git.service.subprocess.run",
+    side_effect=subprocess.TimeoutExpired(["gh", "pr", "create"], 30),
+)
+def test_create_github_pr_normalizes_timeout(_mock_run, tmp_path: Path):
+    service = GitWorktreeService(base_dir=tmp_path / "wt")
+
+    try:
+        service.create_github_pr(tmp_path, "remote-x", "main", "Title", "Body")
+    except RuntimeError as exc:
+        assert "timed out after 30 seconds" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+
+@patch("app.git.service.subprocess.run")
+def test_create_github_pr_auth_failure_has_actionable_error(mock_run, tmp_path: Path):
+    mock_run.return_value = Mock(
+        returncode=1,
+        stdout="",
+        stderr="HTTP 401: Bad credentials",
+    )
+    service = GitWorktreeService(base_dir=tmp_path / "wt")
+
+    try:
+        service.create_github_pr(tmp_path, "remote-x", "main", "Title", "Body")
+    except RuntimeError as exc:
+        assert "Bad credentials" in str(exc)
+        assert "gh auth status" in str(exc)
     else:
         raise AssertionError("expected RuntimeError")
 

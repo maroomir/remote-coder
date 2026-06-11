@@ -48,6 +48,7 @@ remote-coder up
 - 허용할 Telegram Chat ID, 필요하면 User ID
 - 로컬 AI CLI 중 하나 이상: `claude`, `codex`, `gemini`
 - 자동화할 로컬 Git 저장소
+- `/pr` 사용 시 `gh auth login`으로 인증된 GitHub CLI(`gh`)
 
 ## 동작 방식
 
@@ -74,12 +75,14 @@ Telegram message
 | `/branch [name]` | 바인딩된 프로젝트의 로컬 브랜치 확인/전환 |
 | `/pull` | 원격 fetch 및 현재 브랜치 pull |
 | `/rebase [branch]` | 완료 브랜치를 `main` 또는 `master`에 rebase 후 fast-forward |
-| `/pr [branch]` | `gh`로 GitHub PR 생성 |
+| `/pr [branch]` | 성공한 Job 브랜치에서 `gh`로 GitHub PR 생성 |
 | `/fix ...` | 이전 Job의 커밋 메시지 또는 소스 재작업 |
 | `/monitor ...` | 모델, 메모리, 브랜치, worktree, 코드, 프로젝트 상태 확인 |
 | `/clear ...` | 관리 대상 브랜치, worktree, 대화 기억 정리 |
 | `/stop [job_id]` | 대기/실행 중인 Job 취소 |
 | `/init` | 채팅 로컬 모델과 확인 대기 상태 초기화 |
+
+브랜치 없이 `/pr`를 실행하면 현재 프로젝트와 Telegram 채팅에서 성공한 Job이 만든 브랜치 중 설정된 Git 원격에 남아 있는 브랜치만 표시합니다. `/pr <branch>` 직접 호출도 같은 소유 범위를 검사하고 원격 브랜치가 아직 존재하는지 다시 확인합니다. 이 명령을 사용하기 전에 [GitHub CLI](https://cli.github.com/)를 설치하고 `gh auth login`을 실행하세요.
 
 자연어 예시:
 

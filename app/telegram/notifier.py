@@ -98,6 +98,15 @@ def build_job_result_buttons(job: Job) -> list[list[_OutboundButton]]:
         return [
             [_OutboundButton(ui_message("job.run_plan_button", "Run plan"), f"{PLAN_EXECUTE_CALLBACK_PREFIX}:{job.id}")]
         ]
+    if (
+        job.status.value == "succeeded"
+        and job.request.mode in (JobMode.AGENT, JobMode.AGENT_FIX)
+        and job.branch
+        and job.commit_hash
+    ):
+        return [
+            [_OutboundButton(ui_message("job.open_pr_button", "Open PR"), f"/pr {job.branch}")]
+        ]
     return []
 
 
