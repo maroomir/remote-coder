@@ -74,6 +74,8 @@ class StatusCommand(TelegramCommand):
         emoji = _STATUS_EMOJI.get(job.status.value, "")
         lines.append(f"Job {job.id}")
         lines.append("")
+        if job.request.session_id:
+            lines.append(f"- Session ID: {job.request.session_id}")
         lines.append(f"- Status: {job.status.value} {emoji}")
         lines.append(f"- Project: {job.request.project}")
         requested_model = format_model_selection(job.request.model, job.request.model_id)
@@ -251,6 +253,10 @@ class ReportsCommand(TelegramCommand):
         if report.latest_job_result:
             job_label = report.latest_job_id or "(no job_id)"
             lines.append(f"Latest job result: {job_label} {self._truncate(report.latest_job_result)}")
+            if report.latest_job_id:
+                latest_job = ctx.job_store.get(report.latest_job_id)
+                if latest_job is not None and latest_job.request.session_id:
+                    lines.append(f"Session ID: {latest_job.request.session_id}")
         if report.recent_entries:
             lines.append("")
             lines.append("Recent memory")

@@ -60,6 +60,7 @@ class ConversationDbChatStats:
     db_size_bytes: int
     total_rows: int
     rows_by_role: dict[str, int]
+    session_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -894,6 +895,16 @@ class SQLiteConversationStore:
                     (project, chat_id),
                 ).fetchall():
                     rows_by_role[str(role)] = int(cnt)
+                session_count = int(
+                    conn.execute(
+                        """
+                        SELECT COUNT(*)
+                        FROM agent_sessions
+                        WHERE project = ? AND chat_id = ?
+                        """,
+                        (project, chat_id),
+                    ).fetchone()[0]
+                )
             finally:
                 conn.close()
         return ConversationDbChatStats(
@@ -902,6 +913,7 @@ class SQLiteConversationStore:
             db_size_bytes=size_bytes,
             total_rows=total_rows,
             rows_by_role=rows_by_role,
+            session_count=session_count,
         )
 
 

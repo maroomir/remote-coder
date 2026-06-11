@@ -1079,3 +1079,72 @@ def test_fix_command_execute_describes_reply_requirement(project_registry: Proje
     cmd = FixCommand()
     text = cmd.execute(TelegramMessage(chat_id=1, user_id=1, text="/fix"), _ctx(project_registry))
     assert "replying to a job result" in text
+
+
+def test_status_detail_shows_session_id(project_registry: ProjectRegistry):
+    registry = CommandRegistry([StatusCommand()])
+    ctx = _ctx(project_registry)
+    sid = "11111111-1111-1111-1111-111111111111"
+    job = Job(
+        id="jsess",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+            session_id=sid,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-fix",
+        commit_hash="abcdef12",
+    )
+    ctx.job_store.create(job)
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/status jsess"), ctx)
+    assert response is not None
+    assert f"- Session ID: {sid}" in response.text
+
+
+def test_reports_command_includes_session_id(project_registry: ProjectRegistry, tmp_path):
+    conversation_store = SQLiteConversationStore(tmp_path / "cmd_reports_session.sqlite3")
+    conversation_store.append(
+        project="remote-coder", chat_id=77, role="user", text="do it", job_id=None
+    )
+    conversation_store.append(
+        project="remote-coder", chat_id=77, role="job_result", text="status=succeeded", job_id="job-sess"
+    )
+    ctx = _ctx(project_registry)
+    ctx.conversation_store = conversation_store
+    sid = "22222222-2222-2222-2222-222222222222"
+    ctx.job_store.create(
+        Job(
+            id="job-sess",
+            request=JobRequest(
+                project="remote-coder",
+                model=ModelName.CLAUDE,
+                instruction="x",
+                chat_id=77,
+                requested_by=1,
+                session_id=sid,
+            ),
+            status=JobStatus.SUCCEEDED,
+        )
+    )
+    registry = CommandRegistry([ReportsCommand()])
+
+    text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/reports"), ctx)
+
+    assert text is not None
+    assert f"Session ID: {sid}" in text
+
+
+def test_monitor_memory_shows_session_count(project_registry: ProjectRegistry, tmp_path):
+    store = SQLiteConversationStore(tmp_path / "monitor_sessions.sqlite3")
+    store.append(project="remote-coder", chat_id=42, role="user", text="hi", message_id=5, job_id=None)
+    store.resolve_or_create_session("remote-coder", 42, 5, None)
+    ctx = _ctx(project_registry)
+    ctx.conversation_store = store
+    registry = CommandRegistry([MonitorCommand()])
+    text = registry.dispatch(TelegramMessage(chat_id=42, user_id=1, text="/monitor memory"), ctx)
+    assert text is not None
+    assert "Sessions: 1" in text

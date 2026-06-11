@@ -44,7 +44,7 @@ _BODY_MARKERS = frozenset(
 )
 
 _CODE_VALUE_LINE = re.compile(
-    r"^(?P<prefix>\s*-\s*(?:Job ID|Branch|Commit|Log path|브랜치|커밋|로그 경로)\s*:\s*)(?P<value>\S.*?)\s*$"
+    r"^(?P<prefix>\s*-\s*(?:Job ID|Session ID|Branch|Commit|Log path|브랜치|커밋|로그 경로)\s*:\s*)(?P<value>\S.*?)\s*$"
 )
 
 

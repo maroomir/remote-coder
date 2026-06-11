@@ -476,6 +476,14 @@ def test_runner_resume_token_roundtrip(tmp_path: Path):
     assert store.get_runner_resume_token("s1", "claude") == "tok-b"
 
 
+def test_get_chat_stats_counts_sessions(tmp_path: Path):
+    store = SQLiteConversationStore(tmp_path / "stats_sessions.sqlite3")
+    _seed_user(store, chat_id=1, message_id=10, job_id="j1")
+    assert store.get_chat_stats("p1", 1).session_count == 0
+    store.resolve_or_create_session("p1", 1, 10, None)
+    assert store.get_chat_stats("p1", 1).session_count == 1
+
+
 def test_delete_chat_memory_clears_sessions(tmp_path: Path):
     store = SQLiteConversationStore(tmp_path / "clr.sqlite3")
     _seed_user(store, chat_id=1, message_id=10, job_id="j1")

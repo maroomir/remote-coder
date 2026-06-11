@@ -53,3 +53,5 @@ alwaysApply: true
 - Resolve the session and resume token at submit time, thread them through `RunnerInput`, and capture the runner's session id back into the job after each run.
 - Provider resume mechanics live only in each runner adapter: Claude sets `--session-id` then `--resume`; Codex captures its rollout session id and resumes via `codex exec resume <id>`; Gemini resumes via `--resume <id>` when a captured id exists.
 - Native resume is best-effort: when a provider cannot expose a resumable id, fall back to the existing reply-context injection rather than failing the job. Native Claude resume assumes the chain reuses the same worktree (cwd-scoped sessions).
+- Always populate `JobRequest.session_id` (the logical id) for display even when native resume is gated off; only the native resume token is withheld when there is no stable worktree.
+- Surface the logical session id to users so they can confirm continuity: on job accepted/result messages (under Job ID), `/status` detail, `/reports`, and a session count in `/monitor memory`.

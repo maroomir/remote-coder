@@ -68,10 +68,11 @@ def build_job_accepted_message(job: Job) -> tuple[str, list[list[_OutboundButton
     text = ui_message(
         "job.accepted",
         "✅ Job accepted\n\n"
-        "- Job ID: {job_id}\n"
+        "- Job ID: {job_id}{session_line}\n"
         "- Project: {project}\n"
         "- Model: {model}{mode_line}",
         job_id=job.id,
+        session_line=_ui_session_line(job),
         project=job.request.project,
         model=format_model_selection(job.request.model, job.request.model_id),
         mode_line=mode_line,
@@ -112,6 +113,13 @@ def _ui_token_usage(job: Job) -> str:
     )
 
 
+def _ui_session_line(job: Job) -> str:
+    session_id = job.request.session_id
+    if not session_id:
+        return ""
+    return ui_message("job.session_line", "\n- Session ID: {session_id}", session_id=session_id)
+
+
 def build_job_result_message(job: Job) -> str:
     mode_prefix = ""
     if job.request.mode is JobMode.PLAN:
@@ -122,9 +130,10 @@ def build_job_result_message(job: Job) -> str:
     if job.status.value == "cancelled":
         return ui_message(
             "job.cancelled",
-            "{mode_prefix}⛔ Job cancelled\n\n- Job ID: {job_id}\n- Project: {project}",
+            "{mode_prefix}⛔ Job cancelled\n\n- Job ID: {job_id}{session_line}\n- Project: {project}",
             mode_prefix=mode_prefix,
             job_id=job.id,
+            session_line=_ui_session_line(job),
             project=job.request.project,
         )
 
@@ -138,12 +147,13 @@ def build_job_result_message(job: Job) -> str:
             return ui_message(
                 "job.readonly_completed",
                 "[{mode}] Completed\n\n"
-                "- Job ID: {job_id}\n"
+                "- Job ID: {job_id}{session_line}\n"
                 "- Project: {project}\n"
                 "- Model used: {model}\n"
                 "- Token usage: {token_usage}{response_block}",
                 mode=label,
                 job_id=job.id,
+                session_line=_ui_session_line(job),
                 project=job.request.project,
                 model=model_label,
                 token_usage=_ui_token_usage(job),
@@ -170,7 +180,7 @@ def build_job_result_message(job: Job) -> str:
         return ui_message(
             "job.completed",
             "✅ Job completed\n\n"
-            "- Job ID: {job_id}\n"
+            "- Job ID: {job_id}{session_line}\n"
             "- Project: {project}\n"
             "- Branch: {branch}\n"
             "- Commit: {commit}\n"
@@ -178,6 +188,7 @@ def build_job_result_message(job: Job) -> str:
             "- Model used: {model}\n"
             "- Token usage: {token_usage}{response_block}",
             job_id=job.id,
+            session_line=_ui_session_line(job),
             project=job.request.project,
             branch=branch_line,
             commit=commit_line,
@@ -191,11 +202,12 @@ def build_job_result_message(job: Job) -> str:
     return ui_message(
         "job.failed",
         "{mode_prefix}❌ Job failed\n\n"
-        "- Job ID: {job_id}\n"
+        "- Job ID: {job_id}{session_line}\n"
         "- Project: {project}\n"
         "- Error: {error}{details}{failure_block}",
         mode_prefix=mode_prefix,
         job_id=job.id,
+        session_line=_ui_session_line(job),
         project=job.request.project,
         error=job.error or "unknown error",
         details=_ui_failure_details(job),

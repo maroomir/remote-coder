@@ -15,5 +15,6 @@ def format_memory_monitor(stats: ConversationDbChatStats, project: str, chat_id:
         f"DB size: {size_kb:.2f} KiB ({stats.db_size_bytes} bytes)",
         f"Rows for this chat: {stats.total_rows}",
         f"Rows by role: {roles or '(none)'}",
+        f"Sessions: {stats.session_count}",
     ]
     return "\n".join(lines)
