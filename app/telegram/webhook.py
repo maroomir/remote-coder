@@ -561,14 +561,19 @@ def create_webhook_router(
             request.message_id,
             request.reply_to_message_id,
         )
-        token = conversation_store.get_runner_resume_token(session_id, request.model.value)
-        # Always expose the logical session id so users can see the same value persist across a
-        # reply chain. Native resume needs a stable worktree (CLI sessions are cwd-scoped); a
-        # bound branch guarantees the reply reuses the parent's worktree, so only resume there.
-        # Without a branch we fall back to context injection rather than risk resuming a session
-        # the provider cannot find in a fresh worktree.
         request.session_id = session_id
-        request.resume_session_token = token if request.branch is not None else None
+        request.resume_session_token = conversation_store.get_runner_resume_token(
+            session_id, request.model.value
+        )
+
+    def _refresh_resume_token(request: JobRequest) -> None:
+        # Derived requests (PLAN phase B, plan-execute AGENT) carry session_id inherited from
+        # the parent but have no Telegram message id; pick up the freshest runner token here.
+        if conversation_store is None or request.session_id is None:
+            return
+        request.resume_session_token = conversation_store.get_runner_resume_token(
+            request.session_id, request.model.value
+        )
 
     def _persist_session_token(final_job: Job) -> None:
         if (
@@ -950,10 +955,11 @@ def create_webhook_router(
                     "job_id": None,
                     "message_id": None,
                     "reply_to_message_id": None,
-                    "session_id": None,
-                    "resume_session_token": None,
                 }
             )
+            # Phase B continues the same logical conversation as phase A; reuse its session
+            # and pick up the runner token phase A just persisted.
+            _refresh_resume_token(phase_b_request)
             _cmdlog.info(
                 "plan decisions complete answers=%d",
                 len(pending.answers),
@@ -1012,7 +1018,11 @@ def create_webhook_router(
             parent_job_id=job_id,
             chat_id=cq_chat_id,
             requested_by=cq_user_id,
+            session_id=plan_job.request.session_id,
         )
+        # Inherit the plan's logical session so the implementation reuses the same runner
+        # rollout instead of paying for a fresh session.
+        _refresh_resume_token(agent_request)
         notifier.answer_callback_query(cq.id, text="Running the plan…")
         _cmdlog.info(
             "plan execute accepted plan_job=%s",

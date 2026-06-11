@@ -3030,3 +3030,176 @@ def test_plan_execute_unknown_job_ignored(project_registry):
     resp = _tap_exec(client, wh, 1, job_id="job_missing")
     assert resp.json()["status"] == "ignored"
     assert job_manager.last_request is None
+
+
+def _build_session_app(project_registry, notifier, job_manager, conversation_store, store=None):
+    app = FastAPI()
+    store = store if store is not None else InMemoryJobStore()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    git_service.local_branch_exists.return_value = False
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=conversation_store,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+                conversation_store=conversation_store,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=job_manager,
+            job_store=store,
+            conversation_store=conversation_store,
+        )
+    )
+    return app, store
+
+
+def test_webhook_ask_reply_chain_reuses_session_without_branch(project_registry, tmp_path):
+    # PLAN/ASK runs never bind a branch (they are read-only), so before the fix the resume
+    # token was discarded on the reply and every follow-up ate a fresh provider session.
+    conversation_store = SQLiteConversationStore(tmp_path / "ask.sqlite3")
+    notifier = DummyNotifier()
+    runner_session = "11111111-1111-1111-1111-111111111111"
+    job_manager = SessionRecordingJobManager(branch=None, runner_session_id=runner_session)
+    app, _ = _build_session_app(project_registry, notifier, job_manager, conversation_store)
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    client.post(
+        wh,
+        json={
+            "update_id": 50,
+            "message": {
+                "message_id": 50,
+                "text": "/ask explain the JobManager flow",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+            },
+        },
+    )
+    _confirm_via_button(client, wh, notifier, 51, message_id=901)
+
+    root_request = job_manager.requests[0]
+    assert root_request.mode == JobMode.ASK
+    assert root_request.branch is None
+    assert root_request.session_id is not None
+    assert root_request.resume_session_token is None
+
+    client.post(
+        wh,
+        json={
+            "update_id": 52,
+            "message": {
+                "message_id": 52,
+                "text": "/ask and where does it commit?",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+                "reply_to_message": {"message_id": 50, "text": "/ask explain the JobManager flow"},
+            },
+        },
+    )
+    _confirm_via_button(client, wh, notifier, 53, message_id=902)
+
+    reply_request = job_manager.requests[1]
+    assert reply_request.mode == JobMode.ASK
+    assert reply_request.branch is None
+    assert reply_request.session_id == root_request.session_id
+    assert reply_request.resume_session_token == runner_session
+
+
+def test_plan_phase_b_inherits_session_and_resume_token(project_registry, tmp_path):
+    conversation_store = SQLiteConversationStore(tmp_path / "phaseb.sqlite3")
+    session_id = conversation_store.resolve_or_create_session("remote-coder", 123, 40, None)
+    conversation_store.set_runner_resume_token(session_id, ModelName.CLAUDE.value, "runner-tok-A")
+
+    notifier = DummyNotifier()
+    job_manager = CaptureJobManager()
+    app, _ = _build_session_app(project_registry, notifier, job_manager, conversation_store)
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    plan_a_request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="plan the storage layer",
+        mode=JobMode.PLAN,
+        chat_id=123,
+        requested_by=999,
+        message_id=40,
+        session_id=session_id,
+    )
+    plan_a_job = Job(id="job_plan_a", request=plan_a_request)
+
+    questions = parse_plan_decisions(_DECISION_BLOCK)
+    assert questions is not None
+    assert job_manager.plan_decision_router(plan_a_job, questions) is True
+
+    _tap_decision(client, wh, notifier, 1, option_index=0)
+    _tap_decision(client, wh, notifier, 2, option_index=1)
+
+    phase_b = job_manager.last_request
+    assert phase_b is not None
+    assert phase_b.mode == JobMode.PLAN
+    assert phase_b.plan_decisions_resolved is True
+    assert phase_b.session_id == session_id
+    assert phase_b.resume_session_token == "runner-tok-A"
+
+
+def test_plan_execute_inherits_session_and_resume_token(project_registry, tmp_path):
+    conversation_store = SQLiteConversationStore(tmp_path / "exec.sqlite3")
+    session_id = conversation_store.resolve_or_create_session("remote-coder", 123, 40, None)
+    conversation_store.set_runner_resume_token(session_id, ModelName.CLAUDE.value, "runner-tok-B")
+
+    store = InMemoryJobStore()
+    plan_request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="plan the storage layer",
+        mode=JobMode.PLAN,
+        chat_id=123,
+        requested_by=999,
+        message_id=40,
+        session_id=session_id,
+    )
+    plan_job = Job(
+        id="job_plan_x",
+        request=plan_request,
+        status=JobStatus.SUCCEEDED,
+        runner_stdout_summary="1. add Store class\n2. wire it",
+    )
+    store.create(plan_job)
+
+    notifier = DummyNotifier()
+    job_manager = CaptureJobManager()
+    app, _ = _build_session_app(
+        project_registry, notifier, job_manager, conversation_store, store=store
+    )
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    resp = _tap_exec(client, wh, 1)
+    assert resp.json()["status"] == "accepted"
+
+    agent_request = job_manager.last_request
+    assert agent_request is not None
+    assert agent_request.mode == JobMode.AGENT
+    assert agent_request.session_id == session_id
+    assert agent_request.resume_session_token == "runner-tok-B"
