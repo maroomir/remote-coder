@@ -50,6 +50,7 @@ class JobRequest(BaseModel):
     fix_kind: FixKind | None = None
     session_id: str | None = None
     resume_session_token: str | None = None
+    plan_decisions_resolved: bool = False
 
     @field_validator("branch")
     @classmethod

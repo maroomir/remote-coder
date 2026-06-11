@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.admin.advanced_settings import AdvancedSettings
+from app.jobs.plan_decisions import parse_plan_decisions
 from app.jobs.schemas import Job, JobMode, JobRequest, JobStatus
 from app.jobs.store import InMemoryJobStore
 from app.models import ModelName
@@ -2708,3 +2709,194 @@ def test_webhook_reply_jobs_share_session_and_resume(project_registry, tmp_path)
     reply_request = job_manager.requests[1]
     assert reply_request.session_id == root_request.session_id
     assert reply_request.resume_session_token == runner_session
+
+
+_DECISION_BLOCK = (
+    "```plan-decisions\n"
+    '{"questions": ['
+    '{"id": "db", "header": "DB", "question": "Which database?", "options": ['
+    '{"label": "PostgreSQL", "description": "Relational"}, '
+    '{"label": "SQLite", "description": "File based"}]}, '
+    '{"id": "scope", "header": "Scope", "question": "Reuse module?", "options": ['
+    '{"label": "Reuse", "description": "Extend existing"}, '
+    '{"label": "New", "description": "Create new"}]}'
+    "]}\n"
+    "```"
+)
+
+
+def _build_plan_decision_app(project_registry, notifier, job_manager):
+    app = FastAPI()
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    app.include_router(
+        create_webhook_router(
+            bot_instance_manager=mgr,
+            parser=CommandParser(
+                project_registry=project_registry,
+                default_model=ModelName.CLAUDE,
+            ),
+            command_registry=_commands_with_clear(),
+            job_manager=job_manager,
+            job_store=store,
+            conversation_store=None,
+        )
+    )
+    return app, command_context
+
+
+def _plan_job_for_decisions():
+    return Job(
+        id="job_plan_a",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="plan the storage layer",
+            mode=JobMode.PLAN,
+            chat_id=123,
+            requested_by=999,
+        ),
+    )
+
+
+def _tap_decision(client, wh, notifier, update_id, option_index):
+    rows = notifier.sent_with_buttons[-1][2]
+    data = rows[option_index][0].callback_data
+    return client.post(
+        wh,
+        json={
+            "update_id": update_id,
+            "callback_query": {
+                "id": f"cq_{update_id}",
+                "from": {"id": 999},
+                "message": {"chat": {"id": 123}, "message_id": 900 + update_id},
+                "data": data,
+            },
+        },
+    )
+
+
+def test_plan_decisions_flow_asks_then_submits_phase_b(project_registry):
+    notifier = DummyNotifier()
+    job_manager = CaptureJobManager()
+    app, _ = _build_plan_decision_app(project_registry, notifier, job_manager)
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    questions = parse_plan_decisions(_DECISION_BLOCK)
+    assert questions is not None
+    # Simulate the JobManager background thread surfacing decisions from phase A.
+    assert job_manager.plan_decision_router(_plan_job_for_decisions(), questions) is True
+
+    assert len(notifier.sent_with_buttons) == 1
+    first_text = notifier.sent_with_buttons[0][1]
+    assert "Decision 1/2" in first_text
+    assert "Which database?" in first_text
+
+    first = _tap_decision(client, wh, notifier, 1, option_index=0)
+    assert first.json()["status"] == "ok"
+    assert len(notifier.sent_with_buttons) == 2
+    assert "Decision 2/2" in notifier.sent_with_buttons[1][1]
+    assert "Reuse module?" in notifier.sent_with_buttons[1][1]
+    assert job_manager.last_request is None
+
+    second = _tap_decision(client, wh, notifier, 2, option_index=1)
+    assert second.json()["status"] == "accepted"
+
+    submitted = job_manager.last_request
+    assert submitted is not None
+    assert submitted.mode == JobMode.PLAN
+    assert submitted.plan_decisions_resolved is True
+    assert "PostgreSQL" in submitted.instruction
+    assert "New" in submitted.instruction
+    assert "plan the storage layer" in submitted.instruction
+
+
+def test_plan_decisions_stale_tap_is_ignored(project_registry):
+    notifier = DummyNotifier()
+    job_manager = CaptureJobManager()
+    app, _ = _build_plan_decision_app(project_registry, notifier, job_manager)
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    questions = parse_plan_decisions(_DECISION_BLOCK)
+    job_manager.plan_decision_router(_plan_job_for_decisions(), questions)
+
+    # Answer question 1, then re-tap the (now stale) question-1 button again.
+    rows_q1 = notifier.sent_with_buttons[0][2]
+    stale_data = rows_q1[0][0].callback_data
+    _tap_decision(client, wh, notifier, 1, option_index=0)
+    before = len(notifier.sent_with_buttons)
+    resp = client.post(
+        wh,
+        json={
+            "update_id": 5,
+            "callback_query": {
+                "id": "cq_stale",
+                "from": {"id": 999},
+                "message": {"chat": {"id": 123}, "message_id": 950},
+                "data": stale_data,
+            },
+        },
+    )
+    assert resp.json()["status"] == "ignored"
+    assert len(notifier.sent_with_buttons) == before
+    assert job_manager.last_request is None
+
+
+def test_plan_decisions_cancelled_by_typed_message(project_registry):
+    notifier = DummyNotifier()
+    job_manager = CaptureJobManager()
+    app, _ = _build_plan_decision_app(project_registry, notifier, job_manager)
+    client = TestClient(app)
+    wh = _webhook_url(project_registry)
+
+    questions = parse_plan_decisions(_DECISION_BLOCK)
+    job_manager.plan_decision_router(_plan_job_for_decisions(), questions)
+
+    client.post(
+        wh,
+        json={
+            "update_id": 7,
+            "message": {
+                "message_id": 7,
+                "text": "never mind",
+                "chat": {"id": 123},
+                "from": {"id": 999},
+            },
+        },
+    )
+    assert any("Cancelled the pending plan decision." in text for _, text in notifier.sent)
+    # A later decision tap finds no pending state.
+    rows = notifier.sent_with_buttons[0][2]
+    resp = client.post(
+        wh,
+        json={
+            "update_id": 8,
+            "callback_query": {
+                "id": "cq_after_cancel",
+                "from": {"id": 999},
+                "message": {"chat": {"id": 123}, "message_id": 960},
+                "data": rows[0][0].callback_data,
+            },
+        },
+    )
+    assert resp.json()["status"] == "ignored"

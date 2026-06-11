@@ -15,7 +15,7 @@ Run Claude Code, Codex, or Gemini on your local development machine by sending a
 - Claude, Codex, and Gemini runners behind the same job flow.
 - Reply-linked jobs continue the same AI CLI session, so follow-ups build on prior context.
 - Local admin UI for project setup, advanced settings, logs, and conversation memory.
-- Read-only `plan:` and `ask:` modes when you want analysis without commits.
+- Read-only `plan:` and `ask:` modes when you want analysis without commits. PLAN mode asks open decisions through inline buttons first, then finalizes the plan from your answers.
 
 ## Quick Start
 
