@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from app.ai.model_catalog import format_model_selection
 from app.ai.usage import format_token_usage
 from app.jobs.manager import JobManager
+from app.jobs.plan_decisions import PlanDecisionAnswer, PlanDecisionQuestion, compose_phase_b_instruction
 from app.jobs.schemas import FixKind, Job, JobMode, JobRequest
 from app.jobs.store import JobStore
 from app.monitoring.events import EventLogger
@@ -33,6 +34,13 @@ from app.telegram.confirmations import PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.notifier import Notifier
 from app.telegram.parser import CommandParseError, CommandParser, _extract_reply_job_id
+from app.telegram.plan_decisions_flow import (
+    PLAN_DECISION_CALLBACK_PREFIX,
+    PendingPlanDecision,
+    PlanDecisionStore,
+    build_question_message,
+    parse_decision_callback,
+)
 
 _inbound = EventLogger("app.telegram.inbound", "telegram.inbound")
 _cmdlog = EventLogger("app.telegram.command", "telegram.command")
@@ -254,6 +262,7 @@ def create_webhook_router(
 ) -> APIRouter:
     router = APIRouter(prefix="/telegram", tags=["telegram"])
     recent_updates = _RecentUpdateTracker()
+    plan_decision_store = PlanDecisionStore()
 
     def _handle_callback_query(
         update: TelegramUpdate,
@@ -299,6 +308,10 @@ def create_webhook_router(
                     partial(notifier.edit_message, cq_chat_id, cq.message.message_id, "Closed.", [])
                 )
             return {"status": "ok"}
+        if cq.data.startswith(f"{PLAN_DECISION_CALLBACK_PREFIX}:"):
+            return _handle_plan_decision_answer(
+                cq, notifier, scope_project, cq_chat_id, background_tasks
+            )
         if cq.data in {_NATURAL_JOB_CONFIRM_YES, _NATURAL_JOB_CONFIRM_NO}:
             notifier.answer_callback_query(cq.id)
             pending = command_context.confirmation_store.get(scope_project, cq_chat_id)
@@ -851,6 +864,102 @@ def create_webhook_router(
             return {"status": "ok"}
         return {"status": "ignored"}
 
+    def _start_plan_decisions(job: Job, questions: list[PlanDecisionQuestion]) -> bool:
+        # Invoked from the JobManager background thread when a PLAN runner asked for decisions.
+        instance = bot_instance_manager.get_by_name(job.request.project)
+        if instance is None:
+            return False
+        pending = PendingPlanDecision(
+            original_request=job.request,
+            original_text=job.request.instruction,
+            questions=questions,
+        )
+        plan_decision_store.set(job.request.project, job.request.chat_id, pending)
+        text, rows = build_question_message(pending)
+        instance.notifier.send_with_buttons(
+            job.request.chat_id, text, rows, skip_body_i18n=True
+        )
+        _cmdlog.info(
+            "plan decisions started questions=%d",
+            len(questions),
+            chat_id=job.request.chat_id,
+            project=job.request.project,
+            job_id=job.id,
+        )
+        return True
+
+    def _handle_plan_decision_answer(
+        cq: TelegramCallbackQuery,
+        notifier: Notifier,
+        scope_project: str | None,
+        cq_chat_id: int,
+        background_tasks: BackgroundTasks,
+    ) -> dict[str, str]:
+        parsed = parse_decision_callback(cq.data or "")
+        pending = plan_decision_store.get(scope_project, cq_chat_id)
+        if parsed is None or pending is None or pending.is_complete:
+            notifier.answer_callback_query(cq.id)
+            if pending is None:
+                background_tasks.add_task(
+                    notifier.send_text, cq_chat_id, "There is no pending decision."
+                )
+            return {"status": "ignored"}
+        question_index, option_index = parsed
+        question = pending.current_question
+        if question_index != pending.current_index or not (
+            0 <= option_index < len(question.options)
+        ):
+            # Stale or out-of-order tap (e.g. an already-answered question); ignore quietly.
+            notifier.answer_callback_query(cq.id)
+            return {"status": "ignored"}
+        option = question.options[option_index]
+        pending.answers.append(PlanDecisionAnswer(question=question, option=option))
+        pending.current_index += 1
+        notifier.answer_callback_query(cq.id, text=option.label)
+        if cq.message is not None and cq.message.message_id is not None:
+            background_tasks.add_task(
+                partial(
+                    notifier.edit_message,
+                    cq_chat_id,
+                    cq.message.message_id,
+                    f"✅ {question.header}: {option.label}",
+                    [],
+                    skip_body_i18n=True,
+                )
+            )
+        if pending.is_complete:
+            plan_decision_store.pop(scope_project, cq_chat_id)
+            phase_b_request = pending.original_request.model_copy(
+                update={
+                    "instruction": compose_phase_b_instruction(
+                        pending.original_request.instruction, pending.answers
+                    ),
+                    "plan_decisions_resolved": True,
+                    "job_id": None,
+                    "message_id": None,
+                    "reply_to_message_id": None,
+                    "session_id": None,
+                    "resume_session_token": None,
+                }
+            )
+            _cmdlog.info(
+                "plan decisions complete answers=%d",
+                len(pending.answers),
+                chat_id=cq_chat_id,
+                project=scope_project,
+            )
+            job = _submit_confirmed_natural_request(
+                request=phase_b_request,
+                original_text=pending.original_text,
+                background_tasks=background_tasks,
+            )
+            return {"status": "accepted", "job_id": job.id}
+        text, rows = build_question_message(pending)
+        background_tasks.add_task(
+            partial(notifier.send_with_buttons, cq_chat_id, text, rows, skip_body_i18n=True)
+        )
+        return {"status": "ok"}
+
     @router.post("/webhook/{token_hash}")
     def telegram_webhook(
         token_hash: str,
@@ -960,6 +1069,12 @@ def create_webhook_router(
             reply_mid=reply_mid,
             reply_txt=reply_txt,
         )
+
+        if plan_decision_store.pop(scope_project, chat_id) is not None:
+            # A typed message abandons an in-progress decision prompt (button-only flow).
+            background_tasks.add_task(
+                notifier.send_text, chat_id, "Cancelled the pending plan decision."
+            )
 
         pending = command_context.confirmation_store.get(scope_project, chat_id)
         pending_result = _handle_pending(req, pending)
@@ -1132,4 +1247,5 @@ def create_webhook_router(
         _ = job_store
         return job
 
+    job_manager.plan_decision_router = _start_plan_decisions
     return router

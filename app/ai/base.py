@@ -17,13 +17,29 @@ _SESSION_UUID_PATTERN = re.compile(
 )
 
 
+_PLAN_DECISIONS_INSTRUCTION = (
+    "You are in PLAN mode. Read the codebase and produce a concrete change plan. "
+    "Do not modify files.\n\n"
+    "Before finalizing, decide whether the plan depends on choices only the user can make "
+    "(for example: which library/database to use, reuse an existing module vs. create a new one, "
+    "scope or behavior trade-offs). If such open decisions exist, do NOT write the plan yet. "
+    "Instead output ONLY a single fenced block exactly like this and nothing else:\n"
+    "```plan-decisions\n"
+    '{"questions": [{"id": "short_id", "header": "Short label", '
+    '"question": "The decision to make?", "options": ['
+    '{"label": "Option A", "description": "What this choice means"}, '
+    '{"label": "Option B", "description": "What this choice means"}]}]}\n'
+    "```\n"
+    "Rules for the block: at most 3 questions; each question has 2-4 options; keep labels short "
+    "and descriptions to one sentence; valid JSON only. If there are no genuine open decisions, "
+    "skip the block entirely and just write the plan as usual.\n\n"
+    "User request:\n"
+)
+
+
 def instruction_for_runner_mode(instruction: str, mode: JobMode) -> str:
     if mode == JobMode.PLAN:
-        return (
-            "You are in PLAN mode. Read the codebase and produce a concrete change plan. "
-            "Do not modify files.\n\n"
-            f"User request:\n{instruction}"
-        )
+        return f"{_PLAN_DECISIONS_INSTRUCTION}{instruction}"
     if mode == JobMode.ASK:
         return (
             "You are in ASK mode. Analyze the codebase and answer the user's question. "

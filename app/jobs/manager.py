@@ -17,6 +17,7 @@ from app.git.ai_commit import AiCommitBodyGenerator
 from app.git.branch_naming import BranchNamingStrategy
 from app.git.commit_message import CommitMessageFormatter
 from app.git.service import GitWorktreeService
+from app.jobs.plan_decisions import PlanDecisionQuestion, parse_plan_decisions
 from app.jobs.schemas import FixKind, Job, JobMode, JobRequest, JobStatus
 from app.jobs.store import JobStore
 from app.monitoring.events import EventLogger
@@ -53,6 +54,7 @@ class JobManager:
         project_registry: ProjectRegistry,
         advanced_settings_store: FileAdvancedSettingsStore | None = None,
         ai_commit_body_generator: AiCommitBodyGenerator | None = None,
+        plan_decision_router: Callable[[Job, list[PlanDecisionQuestion]], bool] | None = None,
     ) -> None:
         self._settings = settings
         self._job_store = job_store
@@ -63,6 +65,8 @@ class JobManager:
         self._project_registry = project_registry
         self._advanced_settings_store = advanced_settings_store
         self._ai_commit_body_generator = ai_commit_body_generator
+        # Set post-construction by the Telegram layer (mirrors command_context.job_manager).
+        self.plan_decision_router = plan_decision_router
         self._cancel_events: dict[str, threading.Event] = {}
         self._cancelled_job_ids: set[str] = set()
 
@@ -238,6 +242,7 @@ class JobManager:
         failed_stage: str | None = None
         remote = self._effective_git_remote_name()
         read_only_job = job.request.mode in (JobMode.PLAN, JobMode.ASK)
+        plan_decision_questions: list[PlanDecisionQuestion] | None = None
         try:
             job.mark_running()
             self._job_store.update(job)
@@ -303,6 +308,8 @@ class JobManager:
                 _joblog.info(
                     "succeeded read_only mode=%s", job.request.mode.value, **self._job_ctx(job)
                 )
+                if job.request.mode is JobMode.PLAN and not job.request.plan_decisions_resolved:
+                    plan_decision_questions = parse_plan_decisions(runner_result.stdout)
             else:
                 failed_stage = "git_commit"
                 _joblog.info("stage=git_commit", **self._job_ctx(job))
@@ -443,8 +450,27 @@ class JobManager:
                         exc,
                         **self._job_ctx(job),
                     )
-            self._send_result(job)
+            if not self._route_plan_decisions(job, plan_decision_questions):
+                self._send_result(job)
         return job
+
+    def _route_plan_decisions(
+        self, job: Job, questions: list[PlanDecisionQuestion] | None
+    ) -> bool:
+        # When the PLAN runner asked for user decisions, hand off to the Telegram layer to
+        # collect answers via inline buttons instead of sending the raw block as a plan.
+        if not questions or self.plan_decision_router is None:
+            return False
+        try:
+            handled = self.plan_decision_router(job, questions)
+        except Exception:  # pylint: disable=broad-except
+            _joblog.exception("plan decision router failed", **self._job_ctx(job))
+            return False
+        if handled:
+            _joblog.info(
+                "plan decisions routed questions=%d", len(questions), **self._job_ctx(job)
+            )
+        return handled
 
     def is_fix_candidate(self, job: Job, project: str, chat_id: int) -> bool:
         return (
