@@ -557,16 +557,17 @@ _MESSAGE_CATALOG_KO: dict[str, str] = {
     "model.unknown_specific": "알 수 없는 세부 모델입니다: {model_id}\n\n{usage}",
     "job.accepted": (
         "✅ 작업 접수 완료\n\n"
-        "- Job ID: {job_id}\n"
+        "- Job ID: {job_id}{session_line}\n"
         "- 프로젝트: {project}\n"
         "- 모델: {model}{mode_line}"
     ),
     "job.mode_line": "\n- 모드: {mode}",
+    "job.session_line": "\n- Session ID: {session_id}",
     "job.stop_button": "작업 중단",
-    "job.cancelled": "{mode_prefix}⛔ 작업 중단됨\n\n- Job ID: {job_id}\n- 프로젝트: {project}",
+    "job.cancelled": "{mode_prefix}⛔ 작업 중단됨\n\n- Job ID: {job_id}{session_line}\n- 프로젝트: {project}",
     "job.readonly_completed": (
         "[{mode}] 응답 완료\n\n"
-        "- Job ID: {job_id}\n"
+        "- Job ID: {job_id}{session_line}\n"
         "- 프로젝트: {project}\n"
         "- 사용 모델: {model}\n"
         "- 토큰 사용량: {token_usage}{response_block}"
@@ -579,7 +580,7 @@ _MESSAGE_CATALOG_KO: dict[str, str] = {
     "common.unavailable": "확인 불가",
     "job.completed": (
         "✅ 작업 완료\n\n"
-        "- Job ID: {job_id}\n"
+        "- Job ID: {job_id}{session_line}\n"
         "- 프로젝트: {project}\n"
         "- 브랜치: {branch}\n"
         "- 커밋: {commit}\n"
@@ -589,7 +590,7 @@ _MESSAGE_CATALOG_KO: dict[str, str] = {
     ),
     "job.failed": (
         "{mode_prefix}❌ 작업 실패\n\n"
-        "- Job ID: {job_id}\n"
+        "- Job ID: {job_id}{session_line}\n"
         "- 프로젝트: {project}\n"
         "- 오류: {error}{details}{failure_block}"
     ),

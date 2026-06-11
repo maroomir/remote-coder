@@ -11,6 +11,7 @@
 ### 추가
 
 - **Reply 연결 AI 세션**: Telegram 답장(reply)으로 연결된 작업들이 매 메시지마다 새 세션을 시작하지 않고 *동일한* AI CLI 세션을 이어갑니다. 각 reply 체인은 루트 메시지를 기준으로 묶이며 세션 id가 부여되고(SQLite에 저장, 잡 id와 연결), 러너가 네이티브로 세션을 재개합니다 — Claude는 `--session-id`/`--resume`, Codex는 `codex exec resume <id>`(rollout 파일에서 id 캡처), Gemini는 지원 시 `--resume <id>`, 미지원 시 기존 reply 컨텍스트 주입으로 폴백합니다. Claude 네이티브 재개는 체인이 동일 worktree를 재사용할 때(일반적인 브랜치 바인딩 reply 흐름) 동작합니다. `/clear memory`는 저장된 세션도 함께 삭제합니다.
+- **Session ID 노출**: 사용자가 reply 체인이 같은 세션을 유지하는지 직접 확인할 수 있도록 세션 id를 표시합니다 — 작업 접수·결과 메시지(Job ID 바로 아래, 모노스페이스), `/status <job_id>` 상세, `/reports` 최근 Job 결과, 그리고 `/monitor memory`의 `Sessions:` 개수에 나타납니다.
 - **간편 설정 위저드**: 관리 대시보드가 최초 사용자를 4단계 흐름(봇 토큰 확인 → Telegram 채팅 자동 감지 → 프로젝트 생성)으로 안내하여, 새 프로젝트를 약 1분 만에 연결할 수 있습니다. 로컬 전용 `POST /api/setup/validate-token`·`POST /api/setup/detect-chat` 엔드포인트가 이를 지원합니다.
 
 ### 변경

@@ -37,6 +37,20 @@ def test_entities_code_for_job_id_branch_commit_values():
     assert {"type": "code", "offset": commit_offset, "length": len("deadbeef")} in code_entities
 
 
+def test_entities_code_for_session_id_value():
+    text = (
+        "✅ Job completed\n\n"
+        "- Job ID: job_abc\n"
+        "- Session ID: 11111111-1111-1111-1111-111111111111\n"
+        "- Project: proj\n"
+    )
+    entities = build_message_entities(text)
+    code_entities = [e for e in entities if e["type"] == "code"]
+    sid = "11111111-1111-1111-1111-111111111111"
+    sid_offset = text.index(sid)
+    assert {"type": "code", "offset": sid_offset, "length": len(sid)} in code_entities
+
+
 def test_entities_skip_placeholder_values_in_parentheses():
     text = "✅ Job completed\n\n- Branch: (none - no branch; no changes)\n- Commit: -"
     entities = build_message_entities(text)

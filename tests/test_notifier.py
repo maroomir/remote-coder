@@ -536,3 +536,72 @@ def test_notifier_does_not_translate_ai_response_body_under_korean_ui():
     assert "Project: keep this exact" in payload["text"]
     assert "Model: keep this exact" in payload["text"]
     assert "프로젝트: keep this exact" not in payload["text"]
+
+
+def _job_with_session(session_id, *, mode=JobMode.AGENT, status=JobStatus.SUCCEEDED, **extra):
+    from app.telegram.notifier import build_job_result_message  # noqa: F401
+
+    return Job(
+        id="j-sess",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+            mode=mode,
+            session_id=session_id,
+        ),
+        status=status,
+        **extra,
+    )
+
+
+def test_build_job_result_includes_session_id_when_set():
+    from app.telegram.notifier import build_job_result_message
+
+    sid = "11111111-1111-1111-1111-111111111111"
+    agent = _job_with_session(sid, branch="b", commit_hash="abc", changed_files=["a.py"])
+    assert f"- Session ID: {sid}" in build_job_result_message(agent)
+
+    readonly = _job_with_session(sid, mode=JobMode.ASK)
+    text = build_job_result_message(readonly)
+    assert "[ask] Completed" in text
+    assert f"- Session ID: {sid}" in text
+
+    failed = _job_with_session(sid, status=JobStatus.FAILED, error="boom")
+    assert f"- Session ID: {sid}" in build_job_result_message(failed)
+
+    cancelled = _job_with_session(sid, status=JobStatus.CANCELLED)
+    assert f"- Session ID: {sid}" in build_job_result_message(cancelled)
+
+
+def test_build_job_result_omits_session_id_when_absent():
+    from app.telegram.notifier import build_job_result_message
+
+    job = _job_with_session(None, branch="b", commit_hash="abc", changed_files=["a.py"])
+    assert "Session ID" not in build_job_result_message(job)
+
+
+def test_build_job_accepted_includes_session_id():
+    from app.telegram.notifier import build_job_accepted_message
+
+    sid = "22222222-2222-2222-2222-222222222222"
+    text, _ = build_job_accepted_message(_job_with_session(sid, status=JobStatus.QUEUED))
+    assert f"- Session ID: {sid}" in text
+
+
+@respx.mock
+def test_notifier_keeps_session_id_under_korean_ui():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    store = type("Store", (), {"get": lambda self: AdvancedSettings(ui_language=UiLanguage.KOREAN)})()
+    notifier = TelegramNotifier("token", store)
+    sid = "33333333-3333-3333-3333-333333333333"
+    notifier.send_job_result(
+        _job_with_session(sid, branch="b", commit_hash="abc", changed_files=["a.py"])
+    )
+    payload = json.loads(route.calls[0].request.content.decode())
+    assert "작업 완료" in payload["text"]
+    assert f"- Session ID: {sid}" in payload["text"]
