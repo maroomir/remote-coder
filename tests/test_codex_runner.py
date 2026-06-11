@@ -97,11 +97,12 @@ def test_codex_runner_resumes_with_token(mock_popen):
     mock_proc.poll.return_value = 0
     mock_popen.return_value = mock_proc
 
-    result = CodexRunner().run(
+    result = CodexRunner(sandbox=CodexSandboxMode.READ_ONLY).run(
         RunnerInput(
             instruction="follow up",
             cwd=Path("."),
             timeout_seconds=10,
+            model_id="gpt-5.3-codex",
             resume_token="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
         )
     )
@@ -109,10 +110,12 @@ def test_codex_runner_resumes_with_token(mock_popen):
     assert mock_popen.call_args.args[0] == [
         "codex",
         "exec",
+        "--model",
+        "gpt-5.3-codex",
+        "--sandbox",
+        "read-only",
         "resume",
         "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-        "--sandbox",
-        "workspace-write",
         "follow up",
     ]
     assert result.session_id == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"

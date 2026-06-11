@@ -16,6 +16,7 @@
 
 ### 수정
 
+- **Codex 세션 재개 옵션**: Codex 재개 작업에서 `--model`과 `--sandbox`를 `resume` 하위 명령 앞에 전달하도록 바꿔, 현재 CLI 파서에서 `unexpected argument '--sandbox'`로 실패하지 않게 했습니다.
 - **범위가 명확하고 안정적인 `/pr` 흐름**: PR 후보를 현재 프로젝트·Telegram 채팅에서 성공한 Job의 원격 잔존 브랜치로 제한하고, 로컬에서 사라진 정상 브랜치도 표시합니다. 직접 입력에도 같은 소유권·원격 존재 검증을 적용하며, 커밋이 있는 성공 Job 알림에는 PR 버튼을 추가했습니다. 기존 PR URL을 재사용하고 `gh` 미설치·시간 초과·인증 실패를 webhook 예외 대신 실행 가능한 Telegram 오류로 반환합니다.
 - **타임아웃·취소 시 부분 출력 보존**: 러너가 타임아웃이나 취소로 종료될 때, 그때까지 생성된 부분 stdout/stderr를 작업 로그에 저장하고 실패 알림에 요약으로 표시합니다. 기존에는 한 줄 오류만 남기고 전부 버려졌습니다.
 - **Reply 연결 AI 세션**: Telegram 답장(reply)으로 연결된 작업들이 매 메시지마다 새 세션을 시작하지 않고 *동일한* AI CLI 세션을 이어갑니다. 각 reply 체인은 루트 메시지를 기준으로 묶이며 세션 id가 부여되고(SQLite에 저장, 잡 id와 연결), 러너가 네이티브로 세션을 재개합니다 — Claude는 `--session-id`/`--resume`, Codex는 `codex exec resume <id>`(rollout 파일에서 id 캡처), Gemini는 지원 시 `--resume <id>`, 미지원 시 기존 reply 컨텍스트 주입으로 폴백합니다. Claude 네이티브 재개는 체인이 동일 worktree를 재사용할 때(일반적인 브랜치 바인딩 reply 흐름) 동작합니다. `/clear memory`는 저장된 세션도 함께 삭제합니다.

@@ -33,11 +33,12 @@ class CodexRunner(BaseCliRunner):
             instruction = instruction_for_runner_mode(runner_input.instruction, runner_input.mode)
         else:
             instruction = runner_input.instruction
-        if runner_input.resume_token:
-            argv = ["codex", "exec", "resume", runner_input.resume_token]
-        else:
-            argv = ["codex", "exec"]
+        argv = ["codex", "exec"]
         if runner_input.model_id:
             argv.extend(["--model", runner_input.model_id])
-        argv.extend(["--sandbox", sandbox.value, instruction])
+        argv.extend(["--sandbox", sandbox.value])
+        if runner_input.resume_token:
+            argv.extend(["resume", runner_input.resume_token, instruction])
+        else:
+            argv.append(instruction)
         return argv
