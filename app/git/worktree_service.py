@@ -552,6 +552,9 @@ class GitWorktreeService:
         _gitlog.info("pull_repository done: %s", summary)
         return summary
 
+    def _new_rebase_operation_id(self) -> str:
+        return f"_rebase_{uuid.uuid4().hex[:8]}"
+
     def rebase_branch_onto_main_and_merge(
         self,
         project_path: Path,
@@ -571,7 +574,7 @@ class GitWorktreeService:
         self.remove_linked_worktrees_for_branches(project_path, [branch])
 
         worktree_ops_base.mkdir(parents=True, exist_ok=True)
-        op_id = f"_rebase_{uuid.uuid4().hex[:8]}"
+        op_id = self._new_rebase_operation_id()
         op_path = worktree_ops_base / op_id
 
         self._run_git_checked(

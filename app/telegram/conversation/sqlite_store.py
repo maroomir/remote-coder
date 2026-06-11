@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import re
 import sqlite3
 import uuid
-from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
@@ -12,73 +10,17 @@ from app.admin.advanced_settings import (
     FileAdvancedSettingsStore,
 )
 from app.models import UiLanguage
-from app.telegram.i18n import instruction_frame_labels
-
-
-_AMBIGUOUS_FOLLOWUP = re.compile(
-    r"^\s*(작업\s*시작해줘|진행해줘|그거\s*해줘|시작해줘)\s*$",
-    re.UNICODE | re.IGNORECASE,
+from app.telegram.conversation.context import truncate_snippet
+from app.telegram.conversation.models import (
+    ConversationDbChatStats,
+    ConversationEntry,
+    ConversationReport,
+    ConversationRoleCount,
 )
+from app.telegram.i18n import instruction_frame_labels
 
 # 순환 reply 체인 방지 상한.
 _REPLY_CHAIN_MAX_DEPTH = 32
-
-
-def is_ambiguous_followup(text: str) -> bool:
-    return bool(_AMBIGUOUS_FOLLOWUP.match(text.strip()))
-
-
-def truncate_snippet(text: str, limit: int = CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT) -> str:
-    snippet = text.strip().replace("\r\n", "\n").replace("\r", "\n")
-    if len(snippet) > limit:
-        return snippet[:limit].rstrip() + "...(truncated)"
-    return snippet
-
-
-@dataclass(frozen=True)
-class ConversationEntry:
-    id: int
-    project: str
-    chat_id: int
-    role: str
-    text: str
-    job_id: str | None
-    message_id: int | None = None
-    reply_to_message_id: int | None = None
-
-
-@dataclass(frozen=True)
-class ConversationRoleCount:
-    role: str
-    count: int
-
-
-@dataclass(frozen=True)
-class ConversationDbChatStats:
-    db_path: Path
-    db_exists: bool
-    db_size_bytes: int
-    total_rows: int
-    rows_by_role: dict[str, int]
-    session_count: int = 0
-
-
-@dataclass(frozen=True)
-class ConversationReport:
-    project: str
-    chat_id: int
-    total_entries: int
-    role_counts: list[ConversationRoleCount]
-    latest_user_text: str | None
-    latest_job_id: str | None
-    latest_job_result: str | None
-    recent_entries: list[ConversationEntry]
-
-    def count_for(self, role: str) -> int:
-        for item in self.role_counts:
-            if item.role == role:
-                return item.count
-        return 0
 
 
 def _ensure_entry_columns(conn: sqlite3.Connection) -> None:
@@ -928,33 +870,3 @@ def _row_to_entry(r: tuple[object, ...]) -> ConversationEntry:
         message_id=int(r[6]) if len(r) > 6 and r[6] is not None else None,
         reply_to_message_id=int(r[7]) if len(r) > 7 and r[7] is not None else None,
     )
-
-
-class ConversationContextBuilder:
-    @staticmethod
-    def build(
-        entries: list[ConversationEntry],
-        current_user_line: str,
-        language: UiLanguage = UiLanguage.ENGLISH,
-        snippet_max_chars: int = CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT,
-    ) -> str:
-        labels = instruction_frame_labels(language)
-        lines: list[str] = [
-            labels.prev_context_open,
-        ]
-        for e in entries:
-            label = e.role
-            if e.job_id:
-                label = f"{e.role} (job_id={e.job_id})"
-            snippet = truncate_snippet(e.text, snippet_max_chars)
-            lines.append(f"{label}: {snippet}")
-        lines.extend(
-            [
-                labels.prev_context_close,
-                "",
-                labels.current_request_open,
-                current_user_line.strip(),
-                labels.current_request_close,
-            ]
-        )
-        return "\n".join(lines)

@@ -1,10 +1,44 @@
 import logging
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import app.git.service as git_service_facade
+import app.git.worktree_service as git_worktree_service
 from app.git.service import GitWorktreeService
+
+
+def test_git_service_facade_preserves_public_contract():
+    assert git_service_facade.__all__ == ["GitWorktreeService"]
+    assert issubclass(
+        git_service_facade.GitWorktreeService,
+        git_worktree_service.GitWorktreeService,
+    )
+
+
+def test_git_service_facade_imports_in_fresh_process():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from app.git.service import GitWorktreeService; print(GitWorktreeService.__name__)",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "GitWorktreeService"
+
+
+@patch("app.git.service.uuid.uuid4", return_value=SimpleNamespace(hex="bbbbbbbb12345678"))
+def test_git_service_facade_uuid_patch_controls_rebase_operation_id(_mock_uuid, tmp_path: Path):
+    service = GitWorktreeService(base_dir=tmp_path)
+
+    assert service._new_rebase_operation_id() == "_rebase_bbbbbbbb"
 
 
 @patch("app.git.service.subprocess.run")

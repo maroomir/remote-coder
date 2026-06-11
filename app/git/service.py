@@ -1,10 +1,15 @@
+"""Compatibility facade for the public Git worktree service import path.
+
+The implementation lives in app.git.worktree_service. This module preserves the
+historical app.git.service.GitWorktreeService path and its monkeypatch points.
+"""
+
 from __future__ import annotations
 
 import subprocess
 import uuid
 from pathlib import Path
 
-import app.git.worktree_service as _impl
 from app.git.worktree_service import GitWorktreeService as _GitWorktreeService
 
 
@@ -43,20 +48,8 @@ class GitWorktreeService(_GitWorktreeService):
         except OSError as exc:
             raise RuntimeError(f"GitHub CLI could not be executed: {exc}") from exc
 
-    def rebase_branch_onto_main_and_merge(
-        self,
-        project_path: Path,
-        branch: str,
-        remote: str,
-        worktree_ops_base: Path,
-    ) -> str:
-        old_uuid = _impl.uuid
-        _impl.uuid = uuid
-        try:
-            return super().rebase_branch_onto_main_and_merge(
-                project_path, branch, remote, worktree_ops_base
-            )
-        finally:
-            _impl.uuid = old_uuid
+    def _new_rebase_operation_id(self) -> str:
+        return f"_rebase_{uuid.uuid4().hex[:8]}"
+
 
 __all__ = ["GitWorktreeService"]

@@ -4,12 +4,47 @@ import pytest
 
 from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsStore
 from app.models import UiLanguage
+import app.telegram.conversation as conversation_facade
+import app.telegram.conversation.store as conversation_store_facade
+from app.telegram.conversation import context as conversation_context
+from app.telegram.conversation import models as conversation_models
 from app.telegram.conversation import (
     ConversationContextBuilder,
     ConversationEntry,
     SQLiteConversationStore,
     is_ambiguous_followup,
 )
+
+
+def test_conversation_facades_export_public_contract():
+    expected = {
+        "ConversationContextBuilder",
+        "ConversationDbChatStats",
+        "ConversationEntry",
+        "ConversationReport",
+        "ConversationRoleCount",
+        "SQLiteConversationStore",
+        "is_ambiguous_followup",
+        "truncate_snippet",
+    }
+
+    assert set(conversation_facade.__all__) == expected
+    assert set(conversation_store_facade.__all__) == expected
+
+
+def test_conversation_facades_reexport_internal_objects():
+    assert conversation_facade.ConversationEntry is conversation_models.ConversationEntry
+    assert conversation_facade.ConversationReport is conversation_models.ConversationReport
+    assert (
+        conversation_facade.ConversationContextBuilder
+        is conversation_context.ConversationContextBuilder
+    )
+    assert conversation_facade.truncate_snippet is conversation_context.truncate_snippet
+    assert conversation_store_facade.ConversationEntry is conversation_models.ConversationEntry
+    assert (
+        conversation_store_facade.ConversationContextBuilder
+        is conversation_context.ConversationContextBuilder
+    )
 
 
 def test_is_ambiguous_followup():
