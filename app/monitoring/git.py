@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.git.service import GitWorktreeService
+from app.telegram.tables import render_table
 
 
 TELEGRAM_SAFE_LEN = 3800
@@ -24,15 +25,15 @@ def format_branch_monitor(
     except RuntimeError as exc:
         return f"/monitor branch failed: {exc}"
 
-    header = (
-        f"Branch monitor\n"
-        f"Project: {project_name}\n"
-        f"root: {root}\n"
-        f"Remote: {remote}\n"
-        f"Current checkout: {current}\n"
-        f"Local branches: {local_n}\n"
-        f"{remote} remote-tracking branches: {remote_n}\n\n"
-    )
+    header_rows = [
+        ("Project", project_name),
+        ("root", str(root)),
+        ("Remote", remote),
+        ("Current checkout", current),
+        ("Local branches", str(local_n)),
+        (f"{remote} remote-tracking branches", str(remote_n)),
+    ]
+    header = "Branch monitor\n" + render_table(header_rows, headers=("metric", "value")) + "\n\n"
     body = f"[Local]\n{local_block}\n\n[{remote} remote]\n{remote_block}"
     text = header + body
     if len(text) > max_len:
@@ -87,14 +88,17 @@ def format_worktree_monitor(
     if len(entries) > max_detail:
         extra = f"\n...({len(entries) - max_detail} more omitted)"
 
+    header_rows = [
+        ("Project", project_name),
+        ("root", str(root)),
+        ("Managed base directory", str(managed_base)),
+        ("Total worktrees", str(len(entries))),
+        ("Detached worktrees", str(detached_n)),
+        ("Managed candidates", str(managed_n)),
+    ]
     lines = [
         "Worktree monitor",
-        f"Project: {project_name}",
-        f"root: {root}",
-        f"Managed base directory (worktree_base): {managed_base}",
-        f"Total worktrees: {len(entries)}",
-        f"Detached worktrees: {detached_n}",
-        f"Managed candidates (remote-*, base, _rebase_ops): {managed_n}",
+        render_table(header_rows, headers=("metric", "value")),
         "",
         "[Entries]",
         *detail_lines,
