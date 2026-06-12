@@ -286,11 +286,26 @@ class TelegramNotifier:
             job_id=job.id,
             project=job.request.project,
         )
-        return self.send_long_text(
-            job.request.chat_id,
-            build_job_result_message(job),
-            build_job_result_buttons(job),
-        )
+        text = build_job_result_message(job)
+        buttons = build_job_result_buttons(job)
+        accepted_message_id = job.accepted_message_id
+        if accepted_message_id is not None:
+            translated = translate_text(text, self._language)
+            if len(translated) <= self._TELEGRAM_TEXT_LIMIT and self.edit_message(
+                job.request.chat_id,
+                accepted_message_id,
+                translated,
+                buttons,
+                skip_body_i18n=True,
+            ):
+                return [accepted_message_id]
+            # Edit-in-place failed or text is too long: drop the Stop button on the accepted
+            # message so the multi-message result keeps reading cleanly.
+            accepted_text, _ = build_job_accepted_message(job)
+            self.edit_message(
+                job.request.chat_id, accepted_message_id, accepted_text, []
+            )
+        return self.send_long_text(job.request.chat_id, text, buttons)
 
     def send_long_text(self, chat_id: int, text: str, inline_buttons: list | None = None) -> list[int]:
         """Split text across Telegram messages when it exceeds the 4096-character limit.

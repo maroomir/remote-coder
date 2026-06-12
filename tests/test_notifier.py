@@ -738,6 +738,99 @@ def test_notifier_accepted_message_stop_button_uses_danger_style():
 
 
 @respx.mock
+def test_notifier_send_job_result_edits_accepted_message_when_set():
+    edit_route = respx.post("https://api.telegram.org/bottoken/editMessageText").mock(
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 42}})
+    )
+    send_route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 99}})
+    )
+    notifier = TelegramNotifier("token")
+    job = Job(
+        id="j-edit",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="b",
+        commit_hash="abc",
+        changed_files=["a.py"],
+        accepted_message_id=42,
+    )
+    ids = notifier.send_job_result(job)
+    assert ids == [42]
+    assert edit_route.called
+    assert not send_route.called
+
+
+@respx.mock
+def test_notifier_send_job_result_falls_back_to_send_when_text_too_long():
+    edit_route = respx.post("https://api.telegram.org/bottoken/editMessageText").mock(
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 42}})
+    )
+    send_route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 99}})
+    )
+    notifier = TelegramNotifier("token")
+    job = Job(
+        id="j-long",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CODEX,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="b",
+        commit_hash="-",
+        changed_files=[],
+        runner_stdout_summary="A" * 5000,
+        accepted_message_id=42,
+    )
+    ids = notifier.send_job_result(job)
+    assert send_route.call_count >= 2
+    assert edit_route.call_count == 1
+    assert all(mid != 42 for mid in ids)
+
+
+@respx.mock
+def test_notifier_send_job_result_falls_back_to_send_when_edit_message_gone():
+    edit_route = respx.post("https://api.telegram.org/bottoken/editMessageText").mock(
+        return_value=Response(
+            400, json={"ok": False, "description": "Bad Request: message to edit not found"}
+        )
+    )
+    send_route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 99}})
+    )
+    notifier = TelegramNotifier("token")
+    job = Job(
+        id="j-edit-gone",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="b",
+        commit_hash="abc",
+        changed_files=["a.py"],
+        accepted_message_id=42,
+    )
+    ids = notifier.send_job_result(job)
+    assert edit_route.called
+    assert send_route.called
+    assert 99 in ids
+
+
+@respx.mock
 def test_notifier_omits_style_key_when_button_has_no_style():
     from app.telegram.commands import InlineButton
 

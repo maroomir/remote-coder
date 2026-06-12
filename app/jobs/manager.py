@@ -20,7 +20,7 @@ from app.jobs.fix_support import (
     list_fix_candidates,
     resolve_fix_target_job,
 )
-from app.jobs.heartbeat import start_heartbeat
+from app.jobs.heartbeat import HeartbeatHandle, start_heartbeat
 from app.jobs.plan_decisions import PlanDecisionQuestion
 from app.jobs.result_writer import (
     make_output_summary,
@@ -73,7 +73,7 @@ class JobManager:
     def _notifier_for(self, project: str) -> Notifier:
         return self._notifier_resolver(project)
 
-    def _start_heartbeat(self, job: Job) -> threading.Event:
+    def _start_heartbeat(self, job: Job) -> HeartbeatHandle:
         return start_heartbeat(
             job=job,
             notifier_resolver=self._notifier_for,
