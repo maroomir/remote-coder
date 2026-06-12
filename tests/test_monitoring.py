@@ -27,6 +27,8 @@ def test_count_project_code_skips_git_and_counts_py(tmp_path: Path):
 
 
 def test_format_memory_monitor_line():
+    from app.telegram.formatting import prepare_outgoing
+
     stats = ConversationDbChatStats(
         db_path=Path("/tmp/x.sqlite3"),
         db_exists=True,
@@ -35,8 +37,14 @@ def test_format_memory_monitor_line():
         rows_by_role={"user": 2, "job_result": 1},
     )
     text = format_memory_monitor(stats, "proj-a", 99)
+    assert text.startswith("Memory (SQLite)\n")
     assert "proj-a" in text and "99" in text
     assert "1024" in text
+    cleaned, entities = prepare_outgoing(text)
+    pre_entities = [e for e in entities if e["type"] == "pre"]
+    assert len(pre_entities) == 1
+    assert "metric" in cleaned
+    assert "  role:user" in cleaned
 
 
 def test_format_model_monitor_codex_not_installed():

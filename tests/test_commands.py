@@ -1095,8 +1095,10 @@ def test_monitor_memory_shows_sqlite_stats(project_registry: ProjectRegistry, tm
     text = registry.dispatch(TelegramMessage(chat_id=42, user_id=1, text="/monitor memory"), ctx)
     assert text is not None
     assert "Memory (SQLite)" in text
-    assert "Rows for this chat: 1" in text
-    assert "user=1" in text
+    rows_line = next(line for line in text.splitlines() if line.startswith("Rows for this chat"))
+    assert rows_line.endswith(" 1")
+    user_role_line = next(line for line in text.splitlines() if "role:user" in line)
+    assert user_role_line.endswith(" 1")
 
 
 def test_monitor_branch_uses_git_service(project_registry: ProjectRegistry):
@@ -1301,4 +1303,5 @@ def test_monitor_memory_shows_session_count(project_registry: ProjectRegistry, t
     registry = CommandRegistry([MonitorCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=42, user_id=1, text="/monitor memory"), ctx)
     assert text is not None
-    assert "Sessions: 1" in text
+    session_line = next(line for line in text.splitlines() if line.startswith("Sessions"))
+    assert session_line.endswith(" 1")
