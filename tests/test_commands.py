@@ -91,12 +91,13 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
         _ctx(project_registry, advanced_settings_store=_advanced_settings_ko()),
     )
     assert text is not None
-    assert text.startswith("Help")
+    assert text.startswith("🧭 Help")
     assert "Send work requests as regular messages." in text
-    assert "Options\n- model:\n- branch:\n- no commit" in text
+    assert "⚙️ Options\n- model:\n- branch:\n- no commit" in text
     assert "/plan" in text and "/ask" in text
-    assert "Commands:" in text
+    assert "📋 Commands" in text
     assert "/clear branch:" not in text
+    assert "/clear" in text and "<branch|worktrees|memory>" in text
 
 
 def test_help_command_uses_english_when_advanced_language_default(project_registry: ProjectRegistry):
@@ -110,9 +111,9 @@ def test_help_command_uses_english_when_advanced_language_default(project_regist
     )
 
     assert response is not None
-    from app.telegram.i18n import HELP_MAIN_EN
+    from app.telegram.commands.base import HELP_TEXT
 
-    assert response.text == HELP_MAIN_EN
+    assert response.text == HELP_TEXT
     assert response.inline_buttons is not None
     assert response.inline_buttons[0][0].label == "model"
 
@@ -164,7 +165,7 @@ def test_help_command_returns_text_with_no_buttons(project_registry: ProjectRegi
         _ctx(project_registry, advanced_settings_store=_advanced_settings_ko()),
     )
     assert response is not None
-    assert response.text.startswith("Help")
+    assert response.text.startswith("🧭 Help")
     assert response.inline_buttons is None
 
 
@@ -1181,7 +1182,7 @@ def test_dispatch_rich_help_has_no_buttons(project_registry: ProjectRegistry):
         _ctx(project_registry),
     )
     assert response is not None
-    assert response.text.startswith("Help")
+    assert response.text.startswith("🧭 Help")
     assert response.inline_buttons is None
 
 

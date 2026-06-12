@@ -12,6 +12,7 @@ from app.projects.registry import ProjectRegistry
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore, ModelPreference
+from app.telegram.tables import render_table
 
 if TYPE_CHECKING:
     from app.admin.advanced_settings import FileAdvancedSettingsStore
@@ -70,13 +71,30 @@ def _help_response_skips_notifier_body_i18n(message_text: str) -> bool:
     return False
 
 
+_HELP_COMMAND_ROWS: tuple[tuple[str, str, str], ...] = (
+    ("/model", "<claude|codex|gemini>", "Change the default model"),
+    ("/status", "<job_id>", "Check job status"),
+    ("/branch", "[name]", "Show or switch branches"),
+    ("/pull", "", "Pull remote branch updates"),
+    ("/rebase", "[branch]", "Rebase a branch"),
+    ("/pr", "[branch]", "Open a GitHub PR"),
+    ("/monitor", "<scope>", "Monitoring"),
+    ("/clear", "<branch|worktrees|memory>", "Cleanup (confirmation)"),
+    ("/reports", "[count]", "Conversation memory report"),
+    ("/init", "", "Reset this chat's settings"),
+    ("/stop", "<job_id>", "Stop a running job"),
+    ("/fix", "", "Fix linked job commit"),
+    ("/start", "", "Inline menu"),
+)
+
+
 HELP_TEXT = "\n".join(
     [
-        "Help",
+        "🧭 Help",
         "",
         "Send work requests as regular messages.",
         "",
-        "Options",
+        "⚙️ Options",
         "- model:",
         "- branch:",
         "- no commit",
@@ -85,31 +103,21 @@ HELP_TEXT = "\n".join(
         "- fix: <natural language> or /fix - fix mode (reply to a job result; amends that commit)",
         "- Korean aliases 계획:, 질문:, and 수정: instead of plan:/ask:/fix: (colons `:` or full-width `：` allowed)",
         "",
-        "Commands:",
-        "- /model <claude|codex|gemini>: Change the default model",
-        "- /status <job_id>: Check job status",
-        "- /branch [name]: Show or switch branches",
-        "- /pull: Pull all remote branch updates",
-        "- /rebase [branch]: Rebase a branch",
-        "- /pr [branch]: Open a GitHub PR for a branch",
-        "- /monitor <model|memory|branch|worktrees|code|project>: Monitoring",
-        "- /clear <branch|worktrees|memory>: Cleanup (confirmation required)",
-        "- /reports [count]: Conversation memory report",
-        "- /init: Reset this chat's settings",
-        "- /stop <job_id>: Stop a running job",
-        "- /fix: Fix the linked job commit (reply to a job result first)",
-        "- /start: Inline menu",
+        "📋 Commands",
+        render_table(_HELP_COMMAND_ROWS, headers=("cmd", "args", "description")),
+        "",
+        "💡 Tip: Reply to a job result and send `fix: ...` to amend that commit.",
     ]
 )
 
 HELP_AGENT_TOPIC = "\n".join(
     [
-        "AGENTS mode (agent)",
+        "🤖 AGENTS mode (agent)",
         "",
         "Natural-language coding tasks. The agent can modify code in the current project; when there are "
         "changes it can create or update a branch, commit, and push.",
         "",
-        "Examples",
+        "💡 Examples",
         "- fix the login validation bug",
         "- model: codex branch: remote-auth strengthen tests",
         "- no commit just verify the doc wording",
@@ -120,12 +128,12 @@ HELP_AGENT_TOPIC = "\n".join(
 
 HELP_PLAN_TOPIC = "\n".join(
     [
-        "Plan mode (plan)",
+        "📐 Plan mode (plan)",
         "",
         "Receive change plans only; no code edits. Like agent mode, a job is accepted after confirmation "
         "(`y`/`Y` or inline buttons).",
         "",
-        "Examples",
+        "💡 Examples",
         "- plan: summarize the login validation flow",
         "- /plan model: codex list only API boundary risks",
         "- 계획：refactor steps (full-width colon)",
@@ -136,12 +144,12 @@ HELP_PLAN_TOPIC = "\n".join(
 
 HELP_ASK_TOPIC = "\n".join(
     [
-        "Ask mode (ask)",
+        "❓ Ask mode (ask)",
         "",
         "Answer questions using the repository; no code edits, commits, or pushes. Jobs are accepted like "
         "agent mode after confirmation (`y`/`Y` or inline buttons).",
         "",
-        "Examples",
+        "💡 Examples",
         "- ask: how do I run pytest in this project?",
         "- /ask explain JobManager.run stages",
         "- 질문：what this error line means",
@@ -152,12 +160,12 @@ HELP_ASK_TOPIC = "\n".join(
 
 HELP_FIX_TOPIC = "\n".join(
     [
-        "Fix mode (fix)",
+        "🔧 Fix mode (fix)",
         "",
         "Apply follow-up fixes on top of a previous succeeded job. Reply to a job result, then use "
         "fix: or /fix. The agent amends the existing commit and pushes with --force-with-lease.",
         "",
-        "Examples",
+        "💡 Examples",
         "- (reply to job result) fix: add missing tests",
         "- (reply to job result) /fix then send the fix instruction",
         "- (reply to job result) 수정：로그인 검증 버그도 고쳐줘",

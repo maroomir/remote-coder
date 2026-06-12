@@ -185,87 +185,6 @@ def command_parse_error_no_previous_job_context(language: UiLanguage) -> str:
     )
 
 
-HELP_MAIN_EN = "\n".join(
-    [
-        "Help",
-        "",
-        "Send work requests as regular messages.",
-        "",
-        "Options",
-        "- model:",
-        "- branch:",
-        "- no commit",
-        "- plan: <natural language> or /plan <natural language> - plan mode (plan only; no code changes)",
-        "- ask: <natural language> or /ask <natural language> - ask mode (analysis and answers; no code edits)",
-        "- fix: <natural language> or /fix - fix mode (reply to a job result; amends that commit)",
-        "- Korean aliases 계획:, 질문:, and 수정: instead of plan:/ask:/fix: (colons `:` or full-width `：` allowed)",
-        "",
-        "Commands:",
-        "- /model <claude|codex|gemini>: Change the default model",
-        "- /status <job_id>: Check job status",
-        "- /branch [name]: Show or switch branches",
-        "- /pull: Pull all remote branch updates",
-        "- /rebase [branch]: Rebase a branch",
-        "- /pr [branch]: Open a GitHub PR for a branch",
-        "- /monitor <model|memory|branch|worktrees|code|project>: Monitoring",
-        "- /clear <branch|worktrees|memory>: Cleanup (confirmation required)",
-        "- /reports [count]: Conversation memory report",
-        "- /init: Reset this chat's settings",
-        "- /stop <job_id>: Stop a running job",
-        "- /fix: Fix the linked job commit (reply to a job result first)",
-        "- /start: Inline menu",
-    ]
-)
-
-HELP_AGENT_TOPIC_EN = "\n".join(
-    [
-        "AGENTS mode (agent)",
-        "",
-        "Natural-language coding tasks. The agent can modify code in the current project; when there are "
-        "changes it can create or update a branch, commit, and push.",
-        "",
-        "Examples",
-        "- fix the login validation bug",
-        "- model: codex branch: remote-auth strengthen tests",
-        "- no commit just verify the doc wording",
-        "",
-        "A job is accepted after project/branch/model checks via `y`/`Y` or inline buttons.",
-    ]
-)
-
-HELP_PLAN_TOPIC_EN = "\n".join(
-    [
-        "Plan mode (plan)",
-        "",
-        "Receive change plans only; no code edits. Like agent mode, a job is accepted after confirmation "
-        "(`y`/`Y` or inline buttons).",
-        "",
-        "Examples",
-        "- plan: summarize the login validation flow",
-        "- /plan model: codex list only API boundary risks",
-        "- 계획：refactor steps (full-width colon)",
-        "",
-        "See /help for more options.",
-    ]
-)
-
-HELP_ASK_TOPIC_EN = "\n".join(
-    [
-        "Ask mode (ask)",
-        "",
-        "Answer questions using the repository; no code edits, commits, or pushes. Jobs are accepted like "
-        "agent mode after confirmation (`y`/`Y` or inline buttons).",
-        "",
-        "Examples",
-        "- ask: how do I run pytest in this project?",
-        "- /ask explain JobManager.run stages",
-        "- 질문：what this error line means",
-        "",
-        "See /help for more options.",
-    ]
-)
-
-
 _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("도움말", "Help"),
     ("작업 지시는 일반 메시지로 보내세요.", "Send work requests as regular messages."),
@@ -375,6 +294,15 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("모델", "Model"),
     ("Remote AI Coder에 오신 것을 환영합니다.", "Welcome to Remote AI Coder."),
     ("코딩 요청을 보내거나 Help를 눌러 시작하세요.", "Send a coding request or tap Help to start."),
+    ("🧭 도움말", "🧭 Help"),
+    ("⚙️ 옵션", "⚙️ Options"),
+    ("📋 명령어 목록", "📋 Commands"),
+    ("💡 예시", "💡 Examples"),
+    ("🤖 AGENTS 모드 (agent)", "🤖 AGENTS mode (agent)"),
+    ("📐 Plan 모드 (plan)", "📐 Plan mode (plan)"),
+    ("❓ Ask 모드 (ask)", "❓ Ask mode (ask)"),
+    ("🔧 Fix 모드 (fix)", "🔧 Fix mode (fix)"),
+    ("💡 팁: 작업 결과에 reply 후 `fix: ...`를 보내면 그 커밋을 보완합니다.", "💡 Tip: Reply to a job result and send `fix: ...` to amend that commit."),
     ("등록 정보 없음", "not registered"),
     ("확인 실패", "check failed"),
     ("실행할 명령을 선택하세요.", "Choose a command."),
