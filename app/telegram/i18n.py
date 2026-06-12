@@ -375,8 +375,6 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("모델", "Model"),
     ("Remote AI Coder에 오신 것을 환영합니다.", "Welcome to Remote AI Coder."),
     ("코딩 요청을 보내거나 Help를 눌러 시작하세요.", "Send a coding request or tap Help to start."),
-    ("비활성화됨", "disabled"),
-    ("브랜치", "Branch"),
     ("등록 정보 없음", "not registered"),
     ("확인 실패", "check failed"),
     ("실행할 명령을 선택하세요.", "Choose a command."),

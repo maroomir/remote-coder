@@ -6,7 +6,7 @@ import httpx
 
 from app.jobs.schemas import Job
 from app.monitoring.events import EventLogger
-from app.telegram.formatting import build_message_entities
+from app.telegram.formatting import build_message_entities, prepare_outgoing
 from app.telegram.i18n import language_from_settings_store, translate_button_label, translate_text
 from app.telegram.messages import (
     OutboundButton as _OutboundButton,
@@ -94,9 +94,12 @@ class TelegramNotifier:
         return None
 
     def _post_message(self, chat_id: int, text: str, *, with_entities: bool = True) -> int | None:
-        _outbound.info("sendMessage start len=%d", len(text), chat_id=chat_id)
-        payload: dict = {"chat_id": chat_id, "text": text}
-        entities = build_message_entities(text) if with_entities else []
+        if with_entities:
+            out_text, entities = prepare_outgoing(text)
+        else:
+            out_text, entities = text, []
+        _outbound.info("sendMessage start len=%d", len(out_text), chat_id=chat_id)
+        payload: dict = {"chat_id": chat_id, "text": out_text}
         if entities:
             payload["entities"] = entities
         response = self._post_with_retry(
@@ -107,7 +110,7 @@ class TelegramNotifier:
         )
         if response is None:
             return None
-        _outbound.info("sent text len=%d status=%d", len(text), response.status_code, chat_id=chat_id)
+        _outbound.info("sent text len=%d status=%d", len(out_text), response.status_code, chat_id=chat_id)
         return self._extract_message_id(response)
 
     def send_text(self, chat_id: int, text: str, *, skip_body_i18n: bool = False) -> int | None:
@@ -124,6 +127,7 @@ class TelegramNotifier:
     ) -> int | None:
         language = self._language
         out_text = text if skip_body_i18n else translate_text(text, language)
+        out_text, entities = prepare_outgoing(out_text)
         keyboard = [
             [_serialize_inline_button(btn, language) for btn in row]
             for row in inline_buttons
@@ -133,7 +137,6 @@ class TelegramNotifier:
             "text": out_text,
             "reply_markup": {"inline_keyboard": keyboard},
         }
-        entities = build_message_entities(out_text)
         if entities:
             payload["entities"] = entities
         button_count = sum(len(row) for row in inline_buttons)
@@ -171,6 +174,7 @@ class TelegramNotifier:
     ) -> bool:
         language = self._language
         out_text = text if skip_body_i18n else translate_text(text, language)
+        out_text, entities = prepare_outgoing(out_text)
         keyboard = [
             [_serialize_inline_button(btn, language) for btn in row]
             for row in inline_buttons
@@ -181,7 +185,6 @@ class TelegramNotifier:
             "text": out_text,
             "reply_markup": {"inline_keyboard": keyboard},
         }
-        entities = build_message_entities(out_text)
         if entities:
             payload["entities"] = entities
         _outbound.info(

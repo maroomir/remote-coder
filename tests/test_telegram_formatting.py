@@ -5,8 +5,9 @@ from httpx import Response
 
 from app.jobs.schemas import Job, JobRequest, JobStatus
 from app.models import ModelName
-from app.telegram.formatting import build_message_entities
+from app.telegram.formatting import build_message_entities, prepare_outgoing
 from app.telegram.notifier import TelegramNotifier
+from app.telegram.tables import TABLE_CLOSE, TABLE_OPEN, render_table
 
 
 def test_entities_bold_first_line_of_multiline_message():
@@ -81,6 +82,52 @@ def test_entities_stop_after_ai_response_marker():
     marker_offset = text.index("AI response:")
     assert {"type": "bold", "offset": marker_offset, "length": len("AI response:")} in entities
     assert all(e["offset"] <= marker_offset for e in entities)
+
+
+def test_prepare_outgoing_strips_sentinels_and_emits_pre_entity():
+    block = render_table([("Project", "remote"), ("Model", "claude")], headers=("k", "v"))
+    text = f"Header\n\n{block}\nTrailer"
+    out_text, entities = prepare_outgoing(text)
+    assert TABLE_OPEN not in out_text
+    assert TABLE_CLOSE not in out_text
+    pre_entities = [e for e in entities if e["type"] == "pre"]
+    assert len(pre_entities) == 1
+    pre = pre_entities[0]
+    block_body = "\n".join(line for line in block.split("\n") if line not in (TABLE_OPEN, TABLE_CLOSE))
+    block_start = out_text.index(block_body)
+    block_start_utf16 = len(out_text[:block_start].encode("utf-16-le")) // 2
+    block_utf16_length = len(block_body.encode("utf-16-le")) // 2
+    assert pre["offset"] == block_start_utf16
+    assert pre["length"] == block_utf16_length
+
+
+def test_prepare_outgoing_supports_multiple_pre_blocks():
+    block_a = render_table([("a", "1")], headers=("k", "v"))
+    block_b = render_table([("b", "2")], headers=("k", "v"))
+    text = f"Title\n\n{block_a}\n\n{block_b}\nDone"
+    out_text, entities = prepare_outgoing(text)
+    pre_entities = [e for e in entities if e["type"] == "pre"]
+    assert len(pre_entities) == 2
+    assert TABLE_OPEN not in out_text
+
+
+def test_prepare_outgoing_pre_block_offset_in_utf16_units_for_emoji_prefix():
+    block = render_table([("Project", "remote")], headers=("k", "v"))
+    text = f"🚀 Header\n\n{block}\n"
+    out_text, entities = prepare_outgoing(text)
+    pre = next(e for e in entities if e["type"] == "pre")
+    # Compute the expected offset from the cleaned text directly.
+    first_body_line = "k      " + "  v"
+    prefix = out_text.split(first_body_line.rstrip())[0]
+    prefix_utf16 = len(prefix.encode("utf-16-le")) // 2
+    assert pre["offset"] == prefix_utf16
+
+
+def test_prepare_outgoing_drops_orphan_close_sentinel():
+    text = f"x\n{TABLE_CLOSE}\ny"
+    out_text, entities = prepare_outgoing(text)
+    assert TABLE_CLOSE not in out_text
+    assert all(e["type"] != "pre" for e in entities)
 
 
 def test_entities_bold_known_section_headings():

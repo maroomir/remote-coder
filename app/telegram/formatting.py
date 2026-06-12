@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 
+from app.telegram.tables import TABLE_CLOSE, TABLE_OPEN
+
 _SECTION_HEADINGS = frozenset(
     {
         "Options",
@@ -50,6 +52,45 @@ _CODE_VALUE_LINE = re.compile(
 
 def _utf16_units(text: str) -> int:
     return len(text.encode("utf-16-le")) // 2
+
+
+def _extract_pre_blocks(text: str) -> tuple[str, list[dict[str, int | str]]]:
+    """Strip TABLE sentinel lines from ``text`` and return ``pre`` entity ranges
+    over the resulting cleaned text. Mis-matched sentinels are left as-is so the
+    surrounding entity logic still runs cleanly.
+    """
+    if TABLE_OPEN not in text and TABLE_CLOSE not in text:
+        return text, []
+    lines = text.split("\n")
+    cleaned: list[str] = []
+    entities: list[dict[str, int | str]] = []
+    offset = 0
+    block_start: int | None = None
+    for line in lines:
+        if line == TABLE_OPEN:
+            block_start = offset
+            continue
+        if line == TABLE_CLOSE:
+            if block_start is not None:
+                length = offset - block_start
+                if length > 0:
+                    # Drop the trailing newline that joined the last body line to
+                    # the close sentinel so the pre block spans only the rows.
+                    entities.append(
+                        {"type": "pre", "offset": block_start, "length": length - 1}
+                    )
+                block_start = None
+            continue
+        cleaned.append(line)
+        offset += _utf16_units(line) + 1
+    return "\n".join(cleaned), entities
+
+
+def prepare_outgoing(text: str) -> tuple[str, list[dict[str, int | str]]]:
+    """Strip table sentinels and return the final outgoing text plus the full
+    entity list (pre blocks first, then bold/code from the cleaned body)."""
+    cleaned, pre_entities = _extract_pre_blocks(text)
+    return cleaned, pre_entities + build_message_entities(cleaned)
 
 
 def build_message_entities(text: str) -> list[dict[str, int | str]]:
