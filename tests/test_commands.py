@@ -311,7 +311,7 @@ def test_status_detail_running_job_shows_stop_and_back(project_registry: Project
     response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/status jrun"), ctx)
     assert response is not None
     assert response.inline_buttons == [
-        [InlineButton("Stop", "/stop jrun")],
+        [InlineButton("Stop", "/stop jrun", style="danger")],
         [InlineButton("‹ Back", "/status"), InlineButton("✖ Close", "__close__")],
     ]
 
@@ -332,7 +332,7 @@ def test_status_detail_succeeded_job_shows_pr_and_rebase(project_registry: Proje
     response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/status jok"), ctx)
     assert response is not None
     assert response.inline_buttons == [
-        [InlineButton("Open PR", "/pr remote-fix"), InlineButton("Rebase", "/rebase remote-fix")],
+        [InlineButton("Open PR", "/pr remote-fix", style="primary"), InlineButton("Rebase", "/rebase remote-fix")],
         [InlineButton("‹ Back", "/status"), InlineButton("✖ Close", "__close__")],
     ]
 

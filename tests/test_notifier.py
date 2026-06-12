@@ -711,6 +711,43 @@ def test_notifier_plan_result_attaches_run_plan_button():
     kb = payload["reply_markup"]["inline_keyboard"]
     assert kb[0][0]["text"] == "Run plan"
     assert kb[0][0]["callback_data"] == "__plan_exec__:j-btn"
+    assert kb[0][0]["style"] == "primary"
+
+
+@respx.mock
+def test_notifier_accepted_message_stop_button_uses_danger_style():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 11}})
+    )
+    notifier = TelegramNotifier("token")
+    job = Job(
+        id="j-stop-style",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+    )
+    notifier.send_job_accepted(job)
+    payload = json.loads(route.calls[0].request.content)
+    kb = payload["reply_markup"]["inline_keyboard"]
+    assert kb[0][0]["text"] == "Stop job"
+    assert kb[0][0]["style"] == "danger"
+
+
+@respx.mock
+def test_notifier_omits_style_key_when_button_has_no_style():
+    from app.telegram.commands import InlineButton
+
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True, "result": {"message_id": 12}})
+    )
+    notifier = TelegramNotifier("token")
+    notifier.send_with_buttons(7, "hi", [[InlineButton("nope", "/noop")]])
+    payload = json.loads(route.calls[0].request.content)
+    assert "style" not in payload["reply_markup"]["inline_keyboard"][0][0]
 
 
 @respx.mock

@@ -188,11 +188,11 @@ class StatusCommand(TelegramCommand):
         rows: list[list[InlineButton]] = []
         status = job.status.value
         if status in ("running", "queued"):
-            rows.append([InlineButton("Stop", f"/stop {job.id}")])
+            rows.append([InlineButton("Stop", f"/stop {job.id}", style="danger")])
         elif status == "succeeded" and job.branch:
             actions: list[InlineButton] = []
             if job.commit_hash:
-                actions.append(InlineButton("Open PR", f"/pr {job.branch}"))
+                actions.append(InlineButton("Open PR", f"/pr {job.branch}", style="primary"))
             actions.append(InlineButton("Rebase", f"/rebase {job.branch}"))
             rows.append(actions)
         return with_nav_row(rows, back_to="/status")

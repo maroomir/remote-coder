@@ -54,6 +54,7 @@ MODEL_USAGE = "<claude|codex|gemini>"
 class InlineButton:
     label: str
     callback_data: str
+    style: str | None = None
 
 
 @dataclass

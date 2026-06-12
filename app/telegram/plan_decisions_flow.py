@@ -81,6 +81,7 @@ def build_question_message(pending: PendingPlanDecision) -> tuple[str, list[list
             InlineButton(
                 _option_button_label(option),
                 decision_callback_data(pending.current_index, option_index),
+                style="primary" if option_index == 0 else None,
             )
         ]
         for option_index, option in enumerate(question.options)

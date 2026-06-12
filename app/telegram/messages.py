@@ -13,6 +13,7 @@ from app.telegram.i18n import ui_message
 class OutboundButton:
     label: str
     callback_data: str
+    style: str | None = None
 
 
 def build_job_accepted_message(job: Job) -> tuple[str, list[list[OutboundButton]]]:
@@ -33,7 +34,15 @@ def build_job_accepted_message(job: Job) -> tuple[str, list[list[OutboundButton]
         model=format_model_selection(job.request.model, job.request.model_id),
         mode_line=mode_line,
     )
-    buttons = [[OutboundButton(ui_message("job.stop_button", "Stop job"), f"/stop {job.id}")]]
+    buttons = [
+        [
+            OutboundButton(
+                ui_message("job.stop_button", "Stop job"),
+                f"/stop {job.id}",
+                style="danger",
+            )
+        ]
+    ]
     return text, buttons
 
 
@@ -51,7 +60,13 @@ def build_job_result_buttons(job: Job) -> list[list[OutboundButton]]:
     # A successful PLAN result can be turned into an AGENT implementation with one tap.
     if job.status.value == "succeeded" and job.request.mode is JobMode.PLAN:
         return [
-            [OutboundButton(ui_message("job.run_plan_button", "Run plan"), f"{PLAN_EXECUTE_CALLBACK_PREFIX}:{job.id}")]
+            [
+                OutboundButton(
+                    ui_message("job.run_plan_button", "Run plan"),
+                    f"{PLAN_EXECUTE_CALLBACK_PREFIX}:{job.id}",
+                    style="primary",
+                )
+            ]
         ]
     if (
         job.status.value == "succeeded"
@@ -60,7 +75,13 @@ def build_job_result_buttons(job: Job) -> list[list[OutboundButton]]:
         and job.commit_hash
     ):
         return [
-            [OutboundButton(ui_message("job.open_pr_button", "Open PR"), f"/pr {job.branch}")]
+            [
+                OutboundButton(
+                    ui_message("job.open_pr_button", "Open PR"),
+                    f"/pr {job.branch}",
+                    style="primary",
+                )
+            ]
         ]
     return []
 

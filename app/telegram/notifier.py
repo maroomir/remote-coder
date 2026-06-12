@@ -19,6 +19,19 @@ from app.telegram.notifier_protocol import Notifier
 
 _outbound = EventLogger("app.telegram.outbound", "telegram.outbound")
 
+_VALID_BUTTON_STYLES = frozenset({"primary", "success", "danger"})
+
+
+def _serialize_inline_button(btn, language) -> dict:
+    payload: dict = {
+        "text": translate_button_label(btn.label, language),
+        "callback_data": btn.callback_data,
+    }
+    style = getattr(btn, "style", None)
+    if style in _VALID_BUTTON_STYLES:
+        payload["style"] = style
+    return payload
+
 class TelegramNotifier:
     _TELEGRAM_TEXT_LIMIT = 4096
     _MAX_ATTEMPTS = 3
@@ -111,10 +124,7 @@ class TelegramNotifier:
         language = self._language
         out_text = text if skip_body_i18n else translate_text(text, language)
         keyboard = [
-            [
-                {"text": translate_button_label(btn.label, language), "callback_data": btn.callback_data}
-                for btn in row
-            ]
+            [_serialize_inline_button(btn, language) for btn in row]
             for row in inline_buttons
         ]
         payload = {
@@ -161,10 +171,7 @@ class TelegramNotifier:
         language = self._language
         out_text = text if skip_body_i18n else translate_text(text, language)
         keyboard = [
-            [
-                {"text": translate_button_label(btn.label, language), "callback_data": btn.callback_data}
-                for btn in row
-            ]
+            [_serialize_inline_button(btn, language) for btn in row]
             for row in inline_buttons
         ]
         payload = {
