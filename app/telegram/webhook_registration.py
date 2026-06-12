@@ -101,6 +101,8 @@ class TelegramWebhookRegistrar:
         _webhooklog.info("setWebhook synced project=%s", record.name, project=record.name)
         if self._bot_commands and not self._sync_bot_commands(record.name, token, record.allowed_chat_ids):
             return False
+        if not self._sync_menu_button(record.name, token):
+            return False
         return True
 
     def _sync_bot_commands(self, project_name: str, token: str, chat_ids: list[int]) -> bool:
@@ -133,6 +135,36 @@ class TelegramWebhookRegistrar:
                 return False
 
         _webhooklog.info("setMyCommands synced project=%s", project_name, project=project_name)
+        return True
+
+    def _sync_menu_button(self, project_name: str, token: str) -> bool:
+        # Pin the chat menu button to the commands list so users always see the slash-command
+        # menu next to the input box, even if a previous webhook left it as Default/WebApp.
+        api_url = f"https://api.telegram.org/bot{token}/setChatMenuButton"
+        payload = {"menu_button": {"type": "commands"}}
+        try:
+            response = httpx.post(api_url, json=payload, timeout=self._timeout_seconds)
+            response.raise_for_status()
+            result = response.json()
+        except Exception as exc:
+            _webhooklog.warning(
+                "setChatMenuButton request failed project=%s err=%s",
+                project_name,
+                exc,
+                project=project_name,
+            )
+            return False
+        if not result.get("ok"):
+            _webhooklog.warning(
+                "setChatMenuButton rejected project=%s response=%s",
+                project_name,
+                result,
+                project=project_name,
+            )
+            return False
+        _webhooklog.info(
+            "setChatMenuButton synced project=%s", project_name, project=project_name
+        )
         return True
 
 

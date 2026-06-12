@@ -21,6 +21,9 @@ def test_webhook_registrar_sets_project_webhook(tmp_path):
     route = respx.post(f"https://api.telegram.org/bot{token}/setWebhook").mock(
         return_value=Response(200, json={"ok": True, "description": "Webhook was set"})
     )
+    respx.post(f"https://api.telegram.org/bot{token}/setChatMenuButton").mock(
+        return_value=Response(200, json={"ok": True})
+    )
     record = ProjectRecord(
         name="whproj",
         root_path=tmp_path,
@@ -44,6 +47,32 @@ def test_webhook_registrar_sets_project_webhook(tmp_path):
 
 
 @respx.mock
+def test_webhook_registrar_pins_chat_menu_button_to_commands(tmp_path):
+    token = "123456:ABC-menu-reg"
+    respx.post(f"https://api.telegram.org/bot{token}/setWebhook").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    menu_route = respx.post(f"https://api.telegram.org/bot{token}/setChatMenuButton").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    record = ProjectRecord(
+        name="menuproj",
+        root_path=tmp_path,
+        default_model=ModelName.CLAUDE,
+        enabled=True,
+        bot_token=SecretStr(token),
+        allowed_chat_ids=[],
+        allowed_user_ids=[],
+    )
+
+    assert TelegramWebhookRegistrar("https://abcd.ngrok-free.app").sync_project(record) is True
+
+    assert menu_route.call_count == 1
+    payload = json.loads(menu_route.calls[0].request.content)
+    assert payload == {"menu_button": {"type": "commands"}}
+
+
+@respx.mock
 def test_webhook_registrar_sets_bot_commands(tmp_path):
     token = "123456:ABC-command-reg"
     public_base_url = "https://abcd.ngrok-free.app/"
@@ -51,6 +80,9 @@ def test_webhook_registrar_sets_bot_commands(tmp_path):
         return_value=Response(200, json={"ok": True})
     )
     commands_route = respx.post(f"https://api.telegram.org/bot{token}/setMyCommands").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    respx.post(f"https://api.telegram.org/bot{token}/setChatMenuButton").mock(
         return_value=Response(200, json={"ok": True})
     )
     record = ProjectRecord(
@@ -143,6 +175,9 @@ def test_register_all_enabled_projects_only_targets_enabled(tmp_path):
         return_value=Response(200, json={"ok": True})
     )
     respx.post(f"https://api.telegram.org/bot{enabled_token}/setMyCommands").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    respx.post(f"https://api.telegram.org/bot{enabled_token}/setChatMenuButton").mock(
         return_value=Response(200, json={"ok": True})
     )
     disabled_route = respx.post(f"https://api.telegram.org/bot{disabled_token}/setWebhook")
