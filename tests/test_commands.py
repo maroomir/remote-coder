@@ -231,6 +231,20 @@ def test_start_model_topic_falls_back_to_main_menu(project_registry: ProjectRegi
     ]
 
 
+def test_start_body_is_three_second_compressed(project_registry: ProjectRegistry):
+    registry = CommandRegistry([StartCommand()])
+    ctx = _ctx(project_registry)
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/start"), ctx)
+
+    assert response is not None
+    lines = response.text.split("\n")
+    assert lines[0].startswith("✅ Remote AI Coder v")
+    assert len(lines) <= 8
+    assert "Send a coding request or tap Help to start." in response.text
+    assert "root_path" not in response.text
+    assert "worktree_base_dir" not in response.text
+
+
 def test_dispatch_plan_and_ask_returns_none_for_natural_flow(project_registry: ProjectRegistry):
     registry = CommandRegistry(build_default_commands())
     ctx = _ctx(project_registry)

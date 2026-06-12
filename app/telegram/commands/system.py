@@ -42,30 +42,35 @@ class StartCommand(TelegramCommand):
                 return topic_text
         project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if not project_name:
-            return f"{self._ready_line()}\n\nWelcome to Remote AI Coder."
+            return (
+                f"{self._ready_line()}\n\n"
+                "Welcome to Remote AI Coder.\n"
+                "Send a coding request or tap Help to start."
+            )
         entry = ctx.project_registry.get(project_name)
         if not entry:
             return (
                 f"{self._ready_line()}\n\n"
-                "Welcome to Remote AI Coder.\n"
                 f"- Project: {project_name} (not registered)"
+            )
+        if not entry.enabled:
+            return (
+                f"{self._ready_line()}\n\n"
+                f"- Project: {entry.name} (disabled)"
             )
         try:
             current_branch = ctx.git_service.get_current_branch(entry.root_path)
         except RuntimeError:
             current_branch = "(check failed)"
-        state = "enabled" if entry.enabled else "disabled"
         return "\n".join(
             [
                 self._ready_line(),
                 "",
-                "Welcome to Remote AI Coder.",
                 f"- Project: {entry.name}",
-                f"- root_path: {entry.root_path}",
-                f"- default_model: {entry.default_model.value}",
-                f"- current_branch: {current_branch}",
-                f"- worktree_base_dir: {entry.worktree_base_dir}",
-                f"- enabled: {state}",
+                f"- Model: {entry.default_model.value}",
+                f"- Branch: {current_branch}",
+                "",
+                "Send a coding request or tap Help to start.",
             ]
         )
 
