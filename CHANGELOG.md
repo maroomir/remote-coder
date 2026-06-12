@@ -8,6 +8,8 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-13
+
 ### Added
 
 - **PLAN mode inline decisions**: When a `/plan` request depends on choices only you can make, the model now surfaces them first as a structured block, and the bot asks each decision through Telegram inline buttons (one question at a time) before producing the final plan. Your answers are injected into a second PLAN run, so it works identically across Claude, Codex, and Gemini. If the model has no open decisions, the plan is delivered directly as before.
@@ -16,6 +18,7 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ### Fixed
 
+- **Codex commit message generation**: Codex can now generate AI-written commit messages from temporary directories by skipping the Git repository check, and failures include a concise stderr preview in operator logs.
 - **Codex session resume options**: Codex resume jobs now pass `--model` and `--sandbox` before the `resume` subcommand, matching the current CLI parser and avoiding `unexpected argument '--sandbox'` failures.
 - **Scoped and reliable `/pr` flow**: PR choices now include only live remote branches from succeeded Jobs in the current project and Telegram chat, including branches no longer present locally. Direct branch arguments receive the same ownership and remote-existence validation, successful committed Job notifications include an Open PR button, existing PRs are reused, and missing/timed-out/unauthenticated `gh` failures return actionable Telegram errors instead of escaping the webhook.
 - **Partial output on timeout/cancel**: When a runner is killed by a timeout or cancellation, the partial stdout/stderr it produced is now saved to the job log and summarized in the failure notification, instead of being discarded with only a one-line error.
