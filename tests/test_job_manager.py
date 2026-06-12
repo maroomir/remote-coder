@@ -1575,6 +1575,102 @@ def test_no_heartbeat_when_accepted_message_id_missing(test_settings, project_re
     notifier.edit_message.assert_not_called()
 
 
+def test_submit_sets_queued_reaction_when_user_message_id_present(
+    test_settings, project_registry
+):
+    store = InMemoryJobStore()
+    notifier = Mock()
+    notifier.send_job_accepted.return_value = 77
+    manager = JobManager(
+        test_settings,
+        store,
+        Mock(),
+        Mock(),
+        Mock(),
+        lambda _: notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="do",
+        chat_id=1,
+        requested_by=1,
+        message_id=33,
+    )
+    manager.submit(request)
+    notifier.set_reaction.assert_called_once_with(1, 33, "👀")
+
+
+def test_submit_skips_reaction_when_user_message_id_missing(
+    test_settings, project_registry
+):
+    store = InMemoryJobStore()
+    notifier = Mock()
+    notifier.send_job_accepted.return_value = 77
+    manager = JobManager(
+        test_settings,
+        store,
+        Mock(),
+        Mock(),
+        Mock(),
+        lambda _: notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="do",
+        chat_id=1,
+        requested_by=1,
+    )
+    manager.submit(request)
+    notifier.set_reaction.assert_not_called()
+
+
+def test_send_result_swaps_reaction_to_terminal_emoji(test_settings, project_registry):
+    import threading
+
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = (
+        project_registry.get("remote-coder").worktree_base_dir / "wt"
+    )
+    git_service.collect_changes.return_value = []
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="ok", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    notifier = Mock()
+    notifier.send_job_accepted.return_value = 1
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        Mock(),
+        lambda _: notifier,
+        project_registry,
+        heartbeat_interval_seconds=60,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="do",
+        chat_id=1,
+        requested_by=1,
+        message_id=44,
+    )
+    job = manager.submit(request)
+    manager.run(job.id)
+    emojis = [c.args[2] for c in notifier.set_reaction.call_args_list]
+    assert emojis[0] == "👀"
+    assert emojis[-1] == "🎉"
+    _ = threading
+
+
 def test_base_cli_runner_timeout_preserves_partial_stdout():
     import pytest
 

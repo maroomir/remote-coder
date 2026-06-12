@@ -42,6 +42,7 @@ class TelegramNotifier:
         self._api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         self._edit_url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
         self._callback_answer_url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
+        self._reaction_url = f"https://api.telegram.org/bot{bot_token}/setMessageReaction"
         self._advanced_settings_store = advanced_settings_store
 
     @property
@@ -245,6 +246,25 @@ class TelegramNotifier:
             return ""
         description = data.get("description") if isinstance(data, dict) else None
         return description.lower() if isinstance(description, str) else ""
+
+    def set_reaction(self, chat_id: int, message_id: int, emoji: str | None) -> bool:
+        payload: dict = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "reaction": [{"type": "emoji", "emoji": emoji}] if emoji else [],
+        }
+        _outbound.info(
+            "setMessageReaction emoji=%s",
+            emoji or "(cleared)",
+            chat_id=chat_id,
+        )
+        response = self._post_with_retry(
+            self._reaction_url,
+            payload,
+            log_label="setMessageReaction",
+            chat_id=chat_id,
+        )
+        return response is not None
 
     def answer_callback_query(
         self,

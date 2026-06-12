@@ -738,6 +738,33 @@ def test_notifier_accepted_message_stop_button_uses_danger_style():
 
 
 @respx.mock
+def test_notifier_set_reaction_posts_emoji_payload():
+    route = respx.post("https://api.telegram.org/bottoken/setMessageReaction").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    ok = notifier.set_reaction(5, 9, "👀")
+    assert ok is True
+    payload = json.loads(route.calls[0].request.content)
+    assert payload == {
+        "chat_id": 5,
+        "message_id": 9,
+        "reaction": [{"type": "emoji", "emoji": "👀"}],
+    }
+
+
+@respx.mock
+def test_notifier_set_reaction_clears_when_emoji_is_none():
+    route = respx.post("https://api.telegram.org/bottoken/setMessageReaction").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    notifier.set_reaction(5, 9, None)
+    payload = json.loads(route.calls[0].request.content)
+    assert payload["reaction"] == []
+
+
+@respx.mock
 def test_notifier_send_job_result_edits_accepted_message_when_set():
     edit_route = respx.post("https://api.telegram.org/bottoken/editMessageText").mock(
         return_value=Response(200, json={"ok": True, "result": {"message_id": 42}})

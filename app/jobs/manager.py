@@ -37,6 +37,19 @@ from app.telegram.notifier import Notifier
 
 _joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
 
+# Telegram only allows reactions from a fixed allow-list of emoji, so map the job
+# lifecycle onto values from https://core.telegram.org/bots/api#reactiontypeemoji.
+_REACTION_QUEUED = "👀"
+_REACTION_SUCCEEDED = "🎉"
+_REACTION_FAILED = "💔"
+_REACTION_CANCELLED = "🤝"
+
+_TERMINAL_REACTION_BY_STATUS = {
+    "succeeded": _REACTION_SUCCEEDED,
+    "failed": _REACTION_FAILED,
+    "cancelled": _REACTION_CANCELLED,
+}
+
 
 class JobManager:
     def __init__(
@@ -104,6 +117,21 @@ class JobManager:
             self._notifier_for(job.request.project).send_job_result(job)
         )
         self._job_store.update(job)
+        self._react(job.request, _TERMINAL_REACTION_BY_STATUS.get(job.status.value))
+
+    def _react(self, request: JobRequest, emoji: str | None) -> None:
+        if request.message_id is None or emoji is None:
+            return
+        try:
+            self._notifier_for(request.project).set_reaction(
+                request.chat_id, request.message_id, emoji
+            )
+        except Exception:  # pylint: disable=broad-except
+            _joblog.exception(
+                "set_reaction failed",
+                chat_id=request.chat_id,
+                project=request.project,
+            )
 
     def submit(self, request: JobRequest) -> Job:
         job = Job(id=request.job_id or self._make_job_id(), request=request)
@@ -120,6 +148,7 @@ class JobManager:
         if accepted_message_id is not None:
             job.accepted_message_id = accepted_message_id
             self._job_store.update(job)
+        self._react(request, _REACTION_QUEUED)
         return job
 
     def cancel(self, job_id: str) -> bool:
@@ -218,6 +247,7 @@ class JobManager:
         if accepted_message_id is not None:
             job.accepted_message_id = accepted_message_id
             self._job_store.update(job)
+        self._react(request, _REACTION_QUEUED)
         with self._project_lock(request.project):
             return self._run_fix(job.id)
 
