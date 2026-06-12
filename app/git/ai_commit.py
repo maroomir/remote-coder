@@ -46,6 +46,7 @@ class AiCommitBodyGenerator:
                     cwd=tmpdir,
                     check=False,
                     shell=False,
+                    stdin=subprocess.DEVNULL,
                 )
         except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
             _log.warning("ai commit generation failed model=%s: %s", model_name.value, exc)
@@ -53,9 +54,10 @@ class AiCommitBodyGenerator:
 
         if result.returncode != 0 or not result.stdout.strip():
             _log.warning(
-                "ai commit generation failed model=%s exit=%d",
+                "ai commit generation failed model=%s exit=%d stderr=%s",
                 model_name.value,
                 result.returncode,
+                self._preview(result.stderr),
             )
             return None, None
 
@@ -65,7 +67,14 @@ class AiCommitBodyGenerator:
     def _build_argv(model_name: ModelName, prompt: str) -> list[str]:
         argv_by_model: dict[ModelName, list[str]] = {
             ModelName.CLAUDE: ["claude", "-p", prompt, "--dangerously-skip-permissions"],
-            ModelName.CODEX: ["codex", "exec", "--sandbox", "read-only", prompt],
+            ModelName.CODEX: [
+                "codex",
+                "exec",
+                "--skip-git-repo-check",
+                "--sandbox",
+                "read-only",
+                prompt,
+            ],
             ModelName.GEMINI: ["gemini", "-p", prompt],
         }
         argv = argv_by_model.get(model_name)
@@ -86,3 +95,10 @@ class AiCommitBodyGenerator:
 
         ai_body = "\n".join(bullet_lines) if bullet_lines else None
         return ai_title or None, ai_body
+
+    @staticmethod
+    def _preview(text: str, max_length: int = 120) -> str:
+        preview = " ".join(text.strip().split())
+        if len(preview) <= max_length:
+            return preview
+        return preview[: max_length - 3].rstrip() + "..."

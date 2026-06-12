@@ -1,15 +1,15 @@
-from subprocess import CompletedProcess
+from subprocess import DEVNULL, CompletedProcess
 from unittest.mock import patch
 
 from app.git.ai_commit import AiCommitBodyGenerator
 from app.models import ModelName
 
 
-def _stub_run(stdout: str, returncode: int = 0):
+def _stub_run(stdout: str, returncode: int = 0, stderr: str = ""):
     def fake_run(argv, **kwargs):
         fake_run.last_argv = argv
         fake_run.last_kwargs = kwargs
-        return CompletedProcess(args=argv, returncode=returncode, stdout=stdout, stderr="")
+        return CompletedProcess(args=argv, returncode=returncode, stdout=stdout, stderr=stderr)
 
     fake_run.last_argv = None
     fake_run.last_kwargs = None
@@ -42,8 +42,10 @@ def test_ai_commit_generator_uses_codex_cli_for_codex_model():
         )
     assert fake.last_argv[0] == "codex"
     assert fake.last_argv[1] == "exec"
+    assert "--skip-git-repo-check" in fake.last_argv
     assert "--sandbox" in fake.last_argv
     assert "read-only" in fake.last_argv
+    assert fake.last_kwargs["stdin"] is DEVNULL
     assert title == "codex commit summary"
     assert body == "- Codex made a change"
 
@@ -74,6 +76,23 @@ def test_ai_commit_generator_returns_none_on_nonzero_exit():
         )
     assert title is None
     assert body is None
+
+
+def test_ai_commit_generator_logs_stderr_preview_on_nonzero_exit(caplog):
+    fake = _stub_run("", returncode=1, stderr="Not inside a trusted directory")
+    generator = AiCommitBodyGenerator()
+    with patch("app.git.ai_commit.subprocess.run", side_effect=fake), caplog.at_level(
+        "WARNING",
+        logger="app.git.ai_commit",
+    ):
+        title, body = generator.generate(
+            instruction="x",
+            changed_files=[],
+            model_name=ModelName.CODEX,
+        )
+    assert title is None
+    assert body is None
+    assert "Not inside a trusted directory" in caplog.text
 
 
 def test_ai_commit_generator_returns_none_when_cli_missing():
