@@ -40,11 +40,29 @@ def test_format_memory_monitor_line():
     assert text.startswith("Memory (SQLite)\n")
     assert "proj-a" in text and "99" in text
     assert "1024" in text
+    assert "- Project: proj-a" in text
+    assert "Rows by role\n- job_result: 1\n- user: 2" in text
+    assert "metric" not in text
     cleaned, entities = prepare_outgoing(text)
     pre_entities = [e for e in entities if e["type"] == "pre"]
-    assert len(pre_entities) == 1
-    assert "metric" in cleaned
-    assert "  role:user" in cleaned
+    assert pre_entities == []
+    assert cleaned == text
+
+
+def test_format_memory_monitor_does_not_truncate_long_path():
+    long_path = Path("/tmp") / ("long-" * 20) / "memory.sqlite3"
+    stats = ConversationDbChatStats(
+        db_path=long_path,
+        db_exists=False,
+        db_size_bytes=0,
+        total_rows=0,
+        rows_by_role={},
+    )
+
+    text = format_memory_monitor(stats, "proj-a", 99)
+
+    assert str(long_path) in text
+    assert "..." not in text
 
 
 def test_format_model_monitor_codex_not_installed():

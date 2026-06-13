@@ -238,14 +238,18 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("기본 모델 변경", "Change the default model"),
     ("작업 상태 확인", "Check job status"),
     ("브랜치 조회 또는 전환", "Show or switch branches"),
+    ("원격 브랜치 업데이트 pull", "Pull remote branch updates"),
     ("원격 저장소의 모든 브랜치 pull", "Pull all remote branch updates"),
     ("브랜치 리베이스", "Rebase a branch"),
+    ("GitHub PR 열기", "Open a GitHub PR"),
     ("브랜치를 GitHub PR로 올리기", "Open a GitHub PR for a branch"),
     ("모니터링", "Monitoring"),
+    ("정리 (확인 필요)", "Cleanup (confirmation)"),
     ("정리 (확인 필요)", "Cleanup (confirmation required)"),
     ("대화 기억 리포트", "Conversation memory report"),
     ("이 채팅 설정 초기화", "Reset this chat's settings"),
     ("진행 중인 작업 중단", "Stop a running job"),
+    ("연결된 Job 커밋 수정", "Fix linked job commit"),
     ("인라인 메뉴", "Inline menu"),
     ("모델을 선택하세요.", "Choose a model."),
     ("모델 Provider가 선택되었습니다.", "Model provider selected."),
@@ -414,6 +418,10 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("요청 브랜치", "Requested branch"),
     ("브랜치·커밋·push", "branch/commit/push"),
     ("메모리(SQLite)", "Memory (SQLite)"),
+    ("역할별 행 수", "Rows by role"),
+    ("로컬 브랜치", "Local branches"),
+    ("원격 브랜치", "Remote branches"),
+    ("Worktree 항목", "Worktree entries"),
     ("프로젝트:", "Project:"),
     ("DB 경로:", "DB path:"),
     ("이 채팅 저장 행 수:", "Rows for this chat:"),
@@ -629,7 +637,42 @@ _BUTTON_LABELS = {
 }
 
 
+_LABELED_LIST_LABELS = {
+    "Project": "프로젝트",
+    "chat_id": "채팅 ID",
+    "DB path": "DB 경로",
+    "DB exists": "DB 존재",
+    "DB size": "DB 크기",
+    "Rows for this chat": "이 채팅 저장 행 수",
+    "Sessions": "세션 수",
+    "root": "루트",
+    "Remote": "원격 이름",
+    "Current checkout": "현재 checkout",
+    "Local branches": "로컬 브랜치 수",
+    "Remote-tracking branches": "원격 추적 브랜치 수",
+    "Managed base directory": "관리 기준 디렉터리",
+    "Total worktrees": "총 worktree 수",
+    "Detached worktrees": "detached worktree 수",
+    "Managed candidates": "managed 후보 수",
+}
+_LABELED_LIST_PATTERN = "|".join(
+    re.escape(label) for label in sorted(_LABELED_LIST_LABELS, key=len, reverse=True)
+)
+
+
+def _translate_labeled_list_line(match: re.Match[str]) -> str:
+    label = match.group("label")
+    translated = _LABELED_LIST_LABELS.get(label)
+    if translated is None:
+        return match.group(0)
+    return f"- {translated}: {match.group('value')}"
+
+
 _LINE_TRANSLATIONS = (
+    (
+        re.compile(rf"^- (?P<label>{_LABELED_LIST_PATTERN}): (?P<value>.*)$"),
+        _translate_labeled_list_line,
+    ),
     (re.compile(r"^- Choose a specific model\.$"), lambda m: "- 세부 모델을 선택하세요."),
     (
         re.compile(r"^- Mode: agent \(allows edit, commit, and push\)$"),
@@ -689,6 +732,12 @@ def _translate_known_lines(text: str) -> str:
             line = raw_line[:-1]
             newline = "\n"
         translated = _EXACT_TEXT_REPLACEMENTS.get(line)
+        if translated is None and line != line.strip():
+            stripped_translation = _EXACT_TEXT_REPLACEMENTS.get(line.strip())
+            if stripped_translation is not None:
+                leading = line[: len(line) - len(line.lstrip())]
+                trailing = line[len(line.rstrip()) :]
+                translated = leading + stripped_translation + trailing
         if translated is None:
             for rx, repl in _LINE_TRANSLATIONS:
                 match = rx.match(line)

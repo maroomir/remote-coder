@@ -12,7 +12,7 @@ from app.projects.registry import ProjectRegistry
 from app.telegram.confirmations import InMemoryConfirmationStore, PendingConfirmation
 from app.telegram.conversation import SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore, ModelPreference
-from app.telegram.tables import render_table
+from app.telegram.lists import render_command_list
 
 if TYPE_CHECKING:
     from app.admin.advanced_settings import FileAdvancedSettingsStore
@@ -104,7 +104,7 @@ HELP_TEXT = "\n".join(
         "- Korean aliases 계획:, 질문:, and 수정: instead of plan:/ask:/fix: (colons `:` or full-width `：` allowed)",
         "",
         "📋 Commands",
-        render_table(_HELP_COMMAND_ROWS, headers=("cmd", "args", "description")),
+        render_command_list(_HELP_COMMAND_ROWS),
         "",
         "💡 Tip: Reply to a job result and send `fix: ...` to amend that commit.",
     ]

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.git.service import GitWorktreeService
-from app.telegram.tables import render_table
+from app.telegram.lists import render_labeled_list
 
 
 TELEGRAM_SAFE_LEN = 3800
@@ -25,16 +25,19 @@ def format_branch_monitor(
     except RuntimeError as exc:
         return f"/monitor branch failed: {exc}"
 
-    header_rows = [
+    summary_rows = [
         ("Project", project_name),
         ("root", str(root)),
         ("Remote", remote),
         ("Current checkout", current),
         ("Local branches", str(local_n)),
-        (f"{remote} remote-tracking branches", str(remote_n)),
+        ("Remote-tracking branches", str(remote_n)),
     ]
-    header = "Branch monitor\n" + render_table(header_rows, headers=("metric", "value")) + "\n\n"
-    body = f"[Local]\n{local_block}\n\n[{remote} remote]\n{remote_block}"
+    header = "Branch monitor\n" + render_labeled_list(summary_rows) + "\n\n"
+    body = (
+        f"Local branches\n{_render_text_list(local_block)}\n\n"
+        f"Remote branches\n{_render_text_list(remote_block)}"
+    )
     text = header + body
     if len(text) > max_len:
         text = text[:max_len].rstrip() + "\n\n...(truncated for message length)"
@@ -88,7 +91,7 @@ def format_worktree_monitor(
     if len(entries) > max_detail:
         extra = f"\n...({len(entries) - max_detail} more omitted)"
 
-    header_rows = [
+    summary_rows = [
         ("Project", project_name),
         ("root", str(root)),
         ("Managed base directory", str(managed_base)),
@@ -98,10 +101,21 @@ def format_worktree_monitor(
     ]
     lines = [
         "Worktree monitor",
-        render_table(header_rows, headers=("metric", "value")),
+        render_labeled_list(summary_rows),
         "",
-        "[Entries]",
+        "Worktree entries",
         *detail_lines,
         extra,
     ]
     return "\n".join(lines).strip()
+
+
+def _render_text_list(text: str) -> str:
+    items: list[str] = []
+    for raw in text.splitlines():
+        item = raw.strip()
+        if item.startswith("* "):
+            item = item[2:]
+        if item:
+            items.append(f"- {item}")
+    return "\n".join(items)

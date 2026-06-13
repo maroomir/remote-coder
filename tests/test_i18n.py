@@ -47,3 +47,28 @@ def test_translate_text_translates_model_provider_detail_prompt():
     raw = "Model provider selected.\n\n- Default model: codex\n- Choose a specific model."
     out = translate_text(raw, UiLanguage.KOREAN)
     assert out == "모델 제공자가 선택되었습니다.\n\n- 기본 모델: codex\n- 세부 모델을 선택하세요."
+
+
+def test_translate_text_preserves_help_list_layout():
+    raw = "Commands:\n- /model <claude|codex|gemini>\n  Change the default model"
+
+    out = translate_text(raw, UiLanguage.KOREAN)
+
+    assert out == "명령어 목록:\n- /model <claude|codex|gemini>\n  기본 모델 변경"
+
+
+def test_translate_text_localizes_monitor_list_labels_and_headings():
+    raw = (
+        "Branch monitor\n"
+        "- Project: remote-coder\n"
+        "- Current checkout: main\n\n"
+        "Local branches\n"
+        "- main"
+    )
+
+    out = translate_text(raw, UiLanguage.KOREAN)
+
+    assert "브랜치 모니터" in out
+    assert "- 프로젝트: remote-coder" in out
+    assert "- 현재 checkout: main" in out
+    assert "로컬 브랜치\n- main" in out

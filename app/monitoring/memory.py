@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from app.telegram.conversation import ConversationDbChatStats
-from app.telegram.tables import render_table
+from app.telegram.lists import render_labeled_list
 
 
 def format_memory_monitor(stats: ConversationDbChatStats, project: str, chat_id: int) -> str:
     size_kb = stats.db_size_bytes / 1024.0 if stats.db_size_bytes else 0.0
-    rows: list[tuple[str, str]] = [
+    summary_rows: list[tuple[str, str]] = [
         ("Project", project),
         ("chat_id", str(chat_id)),
         ("DB path", str(stats.db_path)),
@@ -16,8 +16,15 @@ def format_memory_monitor(stats: ConversationDbChatStats, project: str, chat_id:
         ("Sessions", str(stats.session_count)),
     ]
     if stats.rows_by_role:
-        for role, count in sorted(stats.rows_by_role.items()):
-            rows.append((f"  role:{role}", str(count)))
+        role_rows = [(role, str(count)) for role, count in sorted(stats.rows_by_role.items())]
     else:
-        rows.append(("Rows by role", "(none)"))
-    return "Memory (SQLite)\n" + render_table(rows, headers=("metric", "value"))
+        role_rows = [("(none)", "0")]
+    return "\n".join(
+        [
+            "Memory (SQLite)",
+            render_labeled_list(summary_rows),
+            "",
+            "Rows by role",
+            render_labeled_list(role_rows),
+        ]
+    )

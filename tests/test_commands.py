@@ -98,6 +98,8 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert "📋 Commands" in text
     assert "/clear branch:" not in text
     assert "/clear" in text and "<branch|worktrees|memory>" in text
+    assert "- /model <claude|codex|gemini>\n  Change the default model" in text
+    assert "cmd" not in text and "description" not in text
 
 
 def test_help_command_uses_english_when_advanced_language_default(project_registry: ProjectRegistry):
@@ -1095,10 +1097,10 @@ def test_monitor_memory_shows_sqlite_stats(project_registry: ProjectRegistry, tm
     text = registry.dispatch(TelegramMessage(chat_id=42, user_id=1, text="/monitor memory"), ctx)
     assert text is not None
     assert "Memory (SQLite)" in text
-    rows_line = next(line for line in text.splitlines() if line.startswith("Rows for this chat"))
-    assert rows_line.endswith(" 1")
-    user_role_line = next(line for line in text.splitlines() if "role:user" in line)
-    assert user_role_line.endswith(" 1")
+    rows_line = next(line for line in text.splitlines() if line.startswith("- Rows for this chat:"))
+    assert rows_line.endswith(": 1")
+    user_role_line = next(line for line in text.splitlines() if line.startswith("- user:"))
+    assert user_role_line.endswith(": 1")
 
 
 def test_monitor_branch_uses_git_service(project_registry: ProjectRegistry):
@@ -1112,6 +1114,9 @@ def test_monitor_branch_uses_git_service(project_registry: ProjectRegistry):
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/monitor branch"), ctx)
     assert text is not None
     assert "Branch monitor" in text
+    assert "- Current checkout: main" in text
+    assert "Local branches\n- main" in text
+    assert "Remote branches\n- origin/main" in text
     ctx.git_service.count_local_branches.assert_called_once()
 
 
@@ -1125,6 +1130,8 @@ def test_monitor_worktrees_lists_entries(project_registry: ProjectRegistry):
     text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/monitor worktrees"), ctx)
     assert text is not None
     assert "Worktree monitor" in text
+    assert "- Total worktrees: 2" in text
+    assert "Worktree entries" in text
     assert "detached" in text
 
 
@@ -1303,5 +1310,5 @@ def test_monitor_memory_shows_session_count(project_registry: ProjectRegistry, t
     registry = CommandRegistry([MonitorCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=42, user_id=1, text="/monitor memory"), ctx)
     assert text is not None
-    session_line = next(line for line in text.splitlines() if line.startswith("Sessions"))
-    assert session_line.endswith(" 1")
+    session_line = next(line for line in text.splitlines() if line.startswith("- Sessions:"))
+    assert session_line.endswith(": 1")
