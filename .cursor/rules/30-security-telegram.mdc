@@ -29,7 +29,7 @@ alwaysApply: true
 - Completion messages must include project name, branch name, commit hash, changed files, model information when available, token usage when available, and an error summary on failure.
 - Successful AGENT/AGENT_FIX completion messages expose an `Open PR` button only when the Job has both a branch and a commit; command execution must still revalidate Job ownership and remote state.
 - Failure messages should summarize the root cause and point to the log location instead of sending long logs.
-- Keep command help available through `/help`.
+- Keep command help available through `/help`; `/help` and `/help <topic>` must remain text-only and must not attach functional inline buttons.
 - Commands with selectable options (`/model`, `/status`, `/branch`, `/rebase`, `/stop`, `/pr`, `/clear`, `/monitor`) should show inline buttons when called without arguments.
 - `/pr` choices and direct arguments are scoped to succeeded Jobs from the current bot project and Telegram chat; do not expose or accept branches owned by another project or chat.
 - Inline button callback data must reuse the existing slash-command execution path after callback authentication.

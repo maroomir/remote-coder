@@ -116,8 +116,7 @@ def test_help_command_uses_english_when_advanced_language_default(project_regist
     from app.telegram.commands.base import HELP_TEXT
 
     assert response.text == HELP_TEXT
-    assert response.inline_buttons is not None
-    assert response.inline_buttons[0][0].label == "model"
+    assert response.inline_buttons is None
 
 
 def test_dispatch_rich_help_body_skips_notifier_i18n_flag(project_registry: ProjectRegistry):
@@ -276,14 +275,14 @@ def test_help_agent_plan_and_ask_topics(project_registry: ProjectRegistry):
     assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help 질문"), ctx) == ask_text
 
 
-def test_help_plan_topic_shows_back_button(project_registry: ProjectRegistry):
+def test_help_plan_topic_has_no_buttons(project_registry: ProjectRegistry):
     registry = CommandRegistry(build_default_commands())
     response = registry.dispatch_rich(
         TelegramMessage(chat_id=1, user_id=1, text="/help plan"),
         _ctx(project_registry),
     )
     assert response is not None
-    assert response.inline_buttons == [[InlineButton("‹ Back", "/help"), InlineButton("✖ Close", "__close__")]]
+    assert response.inline_buttons is None
 
 
 def test_status_command_dispatch(project_registry: ProjectRegistry):

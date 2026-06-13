@@ -11,7 +11,6 @@ from app.telegram.commands.base import (
     InlineButton,
     TelegramCommand,
     TelegramMessage,
-    _button_rows,
     _cmd_evt,
     effective_model_for_chat,
     effective_project_name_for_chat,
@@ -143,25 +142,7 @@ class HelpCommand(TelegramCommand):
         message: TelegramMessage | None = None,
         ctx: CommandContext | None = None,
     ) -> list[list[InlineButton]] | None:
-        if self._registry is None:
-            return None
-        tokens = message.text.strip().split() if message else []
-        if len(tokens) >= 2:
-            topic = tokens[1].lower()
-            if topic in ("agent", "agents", "plan", "ask", "fix"):
-                return with_nav_row(None, back_to="/help")
-            subcmd = self._registry.get("/" + tokens[1])
-            if subcmd is not None:
-                sub_buttons = subcmd.get_inline_buttons(None, ctx) or []
-                return with_nav_row(sub_buttons, back_to="/help")
-        menu_cmds = [
-            cmd for name, cmd in self._registry.items()
-            if name not in ("/help", "/start") and cmd.menu_text
-        ]
-        if not menu_cmds:
-            return None
-        buttons = [InlineButton(cmd.name[1:], f"/help {cmd.name[1:]}") for cmd in menu_cmds]
-        return with_nav_row(_button_rows(buttons, per_row=2))
+        return None
 
 
 class InitCommand(TelegramCommand):

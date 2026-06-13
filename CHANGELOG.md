@@ -8,6 +8,10 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
+### Changed
+
+- **Text-only `/help`**: `/help` and `/help <topic>` now return explanatory text without inline action buttons, so help panels no longer lead directly into functional command execution.
+
 ## [0.5.0] — 2026-06-13
 
 ### Added

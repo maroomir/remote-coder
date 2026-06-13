@@ -2547,7 +2547,7 @@ def test_recent_update_tracker_detects_duplicate_per_route_key():
     assert tracker.mark_seen("bot-b", 51) is False
 
 
-def test_webhook_callback_query_sends_help_submenu_buttons(project_registry):
+def test_webhook_callback_query_sends_help_text_without_buttons(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
     notifier = DummyNotifier()
@@ -2596,12 +2596,8 @@ def test_webhook_callback_query_sends_help_submenu_buttons(project_registry):
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert notifier.sent_with_buttons
-    assert notifier.sent_with_buttons[0][0] == 123
-    assert notifier.sent_with_buttons[0][1] == "Choose a model."
-    buttons = notifier.sent_with_buttons[0][2]
-    assert buttons[0][0].callback_data == "/model claude"
-    assert buttons[1][0].callback_data == "/help"
+    assert notifier.sent == [(123, "Choose a model.")]
+    assert notifier.sent_with_buttons == []
     assert "cq_003" in notifier.answered_callbacks
 
 
