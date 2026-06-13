@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 
 from fastapi import FastAPI, Request
@@ -137,9 +137,8 @@ webhook_registrar = (
     else None
 )
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    instances = bot_instance_manager.list_all()
+
+def _run_startup_side_effects(instances: list[BotInstance], adv: AdvancedSettings) -> None:
     startup_chat_total = sum(len(inst.auth_service.allowed_chat_ids) for inst in instances)
     _systemlog.info(
         "lifespan startup notifying allowed chats count=%d projects=%d default_model=%s",
@@ -147,9 +146,7 @@ async def lifespan(_app: FastAPI):
         len(project_registry.list_projects()),
         ModelName.CLAUDE.value,
     )
-    adv = advanced_settings_store.get()
-    await asyncio.to_thread(
-        run_startup_project_pulls,
+    run_startup_project_pulls(
         pull_projects_on_server_startup_enabled=adv.pull_projects_on_server_startup_enabled,
         project_registry=project_registry,
         git_service=git_service,
@@ -178,7 +175,23 @@ async def lifespan(_app: FastAPI):
                     _systemlog.info("startup notification sent", chat_id=chat_id)
             except Exception:
                 _systemlog.exception("startup notification failed", chat_id=chat_id)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    instances = bot_instance_manager.list_all()
+    startup_task = asyncio.create_task(
+        asyncio.to_thread(
+            _run_startup_side_effects,
+            instances,
+            advanced_settings_store.get(),
+        )
+    )
     yield
+    if not startup_task.done():
+        startup_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await startup_task
     shutdown_instances = bot_instance_manager.list_all()
     shutdown_chat_total = sum(len(inst.auth_service.allowed_chat_ids) for inst in shutdown_instances)
     _systemlog.info("lifespan shutdown notifying allowed chats count=%d", shutdown_chat_total)
