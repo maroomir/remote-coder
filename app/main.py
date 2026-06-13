@@ -177,15 +177,20 @@ def _run_startup_side_effects(instances: list[BotInstance], adv: AdvancedSetting
                 _systemlog.exception("startup notification failed", chat_id=chat_id)
 
 
+async def _run_startup_side_effects_in_background(
+    instances: list[BotInstance], adv: AdvancedSettings
+) -> None:
+    try:
+        await asyncio.to_thread(_run_startup_side_effects, instances, adv)
+    except Exception:
+        _systemlog.exception("startup side effects failed")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     instances = bot_instance_manager.list_all()
     startup_task = asyncio.create_task(
-        asyncio.to_thread(
-            _run_startup_side_effects,
-            instances,
-            advanced_settings_store.get(),
-        )
+        _run_startup_side_effects_in_background(instances, advanced_settings_store.get())
     )
     yield
     if not startup_task.done():
