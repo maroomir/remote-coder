@@ -46,6 +46,47 @@ class JobSubmission:
         self._attach_session = attach_session
         self._persist_session_token = persist_session_token
 
+    def record_final_job_result(self, final_job: Job) -> None:
+        self._persist_session_token(final_job)
+        if self._conversation_store is None:
+            return
+        self._conversation_store.append(
+            project=final_job.request.project,
+            chat_id=final_job.request.chat_id,
+            role="job_result",
+            text=format_job_result_memory_summary(final_job),
+            job_id=final_job.id,
+            message_id=(
+                final_job.result_message_ids[0]
+                if final_job.result_message_ids
+                else None
+            ),
+        )
+        _cmdlog.info(
+            "conversation job_result recorded status=%s",
+            final_job.status.value,
+            chat_id=final_job.request.chat_id,
+            user_id=final_job.request.requested_by,
+            project=final_job.request.project,
+            job_id=final_job.id,
+        )
+        if final_job.request.message_id is not None and final_job.branch is not None:
+            self._conversation_store.bind_message_branch(
+                project=final_job.request.project,
+                chat_id=final_job.request.chat_id,
+                message_id=final_job.request.message_id,
+                branch=final_job.branch,
+                job_id=final_job.id,
+            )
+            _cmdlog.info(
+                "conversation branch binding recorded branch=%s",
+                final_job.branch,
+                chat_id=final_job.request.chat_id,
+                user_id=final_job.request.requested_by,
+                project=final_job.request.project,
+                job_id=final_job.id,
+            )
+
     def submit_fix(
         self,
         request: JobRequest,
@@ -73,7 +114,6 @@ class JobSubmission:
 
         def run_and_record_fix() -> None:
             final_job = self._job_manager.execute_fix_job(request)
-            self._persist_session_token(final_job)
             _cmdlog.info(
                 "fix background run finished status=%s",
                 final_job.status.value,
@@ -82,34 +122,16 @@ class JobSubmission:
                 project=final_job.request.project,
                 job_id=final_job.id,
             )
-            if self._conversation_store is None:
-                return
-            self._conversation_store.append(
-                project=final_job.request.project,
-                chat_id=final_job.request.chat_id,
-                role="job_accepted",
-                text=f"Job accepted: {final_job.id}",
-                job_id=final_job.id,
-                message_id=final_job.accepted_message_id,
-            )
-            self._conversation_store.append(
-                project=final_job.request.project,
-                chat_id=final_job.request.chat_id,
-                role="job_result",
-                text=format_job_result_memory_summary(final_job),
-                job_id=final_job.id,
-                message_id=(
-                    final_job.result_message_ids[0] if final_job.result_message_ids else None
-                ),
-            )
-            if final_job.request.message_id is not None and final_job.branch is not None:
-                self._conversation_store.bind_message_branch(
+            if self._conversation_store is not None:
+                self._conversation_store.append(
                     project=final_job.request.project,
                     chat_id=final_job.request.chat_id,
-                    message_id=final_job.request.message_id,
-                    branch=final_job.branch,
+                    role="job_accepted",
+                    text=f"Job accepted: {final_job.id}",
                     job_id=final_job.id,
+                    message_id=final_job.accepted_message_id,
                 )
+            self.record_final_job_result(final_job)
 
         background_tasks.add_task(run_and_record_fix)
 
@@ -192,43 +214,7 @@ class JobSubmission:
                 if final_job is None:
                     _cmdlog.warning("background job run returned none", job_id=jid)
                     return
-                self._persist_session_token(final_job)
-                self._conversation_store.append(
-                    project=final_job.request.project,
-                    chat_id=final_job.request.chat_id,
-                    role="job_result",
-                    text=format_job_result_memory_summary(final_job),
-                    job_id=final_job.id,
-                    message_id=(
-                        final_job.result_message_ids[0]
-                        if final_job.result_message_ids
-                        else None
-                    ),
-                )
-                _cmdlog.info(
-                    "conversation job_result recorded status=%s",
-                    final_job.status.value,
-                    chat_id=final_job.request.chat_id,
-                    user_id=final_job.request.requested_by,
-                    project=final_job.request.project,
-                    job_id=final_job.id,
-                )
-                if final_job.request.message_id is not None and final_job.branch is not None:
-                    self._conversation_store.bind_message_branch(
-                        project=final_job.request.project,
-                        chat_id=final_job.request.chat_id,
-                        message_id=final_job.request.message_id,
-                        branch=final_job.branch,
-                        job_id=final_job.id,
-                    )
-                    _cmdlog.info(
-                        "conversation branch binding recorded branch=%s",
-                        final_job.branch,
-                        chat_id=final_job.request.chat_id,
-                        user_id=final_job.request.requested_by,
-                        project=final_job.request.project,
-                        job_id=final_job.id,
-                    )
+                self.record_final_job_result(final_job)
 
             background_tasks.add_task(run_and_record, job.id)
         else:

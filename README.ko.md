@@ -101,6 +101,7 @@ plan: 마이그레이션 전에 위험 요소만 정리해줘
 - `projects.json`: 프로젝트, bot token, allowlist, root path, 기본 모델
 - `advanced_settings.json`: timeout, sandbox, 언어, worktree 보존, 메모리 제한 등 전역 동작
 - `worktrees/<project>/`: 관리되는 Job worktree와 로그
+- 서버 시작 시 SQLite에 남은 `queued` Job은 재실행하고, 서버 종료 시점에 `running`이던 Job은 `/status`에서 확인할 수 있도록 `server_restart` 실패로 정리합니다.
 
 주요 오버라이드 환경변수는 `REMOTE_CODER_HOME`, `PROJECTS_CONFIG_PATH`, `CONVERSATION_DB_PATH`, `JOB_DB_PATH`입니다.
 

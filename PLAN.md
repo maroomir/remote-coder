@@ -476,7 +476,8 @@ projects:
 
 1. 내구성 작업 큐와 재시작 복구
    - 서버 재시작 후에도 `queued`/`running` Job 상태를 SQLite에서 복원합니다.
-   - 실행 중 서버가 종료된 Job은 `failed` 또는 `cancelled`로 정리하고, 보존된 로그와 worktree 위치를 알립니다.
+   - 현재 복구 정책은 `queued` Job 재실행, 서버 종료 시점에 `running`이던 Job은 `server_restart` 실패로 정리하는 것입니다.
+   - 재시작 복구로 바뀐 상태는 Telegram 알림 없이 SQLite와 로그에 기록하고 `/status`에서 확인합니다.
    - 프로젝트별 동시 실행 잠금은 유지하되, 큐 대기 순서와 취소 정책을 명확히 합니다.
 
 2. 작업 결과 리뷰 UX 개선

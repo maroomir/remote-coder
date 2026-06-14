@@ -213,6 +213,51 @@ def test_list_recent_for_project_chat_filters_project_and_chat():
     assert [job.id for job in store.list_recent_for_project_chat("p", 5)] == ["match-new", "match-old"]
 
 
+def test_list_latest_by_status_filters_latest_jobs_in_created_order():
+    store = InMemoryJobStore()
+    base = datetime.now(UTC)
+    older_queued = Job(
+        id="older",
+        request=JobRequest(
+            project="p", model=ModelName.CLAUDE, instruction="old", chat_id=1, requested_by=1
+        ),
+        status=JobStatus.QUEUED,
+        created_at=base,
+    )
+    newer_running = Job(
+        id="newer",
+        request=JobRequest(
+            project="p", model=ModelName.CLAUDE, instruction="new", chat_id=1, requested_by=1
+        ),
+        status=JobStatus.RUNNING,
+        created_at=base + timedelta(seconds=1),
+    )
+    superseded = Job(
+        id="same",
+        request=JobRequest(
+            project="p", model=ModelName.CLAUDE, instruction="queued", chat_id=1, requested_by=1
+        ),
+        status=JobStatus.QUEUED,
+        created_at=base + timedelta(seconds=2),
+    )
+    latest = Job(
+        id="same",
+        request=JobRequest(
+            project="p", model=ModelName.CLAUDE, instruction="done", chat_id=1, requested_by=1
+        ),
+        status=JobStatus.SUCCEEDED,
+        created_at=base + timedelta(seconds=3),
+    )
+    store.create(older_queued)
+    store.create(newer_running)
+    store.create(superseded)
+    store.create(latest)
+
+    assert [
+        job.id for job in store.list_latest_by_status([JobStatus.QUEUED, JobStatus.RUNNING])
+    ] == ["older", "newer"]
+
+
 def test_sqlite_job_store_persists_jobs_across_instances(tmp_path: Path):
     db_path = tmp_path / "jobs.sqlite3"
     store = SQLiteJobStore(db_path)
@@ -317,3 +362,66 @@ def test_sqlite_job_store_keeps_multiple_runs_for_reused_job_id(tmp_path: Path):
 
     assert store.get("same") == second
     assert [job.request.instruction for job in store.list_recent(10)[:2]] == ["second", "first"]
+
+
+def test_sqlite_list_latest_by_status_filters_latest_rows(tmp_path: Path):
+    store = SQLiteJobStore(tmp_path / "jobs.sqlite3")
+    base = datetime.now(UTC)
+    jobs = [
+        Job(
+            id="queued-old",
+            request=JobRequest(
+                project="p",
+                model=ModelName.CLAUDE,
+                instruction="old",
+                chat_id=1,
+                requested_by=1,
+            ),
+            status=JobStatus.QUEUED,
+            created_at=base,
+        ),
+        Job(
+            id="running-new",
+            request=JobRequest(
+                project="p",
+                model=ModelName.CLAUDE,
+                instruction="run",
+                chat_id=1,
+                requested_by=1,
+            ),
+            status=JobStatus.RUNNING,
+            created_at=base + timedelta(seconds=1),
+        ),
+        Job(
+            id="same",
+            request=JobRequest(
+                project="p",
+                model=ModelName.CLAUDE,
+                instruction="queued",
+                chat_id=1,
+                requested_by=1,
+            ),
+            status=JobStatus.QUEUED,
+            created_at=base + timedelta(seconds=2),
+        ),
+        Job(
+            id="same",
+            request=JobRequest(
+                project="p",
+                model=ModelName.CLAUDE,
+                instruction="done",
+                chat_id=1,
+                requested_by=1,
+            ),
+            status=JobStatus.SUCCEEDED,
+            created_at=base + timedelta(seconds=3),
+        ),
+    ]
+    for job in jobs:
+        store.create(job)
+
+    reopened = SQLiteJobStore(tmp_path / "jobs.sqlite3")
+
+    assert [
+        job.id for job in reopened.list_latest_by_status([JobStatus.QUEUED, JobStatus.RUNNING])
+    ] == ["queued-old", "running-new"]

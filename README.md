@@ -101,6 +101,7 @@ Day-to-day setup happens in the local admin UI. Files live under `REMOTE_CODER_H
 - `projects.json` stores project records, bot tokens, allowlists, root paths, and default models.
 - `advanced_settings.json` stores global behavior such as timeouts, sandbox mode, language, worktree retention, and memory limits.
 - `worktrees/<project>/` contains managed job worktrees and logs.
+- On server startup, queued Jobs stored in SQLite are rerun; Jobs that were running when the server stopped are marked failed with `server_restart` for `/status` review.
 
 Useful overrides: `REMOTE_CODER_HOME`, `PROJECTS_CONFIG_PATH`, `CONVERSATION_DB_PATH`, and `JOB_DB_PATH`.
 

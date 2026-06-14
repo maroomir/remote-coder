@@ -14,6 +14,7 @@ from app.git.ai_commit import AiCommitBodyGenerator
 from app.git.branch_naming import TimestampSlugStrategy
 from app.git.service import GitWorktreeService
 from app.jobs.manager import JobManager
+from app.jobs.schemas import Job
 from app.jobs.store import SQLiteJobStore
 from app.monitoring.log_buffer import InMemoryLogBuffer, attach_app_memory_log_handler
 from app.monitoring.events import EventLogger
@@ -24,7 +25,7 @@ from app.projects.registry import (
     projects_config_path,
 )
 from app.security.auth import AllowlistAuthService
-from app.system_startup import run_startup_project_pulls
+from app.system_startup import recover_startup_jobs, run_startup_project_pulls
 from app.telegram.commands import (
     CommandContext,
     CommandRegistry,
@@ -34,6 +35,8 @@ from app.telegram.commands import (
 from app.telegram.bot_instances import BotInstance, BotInstanceManager
 from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
+from app.telegram.handlers.job_submission import JobSubmission
+from app.telegram.handlers.session_binding import SessionBinding
 from app.telegram.notifier import Notifier, TelegramNotifier
 from app.telegram.i18n import ui_message
 from app.telegram.parser import CommandParser
@@ -138,6 +141,15 @@ webhook_registrar = (
 )
 
 
+def _record_recovered_job_result(final_job: Job) -> None:
+    JobSubmission(
+        job_manager=job_manager,
+        conversation_store=conversation_store,
+        attach_session=lambda _request: None,
+        persist_session_token=SessionBinding(conversation_store).persist_session_token,
+    ).record_final_job_result(final_job)
+
+
 def _run_startup_side_effects(instances: list[BotInstance], adv: AdvancedSettings) -> None:
     startup_chat_total = sum(len(inst.auth_service.allowed_chat_ids) for inst in instances)
     _systemlog.info(
@@ -145,6 +157,12 @@ def _run_startup_side_effects(instances: list[BotInstance], adv: AdvancedSetting
         startup_chat_total,
         len(project_registry.list_projects()),
         ModelName.CLAUDE.value,
+    )
+    recover_startup_jobs(
+        job_store=job_store,
+        run_job=job_manager.run,
+        record_final_job_result=_record_recovered_job_result,
+        system_log=_systemlog,
     )
     run_startup_project_pulls(
         pull_projects_on_server_startup_enabled=adv.pull_projects_on_server_startup_enabled,

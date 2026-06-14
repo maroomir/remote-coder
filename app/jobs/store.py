@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Sequence
 from pathlib import Path
 from threading import Lock
 from typing import Protocol
@@ -35,6 +36,9 @@ class JobStore(Protocol):
         ...
 
     def list_recent_for_project_chat(self, project: str, chat_id: int, limit: int = 20) -> list[Job]:
+        ...
+
+    def list_latest_by_status(self, statuses: Sequence[JobStatus]) -> list[Job]:
         ...
 
 
@@ -91,6 +95,19 @@ class InMemoryJobStore:
             ]
             values.sort(key=lambda job: job.created_at, reverse=True)
             return values[:limit]
+
+    def list_latest_by_status(self, statuses: Sequence[JobStatus]) -> list[Job]:
+        wanted = {status.value for status in statuses}
+        if not wanted:
+            return []
+        with self._lock:
+            values = [
+                jobs[-1]
+                for jobs in self._jobs.values()
+                if jobs and jobs[-1].status.value in wanted
+            ]
+            values.sort(key=lambda job: job.created_at)
+            return values
 
     def get_latest_succeeded_branch_for_project_chat(
         self, project: str, chat_id: int
@@ -297,6 +314,32 @@ class SQLiteJobStore:
             LIMIT ?
             """,
             (project, chat_id, limit),
+        )
+
+    def list_latest_by_status(self, statuses: Sequence[JobStatus]) -> list[Job]:
+        if not statuses:
+            return []
+        placeholders = ",".join("?" for _ in statuses)
+        return self._fetch_jobs(
+            f"""
+            SELECT payload
+            FROM jobs AS current
+            WHERE current.status IN ({placeholders})
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM jobs AS newer
+                  WHERE newer.job_id = current.job_id
+                    AND (
+                        newer.created_at > current.created_at
+                        OR (
+                            newer.created_at = current.created_at
+                            AND newer.row_id > current.row_id
+                        )
+                    )
+              )
+            ORDER BY current.created_at ASC, current.row_id ASC
+            """,
+            tuple(status.value for status in statuses),
         )
 
     def get_latest_succeeded_branch_for_project_chat(

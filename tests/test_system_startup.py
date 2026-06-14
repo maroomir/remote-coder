@@ -4,8 +4,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.jobs.schemas import Job, JobRequest, JobStatus
+from app.jobs.store import InMemoryJobStore
 from app.monitoring.events import EventLogger
-from app.system_startup import run_startup_project_pulls
+from app.models import ModelName
+from app.system_startup import (
+    SERVER_RESTART_ERROR,
+    SERVER_RESTART_STAGE,
+    recover_startup_jobs,
+    run_startup_project_pulls,
+)
 
 
 @pytest.fixture
@@ -79,3 +87,77 @@ def test_run_startup_project_pulls_logs_exception_and_continues(mock_git, tmp_pa
         system_log=log,
     )
     log.exception.assert_called_once_with("startup pull failed", project="z")
+
+
+def test_recover_startup_jobs_marks_running_failed_without_notification():
+    store = InMemoryJobStore()
+    running = Job(
+        id="running-job",
+        request=JobRequest(
+            project="p",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+        status=JobStatus.RUNNING,
+    )
+    store.create(running)
+    run_job = MagicMock()
+    record = MagicMock()
+    log = MagicMock(spec=EventLogger)
+
+    thread = recover_startup_jobs(
+        job_store=store,
+        run_job=run_job,
+        record_final_job_result=record,
+        system_log=log,
+    )
+
+    recovered = store.get("running-job")
+    assert thread is None
+    assert recovered is not None
+    assert recovered.status is JobStatus.FAILED
+    assert recovered.error == SERVER_RESTART_ERROR
+    assert recovered.error_stage == SERVER_RESTART_STAGE
+    run_job.assert_not_called()
+    record.assert_not_called()
+
+
+def test_recover_startup_jobs_reruns_queued_jobs_and_records_result():
+    store = InMemoryJobStore()
+    queued = Job(
+        id="queued-job",
+        request=JobRequest(
+            project="p",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+        status=JobStatus.QUEUED,
+    )
+    store.create(queued)
+    log = MagicMock(spec=EventLogger)
+    recorded: list[str] = []
+
+    def run_job(job_id: str) -> Job:
+        job = store.get(job_id)
+        assert job is not None
+        job.mark_running()
+        job.mark_succeeded()
+        store.update(job)
+        return job
+
+    thread = recover_startup_jobs(
+        job_store=store,
+        run_job=run_job,
+        record_final_job_result=lambda job: recorded.append(job.id),
+        system_log=log,
+    )
+
+    assert thread is not None
+    thread.join(timeout=1)
+    assert not thread.is_alive()
+    assert store.get("queued-job").status is JobStatus.SUCCEEDED
+    assert recorded == ["queued-job"]
