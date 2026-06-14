@@ -99,6 +99,8 @@ class StartCommand(TelegramCommand):
                         InlineButton("AGENTS mode", "/help agent"),
                         InlineButton("PLAN mode", "/help plan"),
                         InlineButton("ASK mode", "/help ask"),
+                    ],
+                    [
                         InlineButton("RESEARCH mode", "/help research"),
                         InlineButton("FIX mode", "/help fix"),
                     ],

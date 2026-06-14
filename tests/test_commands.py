@@ -214,6 +214,8 @@ def test_start_modes_shows_mode_help_buttons(project_registry: ProjectRegistry):
             InlineButton("AGENTS mode", "/help agent"),
             InlineButton("PLAN mode", "/help plan"),
             InlineButton("ASK mode", "/help ask"),
+        ],
+        [
             InlineButton("RESEARCH mode", "/help research"),
             InlineButton("FIX mode", "/help fix"),
         ],
@@ -268,7 +270,7 @@ def test_help_agent_plan_ask_and_research_topics(project_registry: ProjectRegist
     assert plan_text is not None
     assert "Plan mode" in plan_text
     assert "plan:" in plan_text
-    assert "y" in plan_text or "Y" in plan_text
+    assert "inline Yes/No buttons" in plan_text
     ask_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help ask"), ctx)
     assert ask_text is not None
     assert "Ask mode" in ask_text

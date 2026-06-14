@@ -381,14 +381,8 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("기억 저장소가 설정되지 않았습니다.", "Memory storage is not configured."),
     ("현재 할 작업을 확인하세요.", "Confirm the work to run."),
     ("실행 여부를 선택하세요.", "Choose whether to run it."),
-    (
-        "실행하려면 `y` 또는 `Y`를 입력하세요. "
-        "새 자연어 요청으로 이 확인을 바꿀 수 있습니다. "
-        "파싱되지 않는 입력은 대기 작업이 취소됩니다.",
-        "Send `y` or `Y` to run. Another natural-language request replaces this confirmation. "
-        "Unparseable input cancels the pending request.",
-    ),
-    ("실행하려면 `y` 또는 `Y`를 입력하세요. 그 외 응답은 취소됩니다.", "Send `y` or `Y` to run it. Any other response cancels it."),
+    ("인라인 Yes/No 버튼으로 확인한 뒤 작업이 접수됩니다.", "A job is accepted after confirmation with inline Yes/No buttons."),
+    ("인라인 Yes/No 버튼으로 작업 실행 여부를 선택하세요.", "Choose whether to run with inline Yes/No buttons."),
     ("작업 요청을 취소했습니다.", "Cancelled the work request."),
     ("알 수 없는 clear 작업입니다.", "Unknown clear action."),
     ("봇에 연결된 프로젝트가 없거나 레지스트리에서 찾을 수 없습니다.", "No project is bound to this bot or found in the registry."),

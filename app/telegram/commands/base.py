@@ -123,7 +123,7 @@ HELP_AGENT_TOPIC = "\n".join(
         "- model: codex branch: remote-auth strengthen tests",
         "- no commit just verify the doc wording",
         "",
-        "A job is accepted after project/branch/model checks via `y`/`Y` or inline buttons.",
+        "A job is accepted after project/branch/model checks with inline Yes/No buttons.",
     ]
 )
 
@@ -132,7 +132,7 @@ HELP_PLAN_TOPIC = "\n".join(
         "📐 Plan mode (plan)",
         "",
         "Receive change plans only; no code edits. Like agent mode, a job is accepted after confirmation "
-        "(`y`/`Y` or inline buttons).",
+        "with inline Yes/No buttons.",
         "",
         "💡 Examples",
         "- plan: summarize the login validation flow",
@@ -148,7 +148,7 @@ HELP_ASK_TOPIC = "\n".join(
         "❓ Ask mode (ask)",
         "",
         "Answer questions using the repository; no code edits, commits, or pushes. Jobs are accepted like "
-        "agent mode after confirmation (`y`/`Y` or inline buttons).",
+        "agent mode after confirmation with inline Yes/No buttons.",
         "",
         "💡 Examples",
         "- ask: how do I run pytest in this project?",
@@ -164,7 +164,7 @@ HELP_RESEARCH_TOPIC = "\n".join(
         "🔎 Research mode (research)",
         "",
         "Answer research questions using repository context and internet search when useful; no code edits, "
-        "commits, or pushes. Jobs are accepted like agent mode after confirmation (`y`/`Y` or inline buttons).",
+        "commits, or pushes. Jobs are accepted like agent mode after confirmation with inline Yes/No buttons.",
         "",
         "💡 Examples",
         "- research: compare webhook retry strategies for this service",
