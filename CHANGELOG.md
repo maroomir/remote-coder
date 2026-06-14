@@ -8,6 +8,18 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-06-15
+
+### Added
+
+- **Read-only RESEARCH mode**: `/research`, `research:`, and `조사:` requests run the selected AI CLI with repository context and internet-search guidance in a detached worktree, without creating commits or pushing branches.
+
+### Changed
+
+- **Clearer mode guidance**: `/start` presents AGENT, PLAN, ASK, and RESEARCH actions in a compact layout, and mode help no longer mentions the removed text-confirmation flow.
+- **Actionable GitHub CLI setup**: Telegram PR flows, CLI diagnostics, and the admin dashboard now explain how to install and authenticate `gh` when it is unavailable.
+- **Repeatable release publishing**: Release automation can safely recreate an existing GitHub Release and skips PyPI upload when the version is already published, making workflow re-runs reliable.
+
 ## [0.5.1] — 2026-06-14
 
 ### Added
