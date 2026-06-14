@@ -8,13 +8,22 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
-### Fixed
+## [0.5.1] — 2026-06-14
 
-- **Claude reply-session fallback**: ASK, PLAN, and other jobs that run in a newly created worktree no longer pass a cwd-scoped Claude `--resume` token that the CLI cannot find. They keep the logical Session ID and injected reply context, while native resume remains enabled when the existing linked worktree is reused.
+### Added
+
+- **Telegram lifecycle reactions**: The bot reacts to the original request when a job is queued and updates the reaction when it succeeds, fails, or is cancelled, without allowing reaction delivery failures to affect the job.
+- **Persistent command menu and action colors**: Project bots pin Telegram's slash-command menu beside the message input and use Bot API button styles for primary, success, and destructive actions.
 
 ### Changed
 
-- **Text-only `/help`**: `/help` and `/help <topic>` now return explanatory text without inline action buttons, so help panels no longer lead directly into functional command execution.
+- **Job results edit the accepted message**: Results that fit in one Telegram message now replace the accepted/heartbeat message in place. Long results or failed edits fall back to separate messages after removing the stale Stop button.
+- **Concise chat guidance**: `/start`, `/help`, and monitoring output now use shorter, readable sections and lists. Help buttons are informational only and no longer execute commands.
+
+### Fixed
+
+- **Non-blocking startup work**: Repository pulls and Telegram startup notifications run after HTTP readiness, and background failures are logged without breaking application shutdown.
+- **Claude reply-session fallback**: ASK, PLAN, and other jobs that run in a newly created worktree no longer pass a cwd-scoped Claude `--resume` token that the CLI cannot find. They keep the logical Session ID and injected reply context, while native resume remains enabled when the existing linked worktree is reused.
 
 ## [0.5.0] — 2026-06-13
 
