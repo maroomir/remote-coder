@@ -253,6 +253,7 @@ def test_job_manager_threads_session_into_runner_and_captures_result(
     runner_input = runner.run.call_args.args[0]
     assert runner_input.session_id == "11111111-1111-1111-1111-111111111111"
     assert runner_input.resume_token == "11111111-1111-1111-1111-111111111111"
+    assert runner_input.native_resume_cwd_stable is False
     assert final_job.runner_session_id == "captured-session-id"
 
 
@@ -684,6 +685,8 @@ def test_job_manager_reuses_existing_branch_worktree(test_settings, project_regi
         branch="remote-a",
         chat_id=123,
         requested_by=123,
+        session_id="11111111-1111-1111-1111-111111111111",
+        resume_session_token="11111111-1111-1111-1111-111111111111",
     )
     job = manager.submit(request)
     final_job = manager.run(job.id)
@@ -696,6 +699,8 @@ def test_job_manager_reuses_existing_branch_worktree(test_settings, project_regi
     git_service.ensure_worktree_writable.assert_called_once_with(existing_worktree)
     runner_input = factory.create.return_value.run.call_args.args[0]
     assert runner_input.cwd == existing_worktree
+    assert runner_input.resume_token == "11111111-1111-1111-1111-111111111111"
+    assert runner_input.native_resume_cwd_stable is True
 
 
 def test_job_manager_uses_detached_worktree_when_requested_branch_is_checked_out(
@@ -1279,6 +1284,7 @@ def test_execute_fix_job_source_runs_runner_and_amends(test_settings, project_re
     assert "User follow-up fix request" in runner_input.instruction
     assert "rename foo to bar" in runner_input.instruction
     assert "original work" in runner_input.instruction
+    assert runner_input.native_resume_cwd_stable is True
     # commit message trailer keeps parent id
     amend_call = git_service.amend_commit.call_args
     assert amend_call.args[0] == Path("/tmp/wt-existing")
@@ -1295,7 +1301,8 @@ def test_execute_fix_job_source_no_diff_skips_push(test_settings, project_regist
     store = InMemoryJobStore()
     parent = _seed_parent_job(store)
     git_service = Mock()
-    git_service.find_linked_worktree_for_branch.return_value = Path("/tmp/wt")
+    git_service.find_linked_worktree_for_branch.return_value = None
+    git_service.prepare_branch_worktree.return_value = Path("/tmp/wt-new")
     git_service.collect_changes.return_value = []
     runner = Mock()
     runner.run.return_value = RunnerResult(
@@ -1326,6 +1333,8 @@ def test_execute_fix_job_source_no_diff_skips_push(test_settings, project_regist
             fix_kind=FixKind.SOURCE,
             parent_job_id=parent.id,
             branch=parent.branch,
+            session_id="11111111-1111-1111-1111-111111111111",
+            resume_session_token="11111111-1111-1111-1111-111111111111",
         )
     )
 
@@ -1334,6 +1343,9 @@ def test_execute_fix_job_source_no_diff_skips_push(test_settings, project_regist
     assert final.commit_hash == parent.commit_hash
     git_service.amend_commit.assert_not_called()
     git_service.push_branch_force_with_lease.assert_not_called()
+    runner_input = runner.run.call_args.args[0]
+    assert runner_input.cwd == Path("/tmp/wt-new")
+    assert runner_input.native_resume_cwd_stable is False
 
 
 def test_execute_fix_job_rejects_failed_parent(test_settings, project_registry):

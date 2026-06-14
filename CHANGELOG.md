@@ -8,6 +8,10 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
+### Fixed
+
+- **Claude reply-session fallback**: ASK, PLAN, and other jobs that run in a newly created worktree no longer pass a cwd-scoped Claude `--resume` token that the CLI cannot find. They keep the logical Session ID and injected reply context, while native resume remains enabled when the existing linked worktree is reused.
+
 ### Changed
 
 - **Text-only `/help`**: `/help` and `/help <topic>` now return explanatory text without inline action buttons, so help panels no longer lead directly into functional command execution.

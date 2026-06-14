@@ -80,6 +80,7 @@ class RunnerInput:
     mode: JobMode = JobMode.AGENT
     session_id: str | None = None
     resume_token: str | None = None
+    native_resume_cwd_stable: bool = True
 
 
 @dataclass

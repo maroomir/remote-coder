@@ -125,3 +125,29 @@ def test_claude_runner_resumes_with_token(mock_popen):
     assert "--resume" in cmd and "--session-id" not in cmd
     assert cmd[cmd.index("--resume") + 1] == "11111111-1111-1111-1111-111111111111"
     assert result.session_id == "11111111-1111-1111-1111-111111111111"
+
+
+@patch("app.ai.base.subprocess.Popen")
+def test_claude_runner_falls_back_to_session_id_in_new_worktree(mock_popen):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("done", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
+
+    result = ClaudeRunner().run(
+        RunnerInput(
+            instruction="follow up",
+            cwd=Path("/tmp/new-worktree"),
+            timeout_seconds=10,
+            mode=JobMode.ASK,
+            session_id="11111111-1111-1111-1111-111111111111",
+            resume_token="11111111-1111-1111-1111-111111111111",
+            native_resume_cwd_stable=False,
+        )
+    )
+
+    cmd = mock_popen.call_args.args[0]
+    assert "--resume" not in cmd
+    assert cmd[cmd.index("--session-id") + 1] == "11111111-1111-1111-1111-111111111111"
+    assert result.session_id == "11111111-1111-1111-1111-111111111111"

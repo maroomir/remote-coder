@@ -92,6 +92,7 @@ def run_fix_job(manager, job_id: str) -> Job:
                     mode=JobMode.AGENT,
                     session_id=job.request.session_id,
                     resume_token=job.request.resume_session_token,
+                    native_resume_cwd_stable=not created_worktree_for_job,
                 )
             )
         finally:
