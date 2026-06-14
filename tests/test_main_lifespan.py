@@ -45,7 +45,7 @@ async def test_lifespan_does_not_wait_for_startup_side_effects(monkeypatch):
     context = main.lifespan(main.app)
     await asyncio.wait_for(context.__aenter__(), timeout=0.2)
 
-    assert started.wait(timeout=1)
+    assert await asyncio.to_thread(started.wait, 1)
     release.set()
     await context.__aexit__(None, None, None)
 

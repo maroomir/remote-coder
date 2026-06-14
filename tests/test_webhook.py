@@ -1107,8 +1107,9 @@ def test_webhook_sends_command_response_to_telegram(project_registry):
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
-    assert notifier.sent_with_buttons
-    assert notifier.sent_with_buttons[0][0] == 123
+    assert notifier.sent
+    assert notifier.sent[0][0] == 123
+    assert notifier.sent_with_buttons == []
 
 
 def test_webhook_executes_pending_clear_confirmation(project_registry):
