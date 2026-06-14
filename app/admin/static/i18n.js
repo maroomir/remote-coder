@@ -146,6 +146,11 @@
       en: "None found (install at least one: claude / codex / gemini)",
       ko: "설치된 것 없음 (claude / codex / gemini 중 최소 1개 설치)",
     },
+    "setup.githubCli": { en: "GitHub CLI", ko: "GitHub CLI" },
+    "setup.githubCliNone": {
+      en: "Not found (install gh before using /pr)",
+      ko: "설치되지 않음 (/pr 사용 전 gh 설치 필요)",
+    },
     "setup.checking": { en: "Checking…", ko: "확인 중…" },
     "setup.recheck": { en: "Re-check", ko: "다시 확인" },
     "setup.cta": { en: "Add your first project", ko: "첫 프로젝트 추가" },

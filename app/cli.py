@@ -32,7 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run the server only (skip ngrok and webhook registration)",
     )
 
-    subparsers.add_parser("doctor", help="Check prerequisites (ngrok, AI CLIs)")
+    subparsers.add_parser("doctor", help="Check prerequisites (ngrok, AI CLIs, GitHub CLI)")
     return parser
 
 
@@ -128,6 +128,10 @@ def run_doctor() -> None:
             "  ⚠️ AI CLI (claude/codex/gemini) not found. Install at least one. "
             "(e.g. npm install -g @anthropic-ai/claude-code)"
         )
+    if report.github_cli.installed:
+        print("  ✅ GitHub CLI: gh")
+    else:
+        print("  ⚠️ GitHub CLI (gh) not found. Install it before using /pr.")
 
 
 if __name__ == "__main__":

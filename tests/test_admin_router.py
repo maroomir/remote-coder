@@ -857,6 +857,7 @@ def test_api_prerequisites_returns_report(
             AiCliStatus(name="codex", installed=False),
             AiCliStatus(name="gemini", installed=False),
         ],
+        github_cli=AiCliStatus(name="gh", installed=True),
     )
     monkeypatch.setattr(admin_router_module, "check_prerequisites", lambda: report)
 
@@ -875,6 +876,7 @@ def test_api_prerequisites_returns_report(
         "codex": False,
         "gemini": False,
     }
+    assert body["github_cli"] == {"name": "gh", "installed": True}
 
 
 def test_admin_css_served_for_localhost(

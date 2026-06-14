@@ -512,6 +512,16 @@ _MESSAGE_CATALOG_KO: dict[str, str] = {
         "원격 브랜치 `{branch}`를 `{remote}`에서 찾을 수 없습니다. "
         "Job 완료 후 삭제되었을 수 있습니다."
     ),
+    "pr.gh_missing": (
+        "/pr 실패: GitHub CLI(gh)가 설치되어 있지 않거나 PATH에서 찾을 수 없습니다.\n\n"
+        "Telegram에서 PR을 만들려면 다음 순서로 준비하세요.\n"
+        "1. GitHub CLI 설치:\n"
+        "   - macOS: `brew install gh`\n"
+        "   - Windows: `winget install --id GitHub.cli`\n"
+        "   - Ubuntu/Debian: `sudo apt install gh`\n"
+        "2. GitHub 로그인: `gh auth login`\n"
+        "3. Remote AI Coder 재시작: `remote-coder up`"
+    ),
     "job.heartbeat": "{accepted}\n\n⏳ 실행 중 ({minutes}분 경과)",
     "job.cancelled": "{mode_prefix}⛔ 작업 중단됨\n\n- Job ID: {job_id}{session_line}\n- 프로젝트: {project}",
     "job.readonly_completed": (

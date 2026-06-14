@@ -17,6 +17,26 @@ from app.telegram.commands.base import (
 from app.telegram.i18n import ui_message
 
 
+_MISSING_GH_ERROR = "GitHub CLI (gh) is not installed or not available on PATH."
+
+
+def _format_pr_error(exc: RuntimeError) -> str:
+    message = str(exc)
+    if _MISSING_GH_ERROR in message:
+        return ui_message(
+            "pr.gh_missing",
+            "/pr failed: GitHub CLI (gh) is not installed or not available on PATH.\n\n"
+            "To create PRs from Telegram:\n"
+            "1. Install GitHub CLI:\n"
+            "   - macOS: `brew install gh`\n"
+            "   - Windows: `winget install --id GitHub.cli`\n"
+            "   - Ubuntu/Debian: `sudo apt install gh`\n"
+            "2. Sign in: `gh auth login`\n"
+            "3. Restart Remote AI Coder: `remote-coder up`",
+        )
+    return f"/pr failed: {message}"
+
+
 class BranchCommand(TelegramCommand):
     name = "/branch"
     description = "Show the current branch or switch to a local branch"
@@ -261,7 +281,7 @@ class PrCommand(TelegramCommand):
             try:
                 branches = self._load_pr_candidates(message, ctx)
             except RuntimeError as exc:
-                return f"/pr failed: {exc}"
+                return _format_pr_error(exc)
             if not branches:
                 return ui_message(
                     "pr.no_candidates",
@@ -301,7 +321,7 @@ class PrCommand(TelegramCommand):
                 entry.root_path, remote, ""
             )
         except RuntimeError as exc:
-            return f"/pr failed: {exc}"
+            return _format_pr_error(exc)
         if branch not in remote_branches:
             return ui_message(
                 "pr.remote_branch_missing",
@@ -314,7 +334,7 @@ class PrCommand(TelegramCommand):
         try:
             base_branch = ctx.git_service.resolve_integrate_branch(entry.root_path)
         except RuntimeError as exc:
-            return f"/pr failed: {exc}"
+            return _format_pr_error(exc)
 
         title, body = self._build_pr_content(branch, project_name, message.chat_id, ctx)
 
@@ -327,7 +347,7 @@ class PrCommand(TelegramCommand):
                 body,
             )
         except RuntimeError as exc:
-            return f"/pr failed: {exc}"
+            return _format_pr_error(exc)
 
         return f"PR created:\n{pr_url}"
 

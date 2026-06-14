@@ -378,9 +378,10 @@ def create_admin_router(
         report = check_prerequisites()
         installed = [cli.name for cli in report.ai_clis if cli.installed]
         _adminlog.info(
-            "prerequisites queried ngrok_ok=%s ai_clis=%s",
+            "prerequisites queried ngrok_ok=%s ai_clis=%s github_cli=%s",
             report.ngrok_ok,
             ",".join(installed) or "-",
+            report.github_cli.installed,
         )
         return report.model_dump()
 

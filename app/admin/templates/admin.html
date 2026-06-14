@@ -248,9 +248,12 @@
       const installed = (report.ai_clis || []).filter((c) => c.installed).map((c) => c.name);
       const aiOk = installed.length > 0;
       const aiDetail = aiOk ? installed.join(", ") : i18n.t("setup.aiCliNone");
+      const ghOk = !!(report.github_cli && report.github_cli.installed);
+      const ghDetail = ghOk ? "gh" : i18n.t("setup.githubCliNone");
       $("#setup-prereq").innerHTML =
         renderPrereqRow(!!report.ngrok_ok, i18n.t("setup.ngrok"), ngrokDetail) +
-        renderPrereqRow(aiOk, i18n.t("setup.aiCli"), aiDetail);
+        renderPrereqRow(aiOk, i18n.t("setup.aiCli"), aiDetail) +
+        renderPrereqRow(ghOk, i18n.t("setup.githubCli"), ghDetail);
     }
 
     async function loadPrerequisites() {

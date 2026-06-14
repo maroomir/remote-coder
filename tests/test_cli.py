@@ -88,6 +88,7 @@ def test_cli_doctor_reports_status(monkeypatch, capsys) -> None:
     out = capsys.readouterr().out
     assert "ngrok" in out
     assert "claude" in out
+    assert "GitHub CLI" in out
 
 
 def test_cli_up_no_tunnel_forwards_server_args(monkeypatch) -> None:

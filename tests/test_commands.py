@@ -834,6 +834,51 @@ def test_pr_command_creates_pr_for_remote_succeeded_job_branch(
     ctx.git_service.create_github_pr.assert_called_once()
 
 
+def test_pr_command_explains_missing_github_cli(project_registry: ProjectRegistry):
+    ctx = _ctx(project_registry)
+    _add_succeeded_job_branch(ctx, "remote-current")
+    ctx.git_service.list_remote_branches_matching.return_value = ["remote-current"]
+    ctx.git_service.resolve_integrate_branch.return_value = "main"
+    ctx.git_service.create_github_pr.side_effect = RuntimeError(
+        "GitHub CLI (gh) is not installed or not available on PATH."
+    )
+    registry = CommandRegistry([PrCommand()])
+
+    text = registry.dispatch(
+        TelegramMessage(chat_id=42, user_id=1, text="/pr remote-current"), ctx
+    )
+
+    assert text is not None
+    assert "GitHub CLI (gh) is not installed" in text
+    assert "brew install gh" in text
+    assert "winget install --id GitHub.cli" in text
+    assert "sudo apt install gh" in text
+    assert "gh auth login" in text
+    assert "remote-coder up" in text
+
+
+def test_pr_command_explains_missing_github_cli_in_korean(
+    project_registry: ProjectRegistry,
+):
+    ctx = _ctx(project_registry, advanced_settings_store=_advanced_settings_ko())
+    _add_succeeded_job_branch(ctx, "remote-current")
+    ctx.git_service.list_remote_branches_matching.return_value = ["remote-current"]
+    ctx.git_service.resolve_integrate_branch.return_value = "main"
+    ctx.git_service.create_github_pr.side_effect = RuntimeError(
+        "GitHub CLI (gh) is not installed or not available on PATH."
+    )
+    registry = CommandRegistry([PrCommand()])
+
+    text = registry.dispatch(
+        TelegramMessage(chat_id=42, user_id=1, text="/pr remote-current"), ctx
+    )
+    rendered = text.render(UiLanguage.KOREAN)
+
+    assert "GitHub CLI(gh)가 설치되어 있지 않거나 PATH에서 찾을 수 없습니다" in rendered
+    assert "GitHub 로그인: `gh auth login`" in rendered
+    assert "Remote AI Coder 재시작: `remote-coder up`" in rendered
+
+
 def test_pr_content_uses_ascii_fallback_for_non_ascii_conversation(project_registry: ProjectRegistry):
     ctx = _ctx(project_registry)
     ctx.conversation_store = Mock()
