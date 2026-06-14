@@ -100,8 +100,9 @@ HELP_TEXT = "\n".join(
         "- no commit",
         "- plan: <natural language> or /plan <natural language> - plan mode (plan only; no code changes)",
         "- ask: <natural language> or /ask <natural language> - ask mode (analysis and answers; no code edits)",
+        "- research: <natural language> or /research <natural language> - research mode (internet-backed answers; no code edits)",
         "- fix: <natural language> or /fix - fix mode (reply to a job result; amends that commit)",
-        "- Korean aliases 계획:, 질문:, and 수정: instead of plan:/ask:/fix: (colons `:` or full-width `：` allowed)",
+        "- Korean aliases 계획:, 질문:, 조사:, and 수정: instead of plan:/ask:/research:/fix: (colons `:` or full-width `：` allowed)",
         "",
         "📋 Commands",
         render_command_list(_HELP_COMMAND_ROWS),
@@ -153,6 +154,22 @@ HELP_ASK_TOPIC = "\n".join(
         "- ask: how do I run pytest in this project?",
         "- /ask explain JobManager.run stages",
         "- 질문：what this error line means",
+        "",
+        "See /help for more options.",
+    ]
+)
+
+HELP_RESEARCH_TOPIC = "\n".join(
+    [
+        "🔎 Research mode (research)",
+        "",
+        "Answer research questions using repository context and internet search when useful; no code edits, "
+        "commits, or pushes. Jobs are accepted like agent mode after confirmation (`y`/`Y` or inline buttons).",
+        "",
+        "💡 Examples",
+        "- research: compare webhook retry strategies for this service",
+        "- /research model: codex find current FastAPI deployment guidance",
+        "- 조사：Telegram webhook 보안 권장사항 조사",
         "",
         "See /help for more options.",
     ]

@@ -51,6 +51,32 @@ def test_gemini_runner_plan_mode_skips_yolo_flags(mock_popen, caplog):
 
 
 @patch("app.ai.base.subprocess.Popen")
+def test_gemini_runner_research_mode_skips_yolo_flags(mock_popen):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("answer", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
+
+    GeminiRunner().run(
+        RunnerInput(
+            instruction="compare webhook guidance",
+            cwd=Path("."),
+            timeout_seconds=10,
+            mode=JobMode.RESEARCH,
+        )
+    )
+
+    command = mock_popen.call_args.args[0]
+    assert command[0] == "gemini"
+    assert "--skip-trust" in command
+    assert "--approval-mode" not in command
+    prompt_arg = command[command.index("-p") + 1]
+    assert "RESEARCH mode" in prompt_arg
+    assert "compare webhook guidance" in prompt_arg
+
+
+@patch("app.ai.base.subprocess.Popen")
 def test_gemini_runner_passes_model_id(mock_popen):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("done", "")

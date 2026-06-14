@@ -37,7 +37,7 @@ class CommandRegistry:
                 ctx.confirmation_store.pop(scope_project, message.chat_id)
                 return init_cmd.execute(message, ctx)
 
-        if head in {"/plan", "/ask", "/fix"}:
+        if head in {"/plan", "/ask", "/research", "/fix"}:
             return None
 
         pending = ctx.confirmation_store.get(scope_project, message.chat_id)
@@ -88,6 +88,13 @@ class CommandRegistry:
             {
                 "command": "ask",
                 "description": translate_text("ask mode message (example: /ask explain the JobManager role)", language),
+            },
+            {
+                "command": "research",
+                "description": translate_text(
+                    "research mode message (example: /research compare webhook retry strategies)",
+                    language,
+                ),
             },
         ]
 

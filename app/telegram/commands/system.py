@@ -6,6 +6,7 @@ from app.telegram.commands.base import (
     HELP_ASK_TOPIC,
     HELP_FIX_TOPIC,
     HELP_PLAN_TOPIC,
+    HELP_RESEARCH_TOPIC,
     HELP_TEXT,
     CommandContext,
     InlineButton,
@@ -98,6 +99,7 @@ class StartCommand(TelegramCommand):
                         InlineButton("AGENTS mode", "/help agent"),
                         InlineButton("PLAN mode", "/help plan"),
                         InlineButton("ASK mode", "/help ask"),
+                        InlineButton("RESEARCH mode", "/help research"),
                         InlineButton("FIX mode", "/help fix"),
                     ],
                 ],
@@ -121,7 +123,13 @@ class HelpCommand(TelegramCommand):
         tokens = message.text.strip().split()
         if len(tokens) >= 2:
             raw = tokens[1]
-            topic_aliases = {"에이전트": "agent", "계획": "plan", "질문": "ask", "수정": "fix"}
+            topic_aliases = {
+                "에이전트": "agent",
+                "계획": "plan",
+                "질문": "ask",
+                "조사": "research",
+                "수정": "fix",
+            }
             topic = topic_aliases.get(raw, raw.lower())
             if topic in ("agent", "agents"):
                 return HELP_AGENT_TOPIC
@@ -129,6 +137,8 @@ class HelpCommand(TelegramCommand):
                 return HELP_PLAN_TOPIC
             if topic == "ask":
                 return HELP_ASK_TOPIC
+            if topic == "research":
+                return HELP_RESEARCH_TOPIC
             if topic == "fix":
                 return HELP_FIX_TOPIC
         if len(tokens) >= 2 and self._registry is not None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 from app.git.service import GitWorktreeService
-from app.jobs.schemas import JobMode, JobRequest
+from app.jobs.schemas import JobMode, JobRequest, is_read_only_job_mode
 from app.models import ModelName
 from app.projects.registry import ProjectRegistry
 from app.admin.advanced_settings import CONVERSATION_REPLY_SNIPPET_MAX_CHARS_DEFAULT
@@ -34,9 +34,9 @@ class CommandParseError(ValueError):
 
 _MODEL_OPTION_PATTERN = "|".join(model.value for model in ModelName)
 
-_SLASH_PLAN_ASK_FIX = re.compile(r"^/(plan|ask|fix)\b\s*", re.IGNORECASE)
-_PREFIX_PLAN_ASK_FIX = re.compile(
-    r"^(plan|ask|fix|계획|질문|수정)\s*[:：]\s*",
+_SLASH_MODE_FIX = re.compile(r"^/(plan|ask|research|fix)\b\s*", re.IGNORECASE)
+_PREFIX_MODE_FIX = re.compile(
+    r"^(plan|ask|research|fix|계획|질문|조사|수정)\s*[:：]\s*",
     re.IGNORECASE,
 )
 _REPLY_JOB_ID_PATTERN = re.compile(
@@ -45,12 +45,14 @@ _REPLY_JOB_ID_PATTERN = re.compile(
 )
 
 
-def _job_mode_from_plan_ask_keyword(key: str) -> JobMode:
+def _job_mode_from_keyword(key: str) -> JobMode:
     lowered = key.lower()
     if lowered in ("plan", "계획"):
         return JobMode.PLAN
     if lowered in ("ask", "질문"):
         return JobMode.ASK
+    if lowered in ("research", "조사"):
+        return JobMode.RESEARCH
     raise AssertionError(key)
 
 
@@ -133,21 +135,21 @@ class CommandParser:
     @staticmethod
     def _strip_leading_job_mode(text: str) -> tuple[JobMode | None, str, bool]:
         stripped = text.strip()
-        slash = _SLASH_PLAN_ASK_FIX.match(stripped)
+        slash = _SLASH_MODE_FIX.match(stripped)
         if slash:
             key = slash.group(1).lower()
             remainder = stripped[slash.end() :].strip()
             if is_fix_mode_keyword(key):
                 return None, remainder, True
-            mode = JobMode.PLAN if key == "plan" else JobMode.ASK
+            mode = _job_mode_from_keyword(key)
             return mode, remainder, False
-        prefix = _PREFIX_PLAN_ASK_FIX.match(stripped)
+        prefix = _PREFIX_MODE_FIX.match(stripped)
         if prefix:
             key = prefix.group(1)
             remainder = stripped[prefix.end() :].strip()
             if is_fix_mode_keyword(key):
                 return None, remainder, True
-            mode = _job_mode_from_plan_ask_keyword(key)
+            mode = _job_mode_from_keyword(key)
             return mode, remainder, False
         return JobMode.AGENT, stripped, False
 
@@ -178,12 +180,12 @@ class CommandParser:
             raise CommandParseError(command_parse_error_fix_requires_target(lang))
 
         model, branch, commit, remaining = self._extract_options(stripped)
-        if mode in (JobMode.PLAN, JobMode.ASK):
+        if is_read_only_job_mode(mode):
             branch = None
             commit = False
 
         if not remaining:
-            if mode in (JobMode.PLAN, JobMode.ASK):
+            if is_read_only_job_mode(mode):
                 raise CommandParseError(command_parse_error_empty_instruction_plan_ask(lang))
             raise CommandParseError(command_parse_error_empty_instruction(lang))
 
@@ -290,7 +292,7 @@ class CommandParser:
         else:
             instruction = instruction_body
 
-        effective_commit = False if mode in (JobMode.PLAN, JobMode.ASK) else (True if commit is None else commit)
+        effective_commit = False if is_read_only_job_mode(mode) else (True if commit is None else commit)
 
         return JobRequest(
             project=project_name,

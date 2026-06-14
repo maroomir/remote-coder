@@ -648,12 +648,28 @@ def test_parse_natural_ask_prefix_with_spaces_after_colon(project_registry: Proj
     assert req.instruction == "explain modules"
 
 
+def test_parse_natural_research_prefix_sets_read_only_mode(project_registry: ProjectRegistry):
+    parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
+    req = parser.parse_natural(
+        "research: branch: feature/foo no commit compare webhook retry guidance",
+        "remote-coder",
+        chat_id=1,
+        user_id=2,
+    )
+    assert req.mode == JobMode.RESEARCH
+    assert req.instruction == "compare webhook retry guidance"
+    assert req.branch is None
+    assert not req.commit
+
+
 def test_parse_natural_plan_or_ask_empty_raises(project_registry: ProjectRegistry):
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
     with pytest.raises(CommandParseError, match="empty"):
         parser.parse_natural("plan:", "remote-coder", chat_id=1, user_id=2)
     with pytest.raises(CommandParseError, match="empty"):
         parser.parse_natural("ask:   ", "remote-coder", chat_id=1, user_id=2)
+    with pytest.raises(CommandParseError, match="empty"):
+        parser.parse_natural("research:   ", "remote-coder", chat_id=1, user_id=2)
 
 
 def test_parse_natural_plan_with_model_option(project_registry: ProjectRegistry):
@@ -732,6 +748,9 @@ def test_parse_natural_slash_plan_and_ask(project_registry: ProjectRegistry):
     req2 = parser.parse_natural("/ask   what is pytest?", "remote-coder", chat_id=1, user_id=2)
     assert req2.mode == JobMode.ASK
     assert "pytest" in req2.instruction
+    req3 = parser.parse_natural("/RESEARCH   compare sources", "remote-coder", chat_id=1, user_id=2)
+    assert req3.mode == JobMode.RESEARCH
+    assert "sources" in req3.instruction
 
 
 def test_parse_natural_fullwidth_colon_prefix(project_registry: ProjectRegistry):
@@ -739,6 +758,9 @@ def test_parse_natural_fullwidth_colon_prefix(project_registry: ProjectRegistry)
     req = parser.parse_natural("plan：전각 콜론 본문", "remote-coder", chat_id=1, user_id=2)
     assert req.mode == JobMode.PLAN
     assert "전각" in req.instruction
+    req2 = parser.parse_natural("research：full width", "remote-coder", chat_id=1, user_id=2)
+    assert req2.mode == JobMode.RESEARCH
+    assert req2.instruction == "full width"
 
 
 def test_parse_natural_korean_prefix_aliases(project_registry: ProjectRegistry):
@@ -749,6 +771,9 @@ def test_parse_natural_korean_prefix_aliases(project_registry: ProjectRegistry):
     req2 = parser.parse_natural("질문: 설명해줘", "remote-coder", chat_id=1, user_id=2)
     assert req2.mode == JobMode.ASK
     assert req2.instruction == "설명해줘"
+    req3 = parser.parse_natural("조사: 최신 권장사항", "remote-coder", chat_id=1, user_id=2)
+    assert req3.mode == JobMode.RESEARCH
+    assert req3.instruction == "최신 권장사항"
 
 
 def test_parse_fix_instruction_prefix(project_registry: ProjectRegistry):

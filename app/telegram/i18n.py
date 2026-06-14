@@ -120,12 +120,14 @@ def command_parse_error_empty_instruction_plan_ask(language: UiLanguage) -> str:
         return (
             "작업 지시문이 비어 있습니다.\n\n"
             "예: plan: 로그인 수정 계획 세워줘\n"
-            "예: /ask JobManager 흐름 설명해줘"
+            "예: /ask JobManager 흐름 설명해줘\n"
+            "예: /research webhook 보안 권장사항 조사"
         )
     return (
         "The work instruction is empty.\n\n"
         "Example: plan: outline the login refactor\n"
-        "Example: /ask explain JobManager routing"
+        "Example: /ask explain JobManager routing\n"
+        "Example: /research compare webhook security guidance"
     )
 
 
@@ -191,6 +193,7 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("옵션", "Options"),
     ("계획 모드", "plan mode"),
     ("질문 모드", "ask mode"),
+    ("조사 모드", "research mode"),
     ("명령어 목록:", "Commands:"),
     ("메뉴와 프로젝트 상태를 확인합니다", "Show the menu and project status"),
     ("사용 가능한 명령어를 확인합니다", "Show available commands"),
@@ -233,6 +236,7 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ),
     ("계획 모드 메시지", "plan mode message"),
     ("질문 모드 메시지", "ask mode message"),
+    ("조사 모드 메시지", "research mode message"),
     ("로그인 흐름 검토", "review login flow"),
     ("역할 설명", "explain the role"),
     ("기본 모델 변경", "Change the default model"),
@@ -305,6 +309,7 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("🤖 AGENTS 모드 (agent)", "🤖 AGENTS mode (agent)"),
     ("📐 Plan 모드 (plan)", "📐 Plan mode (plan)"),
     ("❓ Ask 모드 (ask)", "❓ Ask mode (ask)"),
+    ("🔎 Research 모드 (research)", "🔎 Research mode (research)"),
     ("🔧 Fix 모드 (fix)", "🔧 Fix mode (fix)"),
     ("💡 팁: 작업 결과에 reply 후 `fix: ...`를 보내면 그 커밋을 보완합니다.", "💡 Tip: Reply to a job result and send `fix: ...` to amend that commit."),
     ("등록 정보 없음", "not registered"),
@@ -413,6 +418,7 @@ _TEXT_REPLACEMENTS_KO_TO_EN_RAW: tuple[tuple[str, str], ...] = (
     ("로컬 브랜치가 없습니다:", "No local branch:"),
     ("plan 모드로 실행할 작업 지시문을 보내주세요.", "Send the instruction to run in plan mode."),
     ("ask 모드로 실행할 질문을 보내주세요.", "Send the question to run in ask mode."),
+    ("research 모드로 실행할 조사 질문을 보내주세요.", "Send the research question to run in research mode."),
     ("읽기 전용 · 커밋·push 없음", "read-only — no commit/push"),
     ("코드 수정·커밋·push 가능", "allows edit, commit, and push"),
     ("요청 브랜치", "Requested branch"),
@@ -644,6 +650,7 @@ _BUTTON_LABELS = {
     "AGENTS mode": "AGENTS 모드",
     "PLAN mode": "PLAN 모드",
     "ASK mode": "ASK 모드",
+    "RESEARCH mode": "RESEARCH 모드",
 }
 
 

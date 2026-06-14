@@ -1,7 +1,7 @@
 import logging
 from unittest.mock import Mock
 
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, FastAPI
 from fastapi.testclient import TestClient
 
 from app.admin.advanced_settings import AdvancedSettings
@@ -28,7 +28,10 @@ from app.telegram.commands import (
 )
 from app.telegram.confirmations import InMemoryConfirmationStore
 from app.telegram.conversation import SQLiteConversationStore
+from app.telegram.handlers.natural_flow import NaturalFlow
+from app.telegram.handlers.update_handler import WebhookUpdateHandler
 from app.telegram.model_preferences import InMemoryModelPreferenceStore
+from app.telegram.plan_decisions_flow import PlanDecisionStore
 from app.telegram.parser import CommandParser
 from app.telegram.webhook import (
     TelegramUpdate,
@@ -649,6 +652,110 @@ def test_webhook_empty_slash_ask_waits_for_next_instruction(project_registry):
     assert pending.job_request.mode == JobMode.ASK
     assert "routing" in pending.job_request.instruction
     assert "- Mode: ask" in notifier.sent_with_buttons[-1][1]
+
+
+def test_webhook_empty_slash_research_waits_for_next_instruction(project_registry):
+    store = InMemoryJobStore()
+    notifier = DummyNotifier()
+    git_service = Mock()
+    git_service.get_current_branch.return_value = "main"
+    command_context = CommandContext(
+        job_store=store,
+        default_model=ModelName.CLAUDE,
+        project_registry=project_registry,
+        model_preferences=InMemoryModelPreferenceStore(default_model=ModelName.CLAUDE),
+        project_name=None,
+        git_service=git_service,
+        git_remote_name="origin",
+        conversation_store=None,
+        confirmation_store=InMemoryConfirmationStore(),
+    )
+    mgr = _bot_manager_for_project(
+        project_registry,
+        auth_service=AllowlistAuthService({123}),
+        notifier=notifier,
+        command_context=command_context,
+    )
+    parser = CommandParser(
+        project_registry=project_registry,
+        default_model=ModelName.CLAUDE,
+    )
+    natural_flow = NaturalFlow(parser=parser)
+
+    def handle_pending(req, pending):
+        if pending is None:
+            return None
+        return natural_flow.handle_pending(req, pending)
+
+    handler = WebhookUpdateHandler(
+        bot_instance_manager=mgr,
+        recent_updates=_RecentUpdateTracker(),
+        plan_decision_store=PlanDecisionStore(),
+        handle_callback_query=lambda *args: {"status": "ignored"},
+        handle_pending=handle_pending,
+        handle_fix_intent=lambda req: None,
+        handle_command=lambda req: None,
+        handle_natural=natural_flow.handle_natural,
+        natural_flow_factory=lambda: natural_flow,
+        fix_flow_factory=lambda: None,
+    )
+    route_key = compute_token_hash_prefix(
+        project_registry.get("remote-coder").bot_token.get_secret_value()
+    )
+
+    background_tasks = BackgroundTasks()
+    response = handler.handle(
+        route_key,
+        TelegramUpdate.model_validate(
+            {
+                "update_id": 132,
+                "message": {
+                    "message_id": 132,
+                    "text": "/research",
+                    "chat": {"id": 123},
+                    "from": {"id": 999},
+                },
+            }
+        ),
+        background_tasks,
+        None,
+    )
+
+    assert response == {"status": "ok"}
+    assert background_tasks.tasks[0].args[1].startswith(
+        "Send the research question to run in research mode"
+    )
+    pending_input = command_context.confirmation_store.get("remote-coder", 123)
+    assert pending_input is not None
+    assert pending_input.action == JobMode.RESEARCH.value
+    assert pending_input.job_request is None
+
+    followup_background_tasks = BackgroundTasks()
+    followup = handler.handle(
+        route_key,
+        TelegramUpdate.model_validate(
+            {
+                "update_id": 133,
+                "message": {
+                    "message_id": 133,
+                    "text": "model: codex compare webhook security",
+                    "chat": {"id": 123},
+                    "from": {"id": 999},
+                },
+            }
+        ),
+        followup_background_tasks,
+        None,
+    )
+
+    assert followup == {"status": "ok"}
+    pending = command_context.confirmation_store.get("remote-coder", 123)
+    assert pending is not None
+    assert pending.job_request is not None
+    assert pending.job_request.mode == JobMode.RESEARCH
+    assert pending.job_request.model == ModelName.CODEX
+    assert "webhook security" in pending.job_request.instruction
+    assert "- Mode: research" in followup_background_tasks.tasks[0].args[1]
 
 
 def test_webhook_init_cancels_empty_slash_plan_wait(project_registry):

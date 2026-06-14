@@ -49,6 +49,30 @@ def test_claude_runner_plan_wraps_prompt_with_read_only_prefix(mock_popen, caplo
 
 
 @patch("app.ai.base.subprocess.Popen")
+def test_claude_runner_research_wraps_prompt_with_read_only_prefix(mock_popen):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("research out", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
+
+    ClaudeRunner().run(
+        RunnerInput(
+            instruction="compare webhook guidance",
+            cwd=Path("."),
+            timeout_seconds=10,
+            mode=JobMode.RESEARCH,
+        )
+    )
+
+    cmd = mock_popen.call_args.args[0]
+    assert cmd[0] == "claude" and cmd[1] == "-p"
+    assert "RESEARCH mode" in cmd[2]
+    assert "compare webhook guidance" in cmd[2]
+    assert cmd[-1] == "--dangerously-skip-permissions"
+
+
+@patch("app.ai.base.subprocess.Popen")
 def test_claude_runner_passes_model_id(mock_popen):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("done", "")

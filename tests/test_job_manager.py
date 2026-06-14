@@ -466,6 +466,53 @@ def test_job_manager_plan_mode_skips_git_commit_push_and_branch(test_settings, p
     assert runner.run.call_args.args[0].mode == JobMode.PLAN
 
 
+def test_job_manager_research_mode_skips_git_commit_push_and_branch(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = Path("/tmp/wt-research")
+    factory = Mock()
+    runner = Mock()
+    runner.run.return_value = RunnerResult(
+        exit_code=0, stdout="research text", stderr="", started_at=None, finished_at=None
+    )
+    factory.create.return_value = runner
+    branch_strategy = Mock()
+    notifier = Mock()
+
+    manager = JobManager(
+        test_settings,
+        store,
+        git_service,
+        factory,
+        branch_strategy,
+        lambda _: notifier,
+        project_registry,
+    )
+    request = JobRequest(
+        project="remote-coder",
+        model=ModelName.CLAUDE,
+        instruction="compare sources",
+        mode=JobMode.RESEARCH,
+        branch="feature-x",
+        chat_id=123,
+        requested_by=123,
+    )
+    job = manager.submit(request)
+    final_job = manager.run(job.id)
+
+    assert final_job.status.value == "succeeded"
+    assert final_job.branch is None
+    assert final_job.commit_hash is None
+    assert final_job.changed_files == []
+    git_service.prepare_detached_worktree.assert_called_once()
+    git_service.collect_changes.assert_not_called()
+    git_service.commit_all.assert_not_called()
+    git_service.push_branch.assert_not_called()
+    branch_strategy.make_branch_name.assert_not_called()
+    git_service.cleanup_worktree.assert_called_once()
+    assert runner.run.call_args.args[0].mode == JobMode.RESEARCH
+
+
 def test_job_manager_plan_success_cleans_worktree_despite_keep_flag(test_settings, project_registry):
     store = InMemoryJobStore()
     git_service = Mock()

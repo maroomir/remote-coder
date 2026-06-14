@@ -15,7 +15,7 @@ Run Claude Code, Codex, or Gemini on your local development machine by sending a
 - Claude, Codex, and Gemini runners behind the same job flow.
 - Reply-linked jobs continue the same AI CLI session, so follow-ups build on prior context.
 - Local admin UI for project setup, advanced settings, logs, and conversation memory.
-- Read-only `plan:` and `ask:` modes when you want analysis without commits. PLAN mode asks open decisions through inline buttons first, then finalizes the plan from your answers.
+- Read-only `plan:`, `ask:`, and `research:` modes when you want analysis without commits. PLAN mode asks open decisions through inline buttons first, then finalizes the plan from your answers; RESEARCH mode asks the selected AI CLI to use internet search when useful.
 
 ## Quick Start
 
@@ -90,6 +90,7 @@ Natural-language examples:
 Fix the login validation bug with model: codex
 plan: outline the migration before changing code
 /ask what test command does this repo use?
+/research compare current Telegram webhook security guidance
 수정: 방금 작업에서 README 문구만 더 간결하게 바꿔줘
 ```
 

@@ -6,7 +6,7 @@ from pathlib import Path
 from app.ai.base import RunnerInput
 from app.git.commit_message import CommitMessageFormatter
 from app.jobs.plan_decisions import PlanDecisionQuestion, parse_plan_decisions
-from app.jobs.schemas import Job, JobMode
+from app.jobs.schemas import Job, JobMode, is_read_only_job_mode
 from app.monitoring.events import EventLogger
 
 _joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
@@ -50,7 +50,7 @@ def run_job(manager, job_id: str) -> Job:
     created_worktree_for_job = False
     failed_stage: str | None = None
     remote = manager._effective_git_remote_name()
-    read_only_job = job.request.mode in (JobMode.PLAN, JobMode.ASK)
+    read_only_job = is_read_only_job_mode(job.request.mode)
     plan_decision_questions: list[PlanDecisionQuestion] | None = None
     try:
         job.mark_running()
@@ -238,9 +238,7 @@ def run_job(manager, job_id: str) -> Job:
     finally:
         manager._cancel_events.pop(job_id, None)
         manager._cancelled_job_ids.discard(job_id)
-        read_only_succeeded = (
-            job.request.mode in (JobMode.PLAN, JobMode.ASK) and job.status.value == "succeeded"
-        )
+        read_only_succeeded = is_read_only_job_mode(job.request.mode) and job.status.value == "succeeded"
         cleanup_on_success = read_only_succeeded or not manager._effective_keep_worktree_on_success()
         _joblog.info(
             "job finalizing status=%s created_worktree=%s cleanup_on_success=%s",

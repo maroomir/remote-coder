@@ -57,6 +57,18 @@ _PLAN_DECISIONS_INSTRUCTION = (
 )
 
 
+_RESEARCH_INSTRUCTION = (
+    "You are in RESEARCH mode. Read the repository context and answer the user's research "
+    "question. Do not modify files.\n\n"
+    "Use internet search when it is useful or necessary for the question, similar to a deep "
+    "research workflow. Compare multiple perspectives or sources when possible, and clearly "
+    "separate repository-derived facts from external findings. Include citations or source "
+    "links for external claims, call out uncertainty or limitations, and finish with a direct "
+    "answer to the user's problem.\n\n"
+    "User research request:\n"
+)
+
+
 def instruction_for_runner_mode(instruction: str, mode: JobMode) -> str:
     if mode == JobMode.PLAN:
         return f"{_PLAN_DECISIONS_INSTRUCTION}{instruction}"
@@ -66,6 +78,8 @@ def instruction_for_runner_mode(instruction: str, mode: JobMode) -> str:
             "Do not modify files.\n\n"
             f"User question:\n{instruction}"
         )
+    if mode == JobMode.RESEARCH:
+        return f"{_RESEARCH_INSTRUCTION}{instruction}"
     return instruction
 
 

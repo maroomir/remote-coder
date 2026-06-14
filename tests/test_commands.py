@@ -94,7 +94,7 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert text.startswith("🧭 Help")
     assert "Send work requests as regular messages." in text
     assert "⚙️ Options\n- model:\n- branch:\n- no commit" in text
-    assert "/plan" in text and "/ask" in text
+    assert "/plan" in text and "/ask" in text and "/research" in text
     assert "📋 Commands" in text
     assert "/clear branch:" not in text
     assert "/clear" in text and "<branch|worktrees|memory>" in text
@@ -153,6 +153,7 @@ def test_default_bot_commands_expose_telegram_menu_entries():
         "fix",
         "plan",
         "ask",
+        "research",
     ]
     assert all("/" not in item["command"] for item in commands)
     assert all(item["description"] for item in commands)
@@ -213,6 +214,7 @@ def test_start_modes_shows_mode_help_buttons(project_registry: ProjectRegistry):
             InlineButton("AGENTS mode", "/help agent"),
             InlineButton("PLAN mode", "/help plan"),
             InlineButton("ASK mode", "/help ask"),
+            InlineButton("RESEARCH mode", "/help research"),
             InlineButton("FIX mode", "/help fix"),
         ],
         [InlineButton("‹ Back", "/start"), InlineButton("✖ Close", "__close__")],
@@ -247,14 +249,15 @@ def test_start_body_is_three_second_compressed(project_registry: ProjectRegistry
     assert "worktree_base_dir" not in response.text
 
 
-def test_dispatch_plan_and_ask_returns_none_for_natural_flow(project_registry: ProjectRegistry):
+def test_dispatch_plan_ask_and_research_returns_none_for_natural_flow(project_registry: ProjectRegistry):
     registry = CommandRegistry(build_default_commands())
     ctx = _ctx(project_registry)
     assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/plan outline only"), ctx) is None
     assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/ask explain routing"), ctx) is None
+    assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/research compare docs"), ctx) is None
 
 
-def test_help_agent_plan_and_ask_topics(project_registry: ProjectRegistry):
+def test_help_agent_plan_ask_and_research_topics(project_registry: ProjectRegistry):
     registry = CommandRegistry(build_default_commands())
     ctx = _ctx(project_registry, advanced_settings_store=_advanced_settings_ko())
     agent_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help agent"), ctx)
@@ -270,9 +273,14 @@ def test_help_agent_plan_and_ask_topics(project_registry: ProjectRegistry):
     assert ask_text is not None
     assert "Ask mode" in ask_text
     assert "/ask" in ask_text
+    research_text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help research"), ctx)
+    assert research_text is not None
+    assert "Research mode" in research_text
+    assert "/research" in research_text
     assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help 에이전트"), ctx) == agent_text
     assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help 계획"), ctx) == plan_text
     assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help 질문"), ctx) == ask_text
+    assert registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/help 조사"), ctx) == research_text
 
 
 def test_help_plan_topic_has_no_buttons(project_registry: ProjectRegistry):

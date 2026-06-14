@@ -177,7 +177,12 @@ class NaturalFlow:
     ) -> dict[str, str]:
         cc = req.command_context
         cc.confirmation_store.pop(req.scope_project, req.chat_id)
-        mode_prefix = "/plan" if pending.action == JobMode.PLAN.value else "/ask"
+        mode_prefixes = {
+            JobMode.PLAN.value: "/plan",
+            JobMode.ASK.value: "/ask",
+            JobMode.RESEARCH.value: "/research",
+        }
+        mode_prefix = mode_prefixes.get(pending.action, "/ask")
         try:
             parsed_request = self._parser.parse_natural(
                 f"{mode_prefix} {req.message.text}",

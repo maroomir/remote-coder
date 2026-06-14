@@ -12,13 +12,17 @@ from app.telegram.notifier import TelegramNotifier
 
 
 @respx.mock
-def test_notifier_send_job_accepted_includes_mode_for_plan_ask():
+def test_notifier_send_job_accepted_includes_mode_for_read_only_modes():
     route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
         return_value=Response(200, json={"ok": True})
     )
     store = type("Store", (), {"get": lambda self: AdvancedSettings(ui_language=UiLanguage.KOREAN)})()
     notifier = TelegramNotifier("token", store)
-    for mode, expected in ((JobMode.PLAN, "모드: plan"), (JobMode.ASK, "모드: ask")):
+    for mode, expected in (
+        (JobMode.PLAN, "모드: plan"),
+        (JobMode.ASK, "모드: ask"),
+        (JobMode.RESEARCH, "모드: research"),
+    ):
         route.calls.clear()
         job = Job(
             id="j-mode",
@@ -146,6 +150,32 @@ def test_notifier_send_job_result_ask_succeeded_compact_format():
     payload = route.calls[0].request.content.decode()
     assert "[ask] Completed" in payload
     assert "answer text" in payload
+    assert "Branch:" not in payload
+
+
+@respx.mock
+def test_notifier_send_job_result_research_succeeded_compact_format():
+    route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(
+        return_value=Response(200, json={"ok": True})
+    )
+    notifier = TelegramNotifier("token")
+    job = Job(
+        id="j-research",
+        request=JobRequest(
+            project="proj",
+            model=ModelName.CODEX,
+            instruction="q",
+            chat_id=2,
+            requested_by=1,
+            mode=JobMode.RESEARCH,
+        ),
+        status=JobStatus.SUCCEEDED,
+        runner_stdout_summary="researched answer",
+    )
+    notifier.send_job_result(job)
+    payload = route.calls[0].request.content.decode()
+    assert "[research] Completed" in payload
+    assert "researched answer" in payload
     assert "Branch:" not in payload
 
 
@@ -595,7 +625,7 @@ def test_build_job_accepted_includes_session_id_for_all_job_modes():
     from app.telegram.notifier import build_job_accepted_message
 
     sid = "44444444-4444-4444-4444-444444444444"
-    for mode in (JobMode.AGENT, JobMode.PLAN, JobMode.ASK, JobMode.AGENT_FIX):
+    for mode in (JobMode.AGENT, JobMode.PLAN, JobMode.ASK, JobMode.RESEARCH, JobMode.AGENT_FIX):
         text, _ = build_job_accepted_message(
             _job_with_session(sid, mode=mode, status=JobStatus.QUEUED)
         )
@@ -606,7 +636,7 @@ def test_build_job_result_includes_session_id_for_all_job_modes():
     from app.telegram.notifier import build_job_result_message
 
     sid = "55555555-5555-5555-5555-555555555555"
-    for mode in (JobMode.AGENT, JobMode.PLAN, JobMode.ASK, JobMode.AGENT_FIX):
+    for mode in (JobMode.AGENT, JobMode.PLAN, JobMode.ASK, JobMode.RESEARCH, JobMode.AGENT_FIX):
         job = _job_with_session(sid, mode=mode)
         if mode in (JobMode.AGENT, JobMode.AGENT_FIX):
             job.branch = "remote-x"
@@ -621,7 +651,7 @@ def test_build_job_result_includes_session_id_for_failed_and_cancelled_modes():
     from app.telegram.notifier import build_job_result_message
 
     sid = "66666666-6666-6666-6666-666666666666"
-    for mode in (JobMode.AGENT, JobMode.PLAN, JobMode.ASK, JobMode.AGENT_FIX):
+    for mode in (JobMode.AGENT, JobMode.PLAN, JobMode.ASK, JobMode.RESEARCH, JobMode.AGENT_FIX):
         failed = _job_with_session(sid, mode=mode, status=JobStatus.FAILED, error="boom")
         assert f"- Session ID: {sid}" in build_job_result_message(failed)
 
@@ -669,6 +699,7 @@ def test_build_job_result_buttons_empty_for_non_plan_or_failure():
     from app.telegram.notifier import build_job_result_buttons
 
     assert build_job_result_buttons(_job(mode=JobMode.ASK, status=JobStatus.SUCCEEDED)) == []
+    assert build_job_result_buttons(_job(mode=JobMode.RESEARCH, status=JobStatus.SUCCEEDED)) == []
     assert build_job_result_buttons(_job(mode=JobMode.AGENT, status=JobStatus.SUCCEEDED)) == []
     assert build_job_result_buttons(_job(mode=JobMode.PLAN, status=JobStatus.FAILED)) == []
 

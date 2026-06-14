@@ -90,6 +90,29 @@ def test_codex_runner_plan_mode_forces_read_only_sandbox(mock_popen, caplog):
 
 
 @patch("app.ai.base.subprocess.Popen")
+def test_codex_runner_research_mode_forces_read_only_sandbox(mock_popen):
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("", "")
+    mock_proc.returncode = 0
+    mock_proc.poll.return_value = 0
+    mock_popen.return_value = mock_proc
+
+    CodexRunner(sandbox=CodexSandboxMode.WORKSPACE_WRITE).run(
+        RunnerInput(
+            instruction="compare webhook guidance",
+            cwd=Path("."),
+            timeout_seconds=10,
+            mode=JobMode.RESEARCH,
+        )
+    )
+
+    command = mock_popen.call_args.args[0]
+    assert command[0:4] == ["codex", "exec", "--sandbox", "read-only"]
+    assert "RESEARCH mode" in command[4]
+    assert "compare webhook guidance" in command[4]
+
+
+@patch("app.ai.base.subprocess.Popen")
 def test_codex_runner_resumes_with_token(mock_popen):
     mock_proc = MagicMock()
     mock_proc.communicate.return_value = ("done", "")

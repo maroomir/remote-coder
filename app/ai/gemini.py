@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.ai.base import BaseCliRunner, RunnerInput, instruction_for_runner_mode
-from app.jobs.schemas import JobMode
+from app.jobs.schemas import is_read_only_job_mode
 from app.monitoring.events import EventLogger
 
 
@@ -17,7 +17,7 @@ class GeminiRunner(BaseCliRunner):
         return Path.home() / ".gemini" / "sessions"
 
     def build_argv(self, runner_input: RunnerInput) -> list[str]:
-        if runner_input.mode in (JobMode.PLAN, JobMode.ASK):
+        if is_read_only_job_mode(runner_input.mode):
             prompt = instruction_for_runner_mode(runner_input.instruction, runner_input.mode)
             argv = ["gemini", "--skip-trust", "-p", prompt]
         else:

@@ -18,3 +18,11 @@ def test_instruction_for_runner_mode_ask_prefix():
     assert "ASK mode" in out
     assert "User question:" in out
     assert "why X?" in out
+
+
+def test_instruction_for_runner_mode_research_prefix():
+    out = instruction_for_runner_mode("compare webhook security", JobMode.RESEARCH)
+    assert "RESEARCH mode" in out
+    assert "internet search" in out
+    assert "source links" in out
+    assert "compare webhook security" in out

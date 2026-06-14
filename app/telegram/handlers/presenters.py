@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.ai.model_catalog import format_model_selection
-from app.jobs.schemas import JobMode, JobRequest
+from app.jobs.schemas import JobMode, JobRequest, is_read_only_job_mode
 from app.telegram.commands import InlineButton
 from app.telegram.commands import NAV_CLOSE_CALLBACK
 
@@ -24,10 +24,8 @@ def format_natural_job_confirmation(
         f"- Work branch: {current_branch}",
         f"- Model: {format_model_selection(request.model, request.model_id)}",
     ]
-    if request.mode is JobMode.PLAN:
-        lines.append("- Mode: plan (read-only, no commit/push)")
-    elif request.mode is JobMode.ASK:
-        lines.append("- Mode: ask (read-only, no commit/push)")
+    if is_read_only_job_mode(request.mode):
+        lines.append(f"- Mode: {request.mode.value} (read-only, no commit/push)")
     else:
         lines.append("- Mode: agent (may edit code, commit, and push)")
     if request.branch:
@@ -81,6 +79,12 @@ def format_mode_input_prompt(mode: JobMode) -> str:
             "Example: Explain the JobManager flow\n"
             "Example: model: codex How do I run pytest?"
         )
+    if mode is JobMode.RESEARCH:
+        return (
+            "Send the research question to run in research mode.\n\n"
+            "Example: Compare FastAPI deployment options for this project\n"
+            "Example: model: codex Research the safest webhook retry strategy"
+        )
     raise AssertionError(mode)
 
 
@@ -98,4 +102,3 @@ def format_fix_requires_reply_message() -> str:
         "Example: reply to a job result, then send /fix\n"
         "Example: reply to a job result with fix: add missing tests"
     )
-

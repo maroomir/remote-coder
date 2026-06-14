@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from app.ai.model_catalog import format_model_selection
 from app.ai.usage import format_token_usage
 from app.jobs.plan_decisions import PLAN_EXECUTE_CALLBACK_PREFIX
-from app.jobs.schemas import Job, JobMode
+from app.jobs.schemas import Job, JobMode, is_read_only_job_mode
 from app.telegram.i18n import ui_message
 
 
@@ -22,6 +22,8 @@ def build_job_accepted_message(job: Job) -> tuple[str, list[list[OutboundButton]
         mode_line = ui_message("job.mode_line", "\n- Mode: {mode}", mode="plan")
     elif job.request.mode is JobMode.ASK:
         mode_line = ui_message("job.mode_line", "\n- Mode: {mode}", mode="ask")
+    elif job.request.mode is JobMode.RESEARCH:
+        mode_line = ui_message("job.mode_line", "\n- Mode: {mode}", mode="research")
     text = ui_message(
         "job.accepted",
         "✅ Job accepted\n\n"
@@ -131,6 +133,8 @@ def build_job_result_message(job: Job) -> str:
         mode_prefix = "[plan] "
     elif job.request.mode is JobMode.ASK:
         mode_prefix = "[ask] "
+    elif job.request.mode is JobMode.RESEARCH:
+        mode_prefix = "[research] "
 
     if job.status.value == "cancelled":
         return ui_message(
@@ -143,8 +147,7 @@ def build_job_result_message(job: Job) -> str:
         )
 
     if job.status.value == "succeeded":
-        if job.request.mode in (JobMode.PLAN, JobMode.ASK):
-            label = "plan" if job.request.mode is JobMode.PLAN else "ask"
+        if is_read_only_job_mode(job.request.mode):
             model_label = job.runner_actual_model or format_model_selection(
                 job.request.model,
                 job.request.model_id,
@@ -156,7 +159,7 @@ def build_job_result_message(job: Job) -> str:
                 "- Project: {project}\n"
                 "- Model used: {model}\n"
                 "- Token usage: {token_usage}{response_block}",
-                mode=label,
+                mode=job.request.mode.value,
                 job_id=job.id,
                 session_line=_ui_session_line(job),
                 project=job.request.project,

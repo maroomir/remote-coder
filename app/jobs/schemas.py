@@ -26,7 +26,15 @@ class JobMode(StrEnum):
     AGENT = "agent"
     PLAN = "plan"
     ASK = "ask"
+    RESEARCH = "research"
     AGENT_FIX = "agent_fix"
+
+
+READ_ONLY_JOB_MODES = frozenset({JobMode.PLAN, JobMode.ASK, JobMode.RESEARCH})
+
+
+def is_read_only_job_mode(mode: JobMode) -> bool:
+    return mode in READ_ONLY_JOB_MODES
 
 
 class FixKind(StrEnum):

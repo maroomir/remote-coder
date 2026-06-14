@@ -180,8 +180,13 @@ class WebhookUpdateHandler:
         if pending_result is not None:
             return pending_result
 
-        if message_head_lower in {"/plan", "/ask"} and len(message_tokens) == 1:
-            mode = JobMode.PLAN if message_head_lower == "/plan" else JobMode.ASK
+        if message_head_lower in {"/plan", "/ask", "/research"} and len(message_tokens) == 1:
+            mode_by_command = {
+                "/plan": JobMode.PLAN,
+                "/ask": JobMode.ASK,
+                "/research": JobMode.RESEARCH,
+            }
+            mode = mode_by_command[message_head_lower]
             return self._natural_flow_factory().prompt_for_mode_instruction(req, mode)
 
         if message_head_lower == "/fix" and len(message_tokens) == 1:
