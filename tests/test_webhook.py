@@ -165,7 +165,7 @@ class DummyNotifier:
         self.edited.append((chat_id, message_id, text, inline_buttons))
         return self.edit_returns
 
-    def send_long_text(self, chat_id: int, text: str) -> list[int]:
+    def send_long_text(self, chat_id: int, text: str, inline_buttons=None, **kwargs) -> list[int]:
         self.sent.append((chat_id, text))
         return [1]
 

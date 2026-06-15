@@ -1,7 +1,11 @@
 from pathlib import Path
 
 from app.ai.base import RunnerResult
-from app.jobs.result_writer import extract_stdout_from_log, save_runner_log
+from app.jobs.result_writer import (
+    extract_stdout_from_log,
+    save_runner_log,
+    start_incremental_runner_log,
+)
 from app.jobs.schemas import Job, JobRequest
 from app.models import ModelName
 
@@ -45,3 +49,20 @@ def test_extract_stdout_returns_full_stdout_excluding_stderr(tmp_path: Path):
 
 def test_extract_stdout_returns_none_for_missing_file(tmp_path: Path):
     assert extract_stdout_from_log(tmp_path / "missing.log") is None
+
+
+def test_incremental_runner_log_updates_summary_and_readable_stdout(tmp_path: Path):
+    job = _job()
+    updates: list[Job] = []
+    log = start_incremental_runner_log(job, tmp_path, updates.append)
+
+    log.output_callback("stdout", "first line\n")
+    log.output_callback("stderr", "warning\n")
+    log.output_callback("stdout", "second line\n")
+    log.flush()
+
+    assert job.log_path is not None
+    assert extract_stdout_from_log(job.log_path) == "first line\nsecond line\n"
+    assert job.runner_stdout_summary == "first line\nsecond line"
+    assert job.runner_stderr_summary == "warning"
+    assert len(updates) >= 2

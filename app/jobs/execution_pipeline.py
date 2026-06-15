@@ -83,6 +83,7 @@ def run_job(manager, job_id: str) -> Job:
             len(job.request.instruction),
             **manager._job_ctx(job),
         )
+        runner_log = manager._start_incremental_runner_log(job, worktree_base)
         heartbeat = manager._start_heartbeat(job)
         try:
             runner_result = runner.run(
@@ -97,10 +98,12 @@ def run_job(manager, job_id: str) -> Job:
                     session_id=job.request.session_id,
                     resume_token=job.request.resume_session_token,
                     native_resume_cwd_stable=not created_worktree_for_job,
+                    output_callback=runner_log.output_callback,
                 )
             )
         finally:
             heartbeat.set()
+            runner_log.flush()
         manager._save_runner_log(job, runner_result, worktree_base)
         _joblog.info(
             "runner exit=%d stdout_len=%d stderr_len=%d",

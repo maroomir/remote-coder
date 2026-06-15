@@ -41,4 +41,11 @@ class Notifier(Protocol):
 
     def send_job_result(self, job: Job) -> list[int]: ...
 
-    def send_long_text(self, chat_id: int, text: str, inline_buttons: list | None = None) -> list[int]: ...
+    def send_long_text(
+        self,
+        chat_id: int,
+        text: str,
+        inline_buttons: list | None = None,
+        *,
+        skip_body_i18n: bool = False,
+    ) -> list[int]: ...

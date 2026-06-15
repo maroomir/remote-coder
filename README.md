@@ -71,7 +71,8 @@ Each project uses its own bot. The webhook path contains the first 16 hex charac
 |---|---|
 | `/start`, `/help` | Open the menu or command help |
 | `/model` | View or change the chat's default model |
-| `/status [job_id]` | Inspect recent or specific jobs; a job detail offers a **View full log** button showing the complete AI output |
+| `/status [job_id]` | Inspect recent or specific jobs; running jobs show the latest captured AI output when available |
+| `/log <job_id>` | Show captured AI stdout for a running job or the complete AI stdout for a finished job |
 | `/branch [name]` | Show or switch the bound project's local branch |
 | `/pull` | Fetch remotes and pull the current branch |
 | `/rebase [branch]` | Rebase and fast-forward a completed branch into `main` or `master` |

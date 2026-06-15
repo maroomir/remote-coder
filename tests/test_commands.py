@@ -527,6 +527,33 @@ def test_log_command_falls_back_to_summary_without_log_path(project_registry: Pr
     assert "summary body only" in text
 
 
+def test_log_command_labels_running_output(project_registry: ProjectRegistry, tmp_path: Path):
+    registry = CommandRegistry([LogCommand()])
+    ctx = _ctx(project_registry)
+    log_file = tmp_path / "jrun.log"
+    log_file.write_text("job_id=x\n\n[stdout]\npartial\n\n[stderr]\n\n", encoding="utf-8")
+    ctx.job_store.create(
+        Job(
+            id="jrun",
+            request=JobRequest(
+                project="remote-coder",
+                model=ModelName.CLAUDE,
+                instruction="x",
+                chat_id=1,
+                requested_by=1,
+            ),
+            status=JobStatus.RUNNING,
+            log_path=log_file,
+        )
+    )
+
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/log jrun"), ctx)
+
+    assert text is not None
+    assert text.startswith("📄 Current AI output — Job jrun")
+    assert "partial" in text
+
+
 def test_log_command_reports_when_no_output_available(project_registry: ProjectRegistry):
     registry = CommandRegistry([LogCommand()])
     ctx = _ctx(project_registry)

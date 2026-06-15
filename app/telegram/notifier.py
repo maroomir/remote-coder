@@ -330,13 +330,20 @@ class TelegramNotifier:
             )
         return self.send_long_text(job.request.chat_id, text, buttons)
 
-    def send_long_text(self, chat_id: int, text: str, inline_buttons: list | None = None) -> list[int]:
+    def send_long_text(
+        self,
+        chat_id: int,
+        text: str,
+        inline_buttons: list | None = None,
+        *,
+        skip_body_i18n: bool = False,
+    ) -> list[int]:
         """Split text across Telegram messages when it exceeds the 4096-character limit.
 
         When inline_buttons are given they are attached to the final chunk only, so a
         multi-part result still ends with a single actionable keyboard.
         """
-        outgoing = translate_text(text, self._language)
+        outgoing = text if skip_body_i18n else translate_text(text, self._language)
         chunks = self._chunk_text(outgoing, self._TELEGRAM_TEXT_LIMIT)
         _outbound.info(
             "send_long_text chunks=%d total_len=%d buttons=%s",

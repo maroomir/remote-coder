@@ -218,7 +218,8 @@ class LogCommand(TelegramCommand):
         body = self._resolve_body(job)
         if body is None:
             return "No AI output is available for this job."
-        return f"📄 Full AI output — Job {job.id}\n\n{body}"
+        title = "Current AI output" if job.status.value == "running" else "Full AI output"
+        return f"📄 {title} — Job {job.id}\n\n{body}"
 
     @staticmethod
     def _resolve_body(job: Job) -> str | None:

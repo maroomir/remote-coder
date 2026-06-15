@@ -42,7 +42,7 @@ class CommandFlow:
         else:
             req.background_tasks.add_task(
                 partial(
-                    req.notifier.send_text,
+                    req.notifier.send_long_text,
                     req.chat_id,
                     command_response.text,
                     skip_body_i18n=command_response.skip_notifier_body_i18n,

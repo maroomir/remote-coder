@@ -79,6 +79,7 @@ def run_fix_job(manager, job_id: str) -> Job:
         runner = manager._runner_factory.create(job.request.model)
         timeout_seconds = manager._effective_job_timeout_seconds()
         fix_prompt = manager.compose_fix_source_prompt(parent_job, job.request.instruction)
+        runner_log = manager._start_incremental_runner_log(job, worktree_base)
         heartbeat = manager._start_heartbeat(job)
         try:
             runner_result = runner.run(
@@ -93,10 +94,12 @@ def run_fix_job(manager, job_id: str) -> Job:
                     session_id=job.request.session_id,
                     resume_token=job.request.resume_session_token,
                     native_resume_cwd_stable=not created_worktree_for_job,
+                    output_callback=runner_log.output_callback,
                 )
             )
         finally:
             heartbeat.set()
+            runner_log.flush()
         manager._save_runner_log(job, runner_result, worktree_base)
         if runner_result.exit_code != 0:
             raise RuntimeError(runner_result.stderr.strip() or "runner failed")

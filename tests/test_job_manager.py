@@ -1611,6 +1611,48 @@ def test_run_preserves_partial_output_on_runner_error(test_settings, project_reg
     _ = _time
 
 
+def test_run_updates_job_output_while_runner_is_running(test_settings, project_registry):
+    store = InMemoryJobStore()
+    git_service = Mock()
+    git_service.prepare_detached_worktree.return_value = (
+        project_registry.get("remote-coder").worktree_base_dir / "wt"
+    )
+    git_service.collect_changes.return_value = []
+    factory = Mock()
+    runner = Mock()
+
+    def _run(runner_input):
+        assert runner_input.output_callback is not None
+        runner_input.output_callback("stdout", "live output\n")
+        running = store.get(job.id)
+        assert running is not None
+        assert running.log_path is not None
+        assert running.runner_stdout_summary == "live output"
+        return RunnerResult(
+            exit_code=0,
+            stdout="live output\nfinal\n",
+            stderr="",
+            started_at=None,
+            finished_at=None,
+        )
+
+    runner.run.side_effect = _run
+    factory.create.return_value = runner
+    notifier = Mock()
+    manager = JobManager(
+        test_settings, store, git_service, factory, Mock(), lambda _: notifier, project_registry
+    )
+    request = JobRequest(
+        project="remote-coder", model=ModelName.CLAUDE, instruction="do", chat_id=1, requested_by=1
+    )
+    job = manager.submit(request)
+
+    final = manager.run(job.id)
+
+    assert final.status.value == "succeeded"
+    assert final.runner_stdout_summary == "live output\nfinal"
+
+
 def test_run_emits_heartbeat_updates(test_settings, project_registry):
     import time as _time
 

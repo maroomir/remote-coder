@@ -45,6 +45,8 @@ alwaysApply: true
 - Claude, Codex, and Gemini execution must sit behind a shared runner interface.
 - Runner input should include instruction text, working directory, timeout, and environment.
 - Runner output should include stdout, stderr, exit code, start time, and end time.
+- Runner execution may stream stdout/stderr chunks to the Job layer while still returning the complete final stdout/stderr result.
+- Running Jobs should persist captured AI output incrementally so `/status <job_id>` and `/log <job_id>` can show current progress.
 - Extract detailed model name and token usage from CLI logs when observable and store them as structured fields.
 - Build subprocess arguments as lists, not shell-joined strings.
 - Always set `cwd` and timeout explicitly.

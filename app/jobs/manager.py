@@ -26,6 +26,7 @@ from app.jobs.result_writer import (
     make_output_summary,
     preserve_partial_output,
     save_runner_log,
+    start_incremental_runner_log,
     strip_links_for_stdout_summary,
 )
 from app.jobs.schemas import FixKind, Job, JobMode, JobRequest
@@ -290,6 +291,9 @@ class JobManager:
 
     def _save_runner_log(self, job: Job, runner_result, worktree_base: Path) -> None:
         save_runner_log(job, runner_result, worktree_base)
+
+    def _start_incremental_runner_log(self, job: Job, worktree_base: Path):
+        return start_incremental_runner_log(job, worktree_base, self._job_store.update)
 
     @classmethod
     def _strip_links_for_stdout_summary(cls, text: str) -> str:

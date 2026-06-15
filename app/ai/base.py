@@ -4,9 +4,11 @@ import re
 import subprocess
 import threading
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from app.jobs.schemas import JobMode
 from app.monitoring.events import EventLogger
@@ -95,6 +97,9 @@ class RunnerInput:
     session_id: str | None = None
     resume_token: str | None = None
     native_resume_cwd_stable: bool = True
+    output_callback: Callable[[Literal["stdout", "stderr"], str], None] | None = field(
+        default=None, compare=False
+    )
 
 
 @dataclass
@@ -213,23 +218,30 @@ class BaseCliRunner(AiRunner):
                 cancelled.set()
 
             threading.Thread(target=_watch, daemon=True).start()
-        try:
-            stdout_data, stderr_data = proc.communicate(timeout=runner_input.timeout_seconds)
-        except subprocess.TimeoutExpired as exc:
-            proc.kill()
-            stdout_data, stderr_data = proc.communicate()
-            self._log.warning(
-                "timeout after %ds stdout_len=%d stderr_len=%d",
-                runner_input.timeout_seconds,
-                len(stdout_data),
-                len(stderr_data),
+        if runner_input.output_callback is None:
+            try:
+                stdout_data, stderr_data = proc.communicate(timeout=runner_input.timeout_seconds)
+            except subprocess.TimeoutExpired as exc:
+                proc.kill()
+                stdout_data, stderr_data = proc.communicate()
+                self._log.warning(
+                    "timeout after %ds stdout_len=%d stderr_len=%d",
+                    runner_input.timeout_seconds,
+                    len(stdout_data),
+                    len(stderr_data),
+                )
+                raise RunnerExecutionError(
+                    f"runner timed out after {runner_input.timeout_seconds}s",
+                    stdout=stdout_data,
+                    stderr=stderr_data,
+                    started_at=started_at,
+                ) from exc
+        else:
+            stdout_data, stderr_data = self._communicate_with_output_callback(
+                proc,
+                runner_input,
+                started_at,
             )
-            raise RunnerExecutionError(
-                f"runner timed out after {runner_input.timeout_seconds}s",
-                stdout=stdout_data,
-                stderr=stderr_data,
-                started_at=started_at,
-            ) from exc
         finished_at = datetime.now(UTC)
         if cancelled.is_set():
             raise RunnerExecutionError(
@@ -255,3 +267,61 @@ class BaseCliRunner(AiRunner):
             finished_at=finished_at,
             session_id=self._resolve_result_session_id(runner_input, session_files_before),
         )
+
+    def _communicate_with_output_callback(
+        self,
+        proc: subprocess.Popen[str],
+        runner_input: RunnerInput,
+        started_at: datetime,
+    ) -> tuple[str, str]:
+        output_callback = runner_input.output_callback
+        if output_callback is None:
+            raise ValueError("output_callback is required")
+        stdout_parts: list[str] = []
+        stderr_parts: list[str] = []
+
+        def _read_stream(
+            stream_name: Literal["stdout", "stderr"],
+            parts: list[str],
+        ) -> None:
+            stream = proc.stdout if stream_name == "stdout" else proc.stderr
+            if stream is None:
+                return
+            while True:
+                chunk = stream.readline()
+                if chunk == "":
+                    break
+                parts.append(chunk)
+                try:
+                    output_callback(stream_name, chunk)
+                except Exception:  # pylint: disable=broad-except
+                    self._log.warning("output callback failed stream=%s", stream_name)
+
+        stdout_thread = threading.Thread(target=_read_stream, args=("stdout", stdout_parts))
+        stderr_thread = threading.Thread(target=_read_stream, args=("stderr", stderr_parts))
+        stdout_thread.start()
+        stderr_thread.start()
+        try:
+            proc.wait(timeout=runner_input.timeout_seconds)
+        except subprocess.TimeoutExpired as exc:
+            proc.kill()
+            proc.wait()
+            stdout_thread.join()
+            stderr_thread.join()
+            stdout_data = "".join(stdout_parts)
+            stderr_data = "".join(stderr_parts)
+            self._log.warning(
+                "timeout after %ds stdout_len=%d stderr_len=%d",
+                runner_input.timeout_seconds,
+                len(stdout_data),
+                len(stderr_data),
+            )
+            raise RunnerExecutionError(
+                f"runner timed out after {runner_input.timeout_seconds}s",
+                stdout=stdout_data,
+                stderr=stderr_data,
+                started_at=started_at,
+            ) from exc
+        stdout_thread.join()
+        stderr_thread.join()
+        return "".join(stdout_parts), "".join(stderr_parts)
