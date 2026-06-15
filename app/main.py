@@ -160,7 +160,7 @@ def _run_startup_side_effects(instances: list[BotInstance], adv: AdvancedSetting
     )
     recover_startup_jobs(
         job_store=job_store,
-        run_job=job_manager.run,
+        run_job=job_manager.recover,
         record_final_job_result=_record_recovered_job_result,
         system_log=_systemlog,
     )

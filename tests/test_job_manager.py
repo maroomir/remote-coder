@@ -1341,6 +1341,62 @@ def test_execute_fix_job_source_runs_runner_and_amends(test_settings, project_re
     git_service.prepare_branch_worktree.assert_not_called()
 
 
+def test_recover_routes_queued_fix_job_to_fix_pipeline(
+    test_settings, project_registry, monkeypatch
+):
+    from app.jobs.schemas import FixKind, Job, JobMode, JobStatus
+
+    store = InMemoryJobStore()
+    parent = _seed_parent_job(store)
+    fix_job = Job(
+        id="fix-queued",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="repair the previous branch",
+            chat_id=1,
+            requested_by=1,
+            mode=JobMode.AGENT_FIX,
+            fix_kind=FixKind.SOURCE,
+            parent_job_id=parent.id,
+            branch=parent.branch,
+        ),
+        status=JobStatus.QUEUED,
+    )
+    store.create(fix_job)
+    manager = JobManager(
+        test_settings,
+        store,
+        Mock(),
+        Mock(),
+        Mock(),
+        lambda _: Mock(),
+        project_registry,
+    )
+    calls: list[tuple[str, str]] = []
+
+    def fake_run_job(_manager, job_id):
+        calls.append(("run", job_id))
+        return store.get(job_id)
+
+    def fake_run_fix_job(_manager, job_id):
+        calls.append(("fix", job_id))
+        job = store.get(job_id)
+        assert job is not None
+        job.mark_running()
+        job.mark_succeeded()
+        store.update(job)
+        return job
+
+    monkeypatch.setattr("app.jobs.manager.run_job", fake_run_job)
+    monkeypatch.setattr("app.jobs.manager.run_fix_job", fake_run_fix_job)
+
+    final = manager.recover(fix_job.id)
+
+    assert final.status is JobStatus.SUCCEEDED
+    assert calls == [("fix", fix_job.id)]
+
+
 def test_execute_fix_job_source_no_diff_skips_push(test_settings, project_registry):
     from app.ai.base import RunnerResult
     from app.jobs.schemas import FixKind, JobMode

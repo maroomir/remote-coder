@@ -186,6 +186,15 @@ class JobManager:
         with self._project_lock(job.request.project):
             return run_job(self, job_id)
 
+    def recover(self, job_id: str) -> Job:
+        job = self._job_store.get(job_id)
+        if job is None:
+            return run_job(self, job_id)
+        with self._project_lock(job.request.project):
+            if job.request.mode is JobMode.AGENT_FIX:
+                return self._run_fix(job_id)
+            return run_job(self, job_id)
+
     def _project_lock(self, project: str) -> threading.Lock:
         with self._project_locks_guard:
             lock = self._project_locks.get(project)

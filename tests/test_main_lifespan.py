@@ -31,7 +31,7 @@ def test_run_startup_side_effects_calls_pull_with_keyword_arguments(monkeypatch)
     )
     recover.assert_called_once_with(
         job_store=main.job_store,
-        run_job=main.job_manager.run,
+        run_job=main.job_manager.recover,
         record_final_job_result=main._record_recovered_job_result,
         system_log=main._systemlog,
     )
