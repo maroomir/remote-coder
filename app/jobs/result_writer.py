@@ -77,6 +77,23 @@ def save_runner_log(job: Job, runner_result, worktree_base: Path) -> None:
     )
 
 
+def extract_stdout_from_log(path: Path) -> str | None:
+    """Return the full [stdout] section of a saved runner log, ANSI-stripped."""
+    try:
+        log_text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    marker = "\n[stdout]\n"
+    start = log_text.find(marker)
+    if start == -1:
+        return None
+    start += len(marker)
+    stderr_at = log_text.rfind("\n\n[stderr]\n")
+    stdout = log_text[start:stderr_at] if stderr_at >= start else log_text[start:]
+    stdout = _ANSI_ESCAPE_PATTERN.sub("", stdout)
+    return stdout or None
+
+
 def strip_links_for_stdout_summary(text: str) -> str:
     stripped = _MD_LINK_PATTERN.sub(r"\1", text)
     stripped = _HTTP_URL_PATTERN.sub("", stripped)

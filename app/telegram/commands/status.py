@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from app.ai.model_catalog import format_model_selection
 from app.ai.usage import format_token_usage
+from app.jobs.result_writer import extract_stdout_from_log
 from app.jobs.schemas import Job
 from app.telegram.commands.base import (
     CommandContext,
@@ -195,7 +196,39 @@ class StatusCommand(TelegramCommand):
                 actions.append(InlineButton("Open PR", f"/pr {job.branch}", style="primary"))
             actions.append(InlineButton("Rebase", f"/rebase {job.branch}"))
             rows.append(actions)
+        if job.log_path is not None:
+            rows.append([InlineButton("View full log", f"/log {job.id}")])
         return with_nav_row(rows, back_to="/status")
+
+
+class LogCommand(TelegramCommand):
+    name = "/log"
+    description = None
+
+    def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
+        tokens = message.text.strip().split()
+        if len(tokens) != 2:
+            return format_usage("/log <job_id>")
+        job = ctx.job_store.get(tokens[1])
+        if not job:
+            return "Job ID not found."
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if project_name and job.request.project != project_name:
+            return "Job ID not found."
+        body = self._resolve_body(job)
+        if body is None:
+            return "No AI output is available for this job."
+        return f"📄 Full AI output — Job {job.id}\n\n{body}"
+
+    @staticmethod
+    def _resolve_body(job: Job) -> str | None:
+        if job.log_path is not None:
+            stdout = extract_stdout_from_log(job.log_path)
+            if stdout:
+                return stdout
+        if job.runner_stdout_summary:
+            return job.runner_stdout_summary
+        return None
 
 
 class ReportsCommand(TelegramCommand):

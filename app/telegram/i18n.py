@@ -630,6 +630,7 @@ _BUTTON_LABELS = {
     "Branch": "브랜치 확인",
     "Rebase": "리베이스",
     "Open PR": "PR 올리기",
+    "View full log": "전체 로그 보기",
     "Stop": "중단",
     "Status": "상태",
     "Model": "모델",

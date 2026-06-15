@@ -15,6 +15,7 @@ from app.telegram.commands import (
     CommandRegistry,
     HelpCommand,
     InitCommand,
+    LogCommand,
     ModelCommand,
     MonitorCommand,
     PrCommand,
@@ -390,6 +391,184 @@ def test_status_detail_succeeded_job_without_commit_hides_pr(project_registry: P
         [InlineButton("Rebase", "/rebase remote-no-commit")],
         [InlineButton("‹ Back", "/status"), InlineButton("✖ Close", "__close__")],
     ]
+
+
+def test_status_detail_shows_view_full_log_when_log_path_set(
+    project_registry: ProjectRegistry, tmp_path: Path
+):
+    registry = CommandRegistry([StatusCommand()])
+    ctx = _ctx(project_registry)
+    log_file = tmp_path / "jlog.log"
+    log_file.write_text("job_id=x\n\n[stdout]\nhi\n\n[stderr]\n\n", encoding="utf-8")
+    ctx.job_store.create(
+        Job(
+            id="jlog",
+            request=JobRequest(
+                project="remote-coder",
+                model=ModelName.CLAUDE,
+                instruction="x",
+                chat_id=1,
+                requested_by=1,
+            ),
+            status=JobStatus.SUCCEEDED,
+            branch="remote-fix",
+            commit_hash="abcdef12",
+            log_path=log_file,
+        )
+    )
+
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/status jlog"), ctx)
+
+    assert response is not None
+    assert [InlineButton("View full log", "/log jlog")] in response.inline_buttons
+
+
+def test_status_detail_hides_view_full_log_without_log_path(project_registry: ProjectRegistry):
+    registry = CommandRegistry([StatusCommand()])
+    ctx = _ctx(project_registry)
+    ctx.job_store.create(
+        Job(
+            id="jnolog",
+            request=JobRequest(
+                project="remote-coder",
+                model=ModelName.CLAUDE,
+                instruction="x",
+                chat_id=1,
+                requested_by=1,
+            ),
+            status=JobStatus.SUCCEEDED,
+            branch="remote-fix",
+            commit_hash="abcdef12",
+        )
+    )
+
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/status jnolog"), ctx)
+
+    assert response is not None
+    labels = [b.label for row in response.inline_buttons for b in row]
+    assert "View full log" not in labels
+
+
+def test_log_command_returns_full_stdout_not_tail(project_registry: ProjectRegistry, tmp_path: Path):
+    registry = CommandRegistry([LogCommand()])
+    ctx = _ctx(project_registry)
+    body = "X" * 4000  # well over StatusCommand's 1500-char tail
+    log_file = tmp_path / "jbig.log"
+    log_file.write_text(f"job_id=x\n\n[stdout]\n{body}\n\n[stderr]\n\n", encoding="utf-8")
+    ctx.job_store.create(
+        Job(
+            id="jbig",
+            request=JobRequest(
+                project="remote-coder",
+                model=ModelName.CLAUDE,
+                instruction="x",
+                chat_id=1,
+                requested_by=1,
+            ),
+            status=JobStatus.SUCCEEDED,
+            log_path=log_file,
+        )
+    )
+
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/log jbig"), ctx)
+
+    assert text is not None
+    assert text.startswith("📄 Full AI output — Job jbig")
+    assert body in text
+
+
+def test_log_command_has_no_inline_buttons(project_registry: ProjectRegistry, tmp_path: Path):
+    registry = CommandRegistry([LogCommand()])
+    ctx = _ctx(project_registry)
+    log_file = tmp_path / "jbtn.log"
+    log_file.write_text("job_id=x\n\n[stdout]\nhi\n\n[stderr]\n\n", encoding="utf-8")
+    ctx.job_store.create(
+        Job(
+            id="jbtn",
+            request=JobRequest(
+                project="remote-coder",
+                model=ModelName.CLAUDE,
+                instruction="x",
+                chat_id=1,
+                requested_by=1,
+            ),
+            status=JobStatus.SUCCEEDED,
+            log_path=log_file,
+        )
+    )
+
+    response = registry.dispatch_rich(TelegramMessage(chat_id=1, user_id=1, text="/log jbtn"), ctx)
+
+    assert response is not None
+    assert response.inline_buttons is None
+    assert response.prefer_edit is False
+
+
+def test_log_command_falls_back_to_summary_without_log_path(project_registry: ProjectRegistry):
+    registry = CommandRegistry([LogCommand()])
+    ctx = _ctx(project_registry)
+    job = Job(
+        id="jsum",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="x",
+            chat_id=1,
+            requested_by=1,
+        ),
+        status=JobStatus.SUCCEEDED,
+    )
+    job.runner_stdout_summary = "summary body only"
+    ctx.job_store.create(job)
+
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/log jsum"), ctx)
+
+    assert text is not None
+    assert "summary body only" in text
+
+
+def test_log_command_reports_when_no_output_available(project_registry: ProjectRegistry):
+    registry = CommandRegistry([LogCommand()])
+    ctx = _ctx(project_registry)
+    ctx.job_store.create(
+        Job(
+            id="jempty",
+            request=JobRequest(
+                project="remote-coder",
+                model=ModelName.CLAUDE,
+                instruction="x",
+                chat_id=1,
+                requested_by=1,
+            ),
+            status=JobStatus.SUCCEEDED,
+        )
+    )
+
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/log jempty"), ctx)
+
+    assert text == "No AI output is available for this job."
+
+
+def test_log_command_rejects_other_project_scope(project_registry: ProjectRegistry):
+    registry = CommandRegistry([LogCommand()])
+    ctx = _ctx(project_registry)
+    ctx.job_store.create(
+        Job(
+            id="jother",
+            request=JobRequest(
+                project="other-project",
+                model=ModelName.CLAUDE,
+                instruction="x",
+                chat_id=1,
+                requested_by=1,
+            ),
+            status=JobStatus.SUCCEEDED,
+        )
+    )
+
+    text = registry.dispatch(TelegramMessage(chat_id=1, user_id=1, text="/log jother"), ctx)
+
+    assert text == "Job ID not found."
 
 
 def test_model_command_updates_preference(project_registry: ProjectRegistry):

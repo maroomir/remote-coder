@@ -27,7 +27,7 @@ from app.telegram.commands.registry import (
     build_default_commands,
     default_telegram_bot_commands,
 )
-from app.telegram.commands.status import ReportsCommand, StatusCommand
+from app.telegram.commands.status import LogCommand, ReportsCommand, StatusCommand
 from app.telegram.commands.system import HelpCommand, InitCommand, StartCommand
 
 __all__ = [
@@ -45,6 +45,7 @@ __all__ = [
     "HelpCommand",
     "InitCommand",
     "InlineButton",
+    "LogCommand",
     "ModelCommand",
     "MonitorCommand",
     "PrCommand",

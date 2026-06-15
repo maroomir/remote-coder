@@ -71,7 +71,7 @@ Telegram message
 |---|---|
 | `/start`, `/help` | 메뉴 또는 도움말 열기 |
 | `/model` | 현재 채팅의 기본 모델 확인/변경 |
-| `/status [job_id]` | 최근 Job 또는 특정 Job 상태 조회 |
+| `/status [job_id]` | 최근 Job 또는 특정 Job 상태 조회. Job 상세에서 **전체 로그 보기** 버튼으로 AI 출력 전체를 확인 |
 | `/branch [name]` | 바인딩된 프로젝트의 로컬 브랜치 확인/전환 |
 | `/pull` | 원격 fetch 및 현재 브랜치 pull |
 | `/rebase [branch]` | 완료 브랜치를 `main` 또는 `master`에 rebase 후 fast-forward |
