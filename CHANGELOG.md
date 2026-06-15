@@ -12,6 +12,10 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 - **Full AI output from job status**: a `/status <job_id>` detail panel offers a **View full log** button that delivers the complete AI stdout (not just the tail) as paginated Telegram messages.
 
+### Fixed
+
+- **Command menu stays in sync on restart**: the Telegram command menu (hamburger button) and slash autocomplete are now refreshed on every server startup, so commands and modes added later — such as RESEARCH — appear without re-running `remote-coder up`.
+
 ## [0.5.2] — 2026-06-15
 
 ### Added

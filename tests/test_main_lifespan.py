@@ -37,6 +37,27 @@ def test_run_startup_side_effects_calls_pull_with_keyword_arguments(monkeypatch)
     )
 
 
+def test_run_startup_side_effects_refreshes_enabled_command_menus(monkeypatch):
+    registrar = MagicMock()
+    registrar.sync_project_commands.return_value = True
+    enabled = SimpleNamespace(name="proj", enabled=True)
+    disabled = SimpleNamespace(name="off", enabled=False)
+    monkeypatch.setattr(main, "webhook_registrar", registrar)
+    monkeypatch.setattr(main.project_registry, "list_projects", lambda: [enabled, disabled])
+    monkeypatch.setattr(main, "run_startup_project_pulls", MagicMock())
+    monkeypatch.setattr(main, "recover_startup_jobs", MagicMock())
+
+    main._run_startup_side_effects(
+        [],
+        SimpleNamespace(
+            pull_projects_on_server_startup_enabled=False,
+            git_remote_name="origin",
+        ),
+    )
+
+    registrar.sync_project_commands.assert_called_once_with(enabled)
+
+
 @pytest.mark.asyncio
 async def test_lifespan_does_not_wait_for_startup_side_effects(monkeypatch):
     started = asyncio.Event()

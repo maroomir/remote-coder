@@ -150,6 +150,26 @@ def _record_recovered_job_result(final_job: Job) -> None:
     ).record_final_job_result(final_job)
 
 
+def _refresh_project_command_menus() -> None:
+    # Re-push setMyCommands for every enabled project on each startup. The Telegram command
+    # menu (hamburger button) and slash autocomplete are otherwise only refreshed during
+    # `remote-coder up` webhook registration or an admin settings save, so a bot registered
+    # before a new command/mode (e.g. research) was added keeps a stale menu on plain restarts.
+    registrar = webhook_registrar
+    if registrar is None:
+        registrar = TelegramWebhookRegistrar(
+            "",
+            bot_commands=command_registry.bot_commands(advanced_settings_store.get().ui_language),
+        )
+    synced = 0
+    for record in project_registry.list_projects():
+        if not record.enabled:
+            continue
+        if registrar.sync_project_commands(record):
+            synced += 1
+    _systemlog.info("startup command menus refreshed count=%d", synced)
+
+
 def _run_startup_side_effects(instances: list[BotInstance], adv: AdvancedSettings) -> None:
     startup_chat_total = sum(len(inst.auth_service.allowed_chat_ids) for inst in instances)
     _systemlog.info(
@@ -158,6 +178,7 @@ def _run_startup_side_effects(instances: list[BotInstance], adv: AdvancedSetting
         len(project_registry.list_projects()),
         ModelName.CLAUDE.value,
     )
+    _refresh_project_command_menus()
     recover_startup_jobs(
         job_store=job_store,
         run_job=job_manager.recover,
