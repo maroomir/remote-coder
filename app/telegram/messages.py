@@ -82,7 +82,11 @@ def build_job_result_buttons(job: Job) -> list[list[OutboundButton]]:
                     ui_message("job.open_pr_button", "Open PR"),
                     f"/pr {job.branch}",
                     style="primary",
-                )
+                ),
+                OutboundButton(
+                    ui_message("job.rebase_button", "Rebase"),
+                    f"/rebase {job.branch}",
+                ),
             ]
         ]
     return []

@@ -718,6 +718,10 @@ def test_build_job_result_buttons_for_committed_agent_and_fix_success():
         )
         assert rows[0][0].label == "Open PR"
         assert rows[0][0].callback_data == "/pr remote-fix"
+        assert rows[0][0].style == "primary"
+        assert rows[0][1].label == "Rebase"
+        assert rows[0][1].callback_data == "/rebase remote-fix"
+        assert rows[0][1].style is None
 
 
 def test_build_job_result_buttons_requires_agent_commit_and_branch():
