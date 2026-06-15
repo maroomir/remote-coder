@@ -142,6 +142,7 @@ def test_default_bot_commands_expose_telegram_menu_entries():
         "help",
         "model",
         "status",
+        "log",
         "init",
         "reports",
         "branch",
@@ -475,6 +476,22 @@ def test_log_command_returns_full_stdout_not_tail(project_registry: ProjectRegis
     assert text is not None
     assert text.startswith("📄 Full AI output — Job jbig")
     assert body in text
+
+
+def test_log_command_lists_recent_jobs_as_buttons(project_registry: ProjectRegistry):
+    registry = CommandRegistry([LogCommand()])
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=1, user_id=1, text="/log"),
+        _ctx(project_registry),
+    )
+
+    assert response is not None
+    assert response.text == "Choose a job log to view."
+    assert response.inline_buttons == [
+        [InlineButton("job1 (queued)", "/log job1")],
+        [InlineButton("✖ Close", "__close__")],
+    ]
+    assert response.prefer_edit is True
 
 
 def test_log_command_has_no_inline_buttons(project_registry: ProjectRegistry, tmp_path: Path):

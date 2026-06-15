@@ -203,16 +203,28 @@ class StatusCommand(TelegramCommand):
 
 class LogCommand(TelegramCommand):
     name = "/log"
-    description = None
+    description = "Show job AI output logs"
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if len(tokens) == 1:
+            if not project_name:
+                return (
+                    "No project is registered. "
+                    "Register a project at http://127.0.0.1:8000/projects."
+                )
+            jobs = ctx.job_store.list_recent_for_project_chat(
+                project_name, message.chat_id, _RECENT_JOB_LIMIT
+            )
+            if not jobs:
+                return "No jobs are available."
+            return "Choose a job log to view."
         if len(tokens) != 2:
             return format_usage("/log <job_id>")
         job = ctx.job_store.get(tokens[1])
         if not job:
             return "Job ID not found."
-        project_name = effective_project_name_for_chat(ctx, message.chat_id)
         if project_name and job.request.project != project_name:
             return "Job ID not found."
         body = self._resolve_body(job)
@@ -220,6 +232,30 @@ class LogCommand(TelegramCommand):
             return "No AI output is available for this job."
         title = "Current AI output" if job.status.value == "running" else "Full AI output"
         return f"📄 {title} — Job {job.id}\n\n{body}"
+
+    def get_inline_buttons(
+        self,
+        message: TelegramMessage | None = None,
+        ctx: CommandContext | None = None,
+    ) -> list[list[InlineButton]] | None:
+        if message is None or ctx is None:
+            return None
+        tokens = message.text.strip().split()
+        if len(tokens) != 1:
+            return None
+        project_name = effective_project_name_for_chat(ctx, message.chat_id)
+        if not project_name:
+            return None
+        jobs = ctx.job_store.list_recent_for_project_chat(
+            project_name, message.chat_id, _RECENT_JOB_LIMIT
+        )
+        if not jobs:
+            return None
+        rows = _button_rows(
+            [InlineButton(_job_button_label(job), f"/log {job.id}") for job in jobs],
+            per_row=1,
+        )
+        return with_nav_row(rows)
 
     @staticmethod
     def _resolve_body(job: Job) -> str | None:

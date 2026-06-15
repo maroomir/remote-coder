@@ -11,6 +11,7 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 ### Added
 
 - **Full AI output from job status**: a `/status <job_id>` detail panel offers a **View full log** button that delivers the complete AI stdout (not just the tail) as paginated Telegram messages.
+- **Log command picker**: `/log` without arguments now lists recent jobs as inline buttons, and `/log` is registered in Telegram slash autocomplete and the command menu.
 
 ### Fixed
 
