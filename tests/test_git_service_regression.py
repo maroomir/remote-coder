@@ -4,19 +4,17 @@ Tester 3 (AI Runners & Git Automation). These probe how the changed-files list
 that flows into F6 (commit message scope, result notification "수정 파일 목록",
 and the stored job result) is built from `git status --porcelain`.
 
-CONFIRMED BUG (xfail): a staged rename emits a single porcelain line
-`R  old -> new`; `collect_changes` does `line[3:].strip()` and therefore stores
-the literal string `old -> new` (and `"old" -> "new"` when paths contain
-spaces) as if it were one file path. The new path is never reported as a clean
-path, which corrupts changed_files reporting and commit scope inference.
+FIXED: a staged rename emits a single porcelain line `R  old -> new`. The old
+`line[3:].strip()` stored the literal string `old -> new` as one file path,
+corrupting changed_files reporting and commit scope inference. `collect_changes`
+now parses `git status --porcelain -z` and keeps the unquoted destination path;
+these tests guard against a regression.
 """
 
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-
-import pytest
 
 from app.git.service import GitWorktreeService
 
@@ -54,11 +52,6 @@ def test_collect_changes_reports_modified_and_untracked(tmp_path: Path) -> None:
     assert set(changes) == {"keep.txt", "remove.txt", "new.txt"}
 
 
-@pytest.mark.xfail(
-    reason="BUG: collect_changes parses `R old -> new` as one literal path "
-    "instead of returning the new (and/or old) file path",
-    strict=False,
-)
 def test_collect_changes_reports_new_path_for_staged_rename(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -70,23 +63,22 @@ def test_collect_changes_reports_new_path_for_staged_rename(tmp_path: Path) -> N
     service = GitWorktreeService(base_dir=tmp_path / "wt")
     changes = service.collect_changes(repo)
 
-    # The renamed destination must be reported as a real, usable path.
-    assert "b.txt" in changes
-    # And no entry should still carry git's "old -> new" rename arrow.
+    # The renamed destination is reported as a real, usable path with no arrow.
+    assert changes == ["b.txt"]
     assert all("->" not in entry for entry in changes)
 
 
-def test_collect_changes_current_behavior_on_rename_keeps_arrow(tmp_path: Path) -> None:
-    """Characterization of the bug: documents the broken output exactly."""
+def test_collect_changes_handles_renamed_path_with_spaces(tmp_path: Path) -> None:
+    """A rename whose destination contains spaces must stay a single clean path."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     (repo / "a.txt").write_text("content that is long enough to be detected\n", encoding="utf-8")
     _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "init")
-    _git(repo, "mv", "a.txt", "b.txt")
+    _git(repo, "mv", "a.txt", "b with space.txt")
 
     service = GitWorktreeService(base_dir=tmp_path / "wt")
     changes = service.collect_changes(repo)
 
-    # Today the single entry is the raw arrow string, not a path git can act on.
-    assert changes == ["a.txt -> b.txt"]
+    # `-z` parsing keeps the unquoted destination; the origin field is dropped.
+    assert changes == ["b with space.txt"]

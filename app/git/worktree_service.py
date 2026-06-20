@@ -216,14 +216,24 @@ class GitWorktreeService:
         return checked_out
 
     def collect_changes(self, worktree_path: Path) -> list[str]:
-        result = self._run_git(worktree_path, ["status", "--porcelain"])
+        result = self._run_git(worktree_path, ["status", "--porcelain", "-z"])
         if result.returncode != 0:
             _gitlog.warning("collect_changes failed stderr_len=%d", len(result.stderr))
             raise RuntimeError(f"failed to collect changes: {result.stderr.strip()}")
+        # `-z` splits entries on NUL and leaves paths unquoted. A rename or copy emits
+        # the destination path right after its status code, followed by a separate NUL
+        # field for the origin path, so we keep the destination and skip the origin.
         files: list[str] = []
-        for line in result.stdout.splitlines():
-            if len(line) > 3:
-                files.append(line[3:].strip())
+        entries = result.stdout.split("\0")
+        index = 0
+        while index < len(entries):
+            entry = entries[index]
+            index += 1
+            if len(entry) <= 3:
+                continue
+            files.append(entry[3:])
+            if entry[0] in ("R", "C"):
+                index += 1
         _gitlog.info("collect_changes count=%d", len(files))
         return files
 
