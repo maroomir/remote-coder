@@ -1,4 +1,5 @@
 import json
+import stat
 from pathlib import Path
 
 import pytest
@@ -65,6 +66,19 @@ def test_worktree_base_dir_is_derived_and_not_persisted(isolate_remote_coder_hom
 
     raw = json.loads(path.read_text(encoding="utf-8"))
     assert "worktree_base_dir" not in raw["projects"][0]
+
+
+def test_registry_file_is_written_with_owner_only_permissions(
+    isolate_remote_coder_home: Path, tmp_path: Path
+) -> None:
+    # Plaintext bot tokens must never be world-readable (PLAN.md N1, SECURITY.md).
+    path = isolate_remote_coder_home / "perms.json"
+    root = tmp_path / "repo"
+    root.mkdir(parents=True)
+    _seed_registry(path, root)
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
 
 
 def test_add_duplicate_project_raises(isolate_remote_coder_home: Path, tmp_path: Path) -> None:

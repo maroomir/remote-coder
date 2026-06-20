@@ -261,6 +261,13 @@ class ProjectRegistry:
         else:
             text = json.dumps(storable, indent=2, ensure_ascii=False)
         self._path.write_text(text + "\n", encoding="utf-8")
+        # Bot tokens and webhook secrets live here in plaintext, so keep the file
+        # and its directory readable only by the owner (PLAN.md N1, SECURITY.md).
+        self._path.chmod(0o600)
+        try:
+            self._path.parent.chmod(0o700)
+        except OSError:
+            pass
 
     @staticmethod
     def _project_record_to_storable_dict(record: ProjectRecord) -> dict:
