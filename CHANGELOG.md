@@ -8,14 +8,18 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
+## [0.5.3] — 2026-06-20
+
 ### Added
 
 - **Full AI output from job status**: a `/status <job_id>` detail panel offers a **View full log** button that delivers the complete AI stdout (not just the tail) as paginated Telegram messages.
 - **Log command picker**: `/log` without arguments now lists recent jobs as inline buttons, and `/log` is registered in Telegram slash autocomplete and the command menu.
+- **Completed-job rebase shortcut**: Successful job messages can surface a rebase action for completed work, making the next maintenance step available directly from Telegram.
 
 ### Fixed
 
 - **Command menu stays in sync on restart**: the Telegram command menu (hamburger button) and slash autocomplete are now refreshed on every server startup, so commands and modes added later — such as RESEARCH — appear without re-running `remote-coder up`.
+- **Job recovery paths**: Unfinished jobs are recovered on server startup, and fix-job recovery routing is restored so interrupted work can be resumed more reliably.
 
 ## [0.5.2] — 2026-06-15
 

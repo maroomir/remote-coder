@@ -12,3 +12,6 @@ worktrees/
 .remote-coder/
 build/
 dist/
+
+# 개발 문서
+TODO
