@@ -2340,6 +2340,52 @@ def test_webhook_secret_set_but_header_missing_is_rejected(caplog, project_regis
     assert any("secret mismatch" in r.getMessage() for r in caplog.records)
 
 
+def test_webhook_empty_body_is_422_not_500(project_registry):
+    client, wh = _make_webhook_app(project_registry)
+    response = client.post(wh, json={})
+    assert response.status_code == 422
+
+
+def test_webhook_non_integer_chat_id_does_not_500(project_registry):
+    client, wh = _make_webhook_app(project_registry)
+    response = client.post(
+        wh,
+        json={
+            "update_id": 6,
+            "message": {"message_id": 1, "text": "hi", "chat": {"id": "not-a-number"}, "from": {"id": 999}},
+        },
+    )
+    assert response.status_code in (200, 422)
+
+
+def test_webhook_oversized_text_does_not_500(project_registry):
+    client, wh = _make_webhook_app(project_registry)
+    response = client.post(
+        wh,
+        json={
+            "update_id": 7,
+            "message": {"message_id": 1, "text": "x" * 200_000, "chat": {"id": 123}, "from": {"id": 999}},
+        },
+    )
+    assert response.status_code == 200
+
+
+def test_webhook_callback_query_without_from_does_not_500(project_registry):
+    client, wh = _make_webhook_app(project_registry)
+    response = client.post(
+        wh,
+        json={
+            "update_id": 8,
+            "callback_query": {
+                "id": "cq_nofrom",
+                "message": {"chat": {"id": 123}, "message_id": 2},
+                "data": "__natural_job__:yes",
+            },
+        },
+    )
+    assert response.status_code in (200, 422)
+
+
 def test_webhook_callback_query_shows_detail_model_buttons(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
