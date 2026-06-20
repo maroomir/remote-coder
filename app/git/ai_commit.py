@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import tempfile
 
+from app.ai.ollama import default_ollama_model_name
 from app.models import ModelName
 from app.monitoring.events import EventLogger
 
@@ -35,8 +36,8 @@ class AiCommitBodyGenerator:
             instruction=instruction.strip(),
             files=", ".join(changed_files) if changed_files else "(none)",
         )
-        argv = self._build_argv(model_name, prompt)
         try:
+            argv = self._build_argv(model_name, prompt)
             with tempfile.TemporaryDirectory() as tmpdir:
                 result = subprocess.run(
                     argv,
@@ -48,7 +49,7 @@ class AiCommitBodyGenerator:
                     shell=False,
                     stdin=subprocess.DEVNULL,
                 )
-        except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        except (subprocess.TimeoutExpired, FileNotFoundError, ValueError) as exc:
             _log.warning("ai commit generation failed model=%s: %s", model_name.value, exc)
             return None, None
 
@@ -77,6 +78,11 @@ class AiCommitBodyGenerator:
             ],
             ModelName.GEMINI: ["gemini", "-p", prompt],
         }
+        if model_name == ModelName.OLLAMA:
+            model = default_ollama_model_name()
+            if model is None:
+                raise ValueError("No local Ollama model is available for commit message generation")
+            return ["ollama", "run", model, prompt, "--nowordwrap"]
         argv = argv_by_model.get(model_name)
         if argv is None:
             raise ValueError(f"Unsupported model for commit body generation: {model_name}")

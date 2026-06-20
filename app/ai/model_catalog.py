@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.ai.ollama import list_ollama_model_names
 from app.models import ModelName
 
 
@@ -36,6 +37,8 @@ MODEL_CATALOG: dict[ModelName, tuple[ModelOption, ...]] = {
 
 
 def get_model_options(provider: ModelName) -> tuple[ModelOption, ...]:
+    if provider == ModelName.OLLAMA:
+        return tuple(ModelOption(name, name) for name in list_ollama_model_names())
     return MODEL_CATALOG.get(provider, ())
 
 

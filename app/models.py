@@ -10,6 +10,7 @@ class ModelName(StrEnum):
     CLAUDE = "claude"
     CODEX = "codex"
     GEMINI = "gemini"
+    OLLAMA = "ollama"
 
 
 class CodexSandboxMode(StrEnum):

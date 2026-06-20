@@ -65,6 +65,36 @@ def test_ai_commit_generator_uses_gemini_cli_for_gemini_model():
     assert body == "- Gemini wrote bullets"
 
 
+def test_ai_commit_generator_uses_ollama_cli_for_ollama_model():
+    fake = _stub_run("title: ollama commit summary\n- Ollama wrote bullets")
+    generator = AiCommitBodyGenerator()
+    with (
+        patch("app.git.ai_commit.default_ollama_model_name", return_value="llama3.2:latest"),
+        patch("app.git.ai_commit.subprocess.run", side_effect=fake),
+    ):
+        title, body = generator.generate(
+            instruction="apply ollama fix",
+            changed_files=["app/z.py"],
+            model_name=ModelName.OLLAMA,
+        )
+    assert fake.last_argv[0:3] == ["ollama", "run", "llama3.2:latest"]
+    assert "--nowordwrap" in fake.last_argv
+    assert title == "ollama commit summary"
+    assert body == "- Ollama wrote bullets"
+
+
+def test_ai_commit_generator_returns_none_when_ollama_has_no_model():
+    generator = AiCommitBodyGenerator()
+    with patch("app.git.ai_commit.default_ollama_model_name", return_value=None):
+        title, body = generator.generate(
+            instruction="x",
+            changed_files=[],
+            model_name=ModelName.OLLAMA,
+        )
+    assert title is None
+    assert body is None
+
+
 def test_ai_commit_generator_returns_none_on_nonzero_exit():
     fake = _stub_run("noise", returncode=1)
     generator = AiCommitBodyGenerator()

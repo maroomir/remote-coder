@@ -7,6 +7,7 @@ from app.ai.base import AiRunner
 from app.ai.claude import ClaudeRunner
 from app.ai.codex import CodexRunner
 from app.ai.gemini import GeminiRunner
+from app.ai.ollama import OllamaRunner
 from app.models import CodexSandboxMode, ModelName
 
 if TYPE_CHECKING:
@@ -37,6 +38,7 @@ class AiRunnerFactory:
             ModelName.CLAUDE: ClaudeRunner,
             ModelName.CODEX: lambda: CodexRunner(sandbox=sandbox),
             ModelName.GEMINI: GeminiRunner,
+            ModelName.OLLAMA: OllamaRunner,
         }
         builder = builders.get(model_name)
         if builder is None:

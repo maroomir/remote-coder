@@ -3,6 +3,7 @@ import pytest
 from app.ai.codex import CodexRunner
 from app.ai.factory import AiRunnerFactory, UnknownModelError
 from app.ai.gemini import GeminiRunner
+from app.ai.ollama import OllamaRunner
 from app.models import CodexSandboxMode, ModelName
 
 
@@ -19,6 +20,11 @@ def test_ai_factory_create_codex():
 def test_ai_factory_create_gemini():
     runner = AiRunnerFactory().create(ModelName.GEMINI)
     assert isinstance(runner, GeminiRunner)
+
+
+def test_ai_factory_create_ollama():
+    runner = AiRunnerFactory().create(ModelName.OLLAMA)
+    assert isinstance(runner, OllamaRunner)
 
 
 def test_ai_factory_passes_codex_sandbox_to_runner():
