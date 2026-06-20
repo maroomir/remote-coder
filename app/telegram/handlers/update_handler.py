@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 from collections.abc import Callable
 from dataclasses import replace
 
@@ -79,7 +80,7 @@ class WebhookUpdateHandler:
         webhook_secret = bot_instance.webhook_secret
 
         _inbound.info("update received id=%s", update.update_id)
-        if webhook_secret and webhook_secret_header != webhook_secret:
+        if webhook_secret and not hmac.compare_digest(webhook_secret_header or "", webhook_secret):
             _authlog.warning("webhook secret mismatch update_id=%s", update.update_id)
             return {"status": "ignored"}
 

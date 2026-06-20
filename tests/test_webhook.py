@@ -2324,6 +2324,22 @@ def test_webhook_logs_secret_mismatch(caplog, project_registry):
     assert any("secret mismatch" in r.getMessage() for r in caplog.records)
 
 
+def test_webhook_secret_set_but_header_missing_is_rejected(caplog, project_registry):
+    # A configured secret with no header must fail closed (constant-time compare).
+    with caplog.at_level(logging.WARNING):
+        client, wh = _make_webhook_app(project_registry, webhook_secret="expected")
+        response = client.post(
+            wh,
+            json={
+                "update_id": 5,
+                "message": {"message_id": 1, "text": "hi", "chat": {"id": 123}, "from": {"id": 999}},
+            },
+        )
+    assert response.status_code == 200
+    assert response.json()["status"] == "ignored"
+    assert any("secret mismatch" in r.getMessage() for r in caplog.records)
+
+
 def test_webhook_callback_query_shows_detail_model_buttons(project_registry):
     app = FastAPI()
     store = InMemoryJobStore()
