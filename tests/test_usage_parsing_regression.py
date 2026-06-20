@@ -5,16 +5,13 @@ concatenated `stdout + "\\n" + stderr` of a runner (see
 app.jobs.result_writer.save_runner_log) and stored on the job, then surfaced to
 the user (F8) and saved to conversation memory.
 
-CONFIRMED BUG (xfail): `_extract_token_metrics` *sums* every match for a label
-across all patterns and all lines. When a CLI reports the same metric twice in
-two different syntactic forms -- e.g. a human summary line plus a structured
-`prompt_tokens: N` field, which Claude-style stream output can do -- the count
-is double-counted, inflating the reported token usage.
+FIXED: `_extract_token_metrics` used to *sum* every match for a label across all
+patterns and lines, so the same metric reported twice -- in two syntactic forms,
+or mirrored on stdout and stderr -- inflated the count. It now keeps the largest
+value per label; these tests guard against a regression.
 """
 
 from __future__ import annotations
-
-import pytest
 
 from app.ai.usage import extract_runner_usage, format_token_usage
 
@@ -53,11 +50,6 @@ def test_format_token_usage_renders_total_with_details():
     assert rendered == "1,500 (input=1,200, output=300)"
 
 
-@pytest.mark.xfail(
-    reason="BUG: the same metric reported in two syntactic forms is summed, "
-    "doubling the token count",
-    strict=False,
-)
 def test_duplicate_metric_in_two_syntaxes_is_not_double_counted():
     # A single response that prints both a human summary and a structured field
     # for the SAME 120 prompt tokens should report 120, not 240.
@@ -65,11 +57,6 @@ def test_duplicate_metric_in_two_syntaxes_is_not_double_counted():
     assert usage.token_usage.get("input") == 120
 
 
-@pytest.mark.xfail(
-    reason="BUG: usage is parsed from stdout+stderr concatenated; a CLI that "
-    "mirrors its usage summary on both streams gets double-counted",
-    strict=False,
-)
 def test_same_total_on_stdout_and_stderr_is_not_double_counted():
     stdout = "total tokens: 1234"
     stderr = "total tokens: 1234"

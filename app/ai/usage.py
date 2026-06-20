@@ -95,6 +95,9 @@ def _extract_actual_model(text: str) -> str | None:
 
 
 def _extract_token_metrics(text: str) -> dict[str, int]:
+    # Keep the largest value seen per label rather than summing. A single runner
+    # output reports cumulative totals, so the same metric appearing twice -- in two
+    # syntactic forms, or mirrored on stdout and stderr -- must not be double-counted.
     metrics: dict[str, int] = {}
     for pattern in _TOKEN_PATTERNS:
         for match in pattern.finditer(text):
@@ -102,7 +105,7 @@ def _extract_token_metrics(text: str) -> dict[str, int]:
             value = _parse_int(match.group(2))
             if value is None:
                 continue
-            metrics[label] = metrics.get(label, 0) + value
+            metrics[label] = max(metrics.get(label, 0), value)
     return metrics
 
 
