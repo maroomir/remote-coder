@@ -25,7 +25,7 @@ Install the CLI:
 pip install remote-coder
 ```
 
-Before the first package release, install from source:
+Or install the latest development version from source:
 
 ```bash
 pip install git+https://github.com/maroomir/remote-coder.git

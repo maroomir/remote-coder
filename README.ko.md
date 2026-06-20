@@ -25,7 +25,7 @@ CLI를 설치합니다.
 pip install remote-coder
 ```
 
-첫 패키지 릴리스 전에는 소스에서 설치합니다.
+또는 최신 개발 버전을 소스에서 설치합니다.
 
 ```bash
 pip install git+https://github.com/maroomir/remote-coder.git
