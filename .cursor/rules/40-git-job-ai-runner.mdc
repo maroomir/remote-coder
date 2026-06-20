@@ -42,7 +42,7 @@ alwaysApply: true
 
 ## AI Runner Rules
 
-- Claude, Codex, and Gemini execution must sit behind a shared runner interface.
+- Claude, Codex, Gemini, and Ollama execution must sit behind a shared runner interface.
 - Runner input should include instruction text, working directory, timeout, and environment.
 - Runner output should include stdout, stderr, exit code, start time, and end time.
 - Runner execution may stream stdout/stderr chunks to the Job layer while still returning the complete final stdout/stderr result.
@@ -51,14 +51,14 @@ alwaysApply: true
 - Build subprocess arguments as lists, not shell-joined strings.
 - Always set `cwd` and timeout explicitly.
 - Keep runner selection behind Strategy or Factory so model conditionals do not spread through services.
-- Wrap Claude/Codex/Gemini CLI details in adapters so domain logic does not depend on subprocess specifics.
+- Wrap Claude/Codex/Gemini CLI details and Ollama API details in adapters so domain logic does not depend on subprocess or HTTP specifics.
 
 ## Reply Session Continuity Rules
 
 - Jobs linked by Telegram reply share one AI session anchored to the reply-chain **root** user message; non-reply messages start a fresh session.
 - Persist the logical `session_id` and per-provider native resume tokens in SQLite conversation memory, keyed back to job ids; `/clear memory` clears them.
 - Resolve the session and resume token at submit time, thread them through `RunnerInput`, and capture the runner's session id back into the job after each run.
-- Provider resume mechanics live only in each runner adapter: Claude sets `--session-id` then `--resume`; Codex captures its rollout session id and resumes via `codex exec resume <id>`; Gemini resumes via `--resume <id>` when a captured id exists.
+- Provider resume mechanics live only in each runner adapter: Claude sets `--session-id` then `--resume`; Codex captures its rollout session id and resumes via `codex exec resume <id>`; Gemini resumes via `--resume <id>` when a captured id exists; Ollama replays local transcript files keyed by the logical session id.
 - Native resume is best-effort: when a provider cannot expose a resumable id, fall back to the existing reply-context injection rather than failing the job. Native Claude resume assumes the chain reuses the same worktree (cwd-scoped sessions).
 - Always populate `JobRequest.session_id` (the logical id) for display even when native resume is gated off; only the native resume token is withheld when there is no stable worktree.
 - Surface the logical session id to users so they can confirm continuity: on job accepted/result messages (under Job ID), `/status` detail, `/reports`, and a session count in `/monitor memory`.

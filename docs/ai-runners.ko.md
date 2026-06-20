@@ -2,13 +2,13 @@
 
 *English: [ai-runners.md](ai-runners.md) · 한국어: 이 문서*
 
-Remote AI Coder는 Claude Code, Codex CLI, Gemini CLI를 같은 Job 흐름에서 실행합니다. 어떤 모델을 쓰든 서버를 실행하는 **같은 OS 사용자 계정**에서 CLI 설치, 인증, PATH 설정이 완료되어 있어야 합니다.
+Remote AI Coder는 Claude Code, Codex CLI, Gemini CLI, Ollama를 같은 Job 흐름에서 실행합니다. 어떤 모델을 쓰든 서버를 실행하는 **같은 OS 사용자 계정**에서 도구 설치, 필요한 인증, PATH 설정이 완료되어 있어야 합니다.
 
 ## 공통 체크
 
 1. `remote-coder doctor`로 설치 상태를 확인합니다.
 2. 사용할 CLI를 단독으로 한 번 실행해 인증과 권한을 확인합니다.
-3. Telegram에서 `/model`로 기본 모델을 선택하거나, 요청마다 `model: claude`, `model: codex`, `model: gemini`를 명시합니다.
+3. Telegram에서 `/model`로 기본 모델을 선택하거나, 요청마다 `model: claude`, `model: codex`, `model: gemini`, `model: ollama`를 명시합니다.
 4. 실패하면 Telegram 요약만 보지 말고 `~/.remote-coder/worktrees/<project>/_logs/<job_id>.log` 원문을 확인합니다.
 
 모델 선택 우선순위:
@@ -115,11 +115,43 @@ model: gemini README 문구를 더 간결하게 정리해줘
 - `--approval-mode yolo`는 비대화형 변경을 허용하는 위험 옵션입니다. 허용 프로젝트, Telegram allowlist, Job worktree 격리가 적용된 환경에서만 사용하세요.
 - 인증, 쿼터, 모델 접근 권한 문제는 Gemini CLI의 오류 메시지를 기준으로 확인하세요.
 
+## Ollama
+
+설치와 로컬 daemon을 확인합니다.
+
+```bash
+command -v ollama
+ollama serve
+ollama list
+```
+
+모델이 없으면 설치합니다.
+
+```bash
+ollama pull qwen2.5-coder:7b
+```
+
+Remote AI Coder에서 사용:
+
+```text
+/model ollama
+/model ollama qwen2.5-coder:7b
+ask: model: ollama Job 실행 파이프라인을 설명해줘
+```
+
+주의할 점:
+
+- `/model ollama`는 로컬 Ollama 서버의 `/api/tags`를 조회해 탑재된 모델을 버튼으로 보여줍니다.
+- 세부 모델을 선택하지 않으면 `REMOTE_CODER_OLLAMA_DEFAULT_MODEL` 또는 Ollama의 첫 번째 로컬 모델을 사용합니다.
+- reply로 연결된 Ollama Job은 `~/.remote-coder/ollama_sessions/`에 로컬 transcript를 저장하고 최근 메시지를 다시 주입해 세션을 이어갑니다.
+- PLAN, ASK, RESEARCH는 읽기 전용 prompt로 실행합니다. AGENT와 FIX는 best-effort입니다. 어댑터가 fenced unified diff block을 요청하고, 유효한 patch만 `git apply`로 적용합니다.
+- Ollama에는 provider quota가 없으므로 `/monitor model`은 로컬 모델 상태와 응답에서 기록한 token count를 보여줍니다.
+
 ## 문제 해결
 
 ### CLI 명령을 찾을 수 없음
 
-- 서버 실행 계정에서 `command -v claude`, `command -v codex`, `command -v gemini`를 확인합니다.
+- 서버 실행 계정에서 `command -v claude`, `command -v codex`, `command -v gemini`, `command -v ollama`를 확인합니다.
 - 셸 초기화 파일, PATH, 패키지 설치 위치가 서비스 실행 환경에도 적용되는지 확인합니다.
 
 ### Telegram 작업이 runner 단계에서 실패

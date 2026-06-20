@@ -4,7 +4,7 @@ AI-agent workflow for `remote-coder`. Domain rules live in `.cursor/rules/`; pro
 
 ## Project Identity
 
-FastAPI service that lets allowed Telegram users run local AI coding tools remotely. Each registered project has its own bot token and allowlist. Webhook path: `/telegram/webhook/{sha256_prefix16}` (first 16 hex chars of SHA-256(bot token), not the raw token). **Bot instance = project context** — commands, confirmations, model prefs, and jobs are scoped to that project.
+FastAPI service that lets allowed Telegram users run local AI coding tools and Ollama local models remotely. Each registered project has its own bot token and allowlist. Webhook path: `/telegram/webhook/{sha256_prefix16}` (first 16 hex chars of SHA-256(bot token), not the raw token). **Bot instance = project context** — commands, confirmations, model prefs, and jobs are scoped to that project.
 
 ```text
 Telegram Message -> Webhook -> BotInstanceManager -> Parser -> JobManager -> Git Worktree -> AI Runner -> Git Commit -> Telegram Notification

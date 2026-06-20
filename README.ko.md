@@ -1,6 +1,6 @@
 # Remote AI Coder
 
-Telegram 메시지 하나로 내 로컬 개발 머신의 Claude Code, Codex, Gemini를 실행합니다. Remote AI Coder는 요청마다 Git worktree를 분리하고, 결과를 별도 브랜치에 커밋한 뒤 Telegram으로 알려줍니다.
+Telegram 메시지 하나로 내 로컬 개발 머신의 Claude Code, Codex, Gemini, Ollama를 실행합니다. Remote AI Coder는 요청마다 Git worktree를 분리하고, 결과를 별도 브랜치에 커밋한 뒤 Telegram으로 알려줍니다.
 
 *English: [README.md](README.md) · 한국어: 이 문서*
 
@@ -12,7 +12,7 @@ Telegram 메시지 하나로 내 로컬 개발 머신의 Claude Code, Codex, Gem
 - Telegram을 로컬 코딩 에이전트용 가벼운 원격 컨트롤러로 사용합니다.
 - 등록 프로젝트마다 별도 Telegram 봇, allowlist, 설정을 둡니다.
 - 요청별 Git worktree, 브랜치 생성, 커밋, push, 결과 알림을 처리합니다.
-- Claude, Codex, Gemini를 같은 Job 흐름으로 실행합니다.
+- Claude, Codex, Gemini, Ollama를 같은 Job 흐름으로 실행합니다.
 - 답장(reply)으로 연결된 Job은 동일한 AI CLI 세션을 이어가며 이전 맥락 위에서 작업합니다.
 - 프로젝트 설정, 고급 옵션, 로그, 대화 기억을 로컬 관리 UI에서 확인합니다.
 - 커밋 없이 분석만 하는 읽기 전용 `plan:` / `ask:` / `research:` 모드를 지원합니다. PLAN 모드는 결정이 필요한 선택지를 인라인 버튼으로 먼저 묻고, 답을 반영해 최종 계획을 완성합니다. RESEARCH 모드는 유용할 때 선택된 AI CLI가 인터넷 검색을 사용하도록 지시합니다.
@@ -46,7 +46,7 @@ remote-coder up
 - Telegram webhook용 `ngrok` 또는 HTTPS 터널
 - 프로젝트마다 하나의 Telegram bot token
 - 허용할 Telegram Chat ID, 필요하면 User ID
-- 로컬 AI CLI 중 하나 이상: `claude`, `codex`, `gemini`
+- 로컬 AI CLI/provider 중 하나 이상: `claude`, `codex`, `gemini`, `ollama`
 - 자동화할 로컬 Git 저장소
 - `/pr` 사용 시 `gh auth login`으로 인증된 GitHub CLI(`gh`)
 
@@ -59,7 +59,7 @@ Telegram message
  -> 명령 파서 또는 자연어 확인
  -> JobManager
  -> Git worktree
- -> Claude / Codex / Gemini runner
+ -> Claude / Codex / Gemini / Ollama runner
  -> branch, commit, push, Telegram 결과 알림
 ```
 
@@ -89,6 +89,7 @@ Telegram message
 
 ```text
 로그인 검증 버그를 model: codex로 고쳐줘
+ask: model: ollama parser 흐름을 설명해줘
 plan: 마이그레이션 전에 위험 요소만 정리해줘
 /ask 이 저장소의 테스트 명령이 뭐야?
 /research Telegram webhook 보안 권장사항을 최신 기준으로 비교해줘
@@ -102,16 +103,17 @@ plan: 마이그레이션 전에 위험 요소만 정리해줘
 - `projects.json`: 프로젝트, bot token, allowlist, root path, 기본 모델
 - `advanced_settings.json`: timeout, sandbox, 언어, worktree 보존, 메모리 제한 등 전역 동작
 - `worktrees/<project>/`: 관리되는 Job worktree와 로그
+- `ollama_sessions/`: Ollama reply 체인 세션 연속성을 위한 로컬 대화 transcript
 - 서버 시작 시 SQLite에 남은 `queued` Job은 재실행하고, 서버 종료 시점에 `running`이던 Job은 `/status`에서 확인할 수 있도록 `server_restart` 실패로 정리합니다.
 
-주요 오버라이드 환경변수는 `REMOTE_CODER_HOME`, `PROJECTS_CONFIG_PATH`, `CONVERSATION_DB_PATH`, `JOB_DB_PATH`입니다.
+주요 오버라이드 환경변수는 `REMOTE_CODER_HOME`, `PROJECTS_CONFIG_PATH`, `CONVERSATION_DB_PATH`, `JOB_DB_PATH`, `OLLAMA_HOST`, `REMOTE_CODER_OLLAMA_DEFAULT_MODEL`입니다.
 
 ## 보안 메모
 
 - `~/.remote-coder/projects.json`은 secret처럼 다루세요. Bot token은 평문으로 저장됩니다.
 - 관리 UI는 localhost에서만 사용하세요.
 - Telegram 메시지에 secret이나 민감한 코드를 붙여넣지 마세요.
-- Claude `--dangerously-skip-permissions`, Gemini `--approval-mode yolo`, Codex `danger-full-access` 같은 위험 모드는 로컬 파일을 수정할 수 있습니다.
+- Claude `--dangerously-skip-permissions`, Gemini `--approval-mode yolo`, Codex `danger-full-access`, Ollama 생성 patch 같은 위험 동작은 로컬 파일을 수정할 수 있습니다.
 - 배포, 공개, 공유 전에 [`SECURITY.md`](SECURITY.md)를 확인하세요.
 
 ## 더 읽기

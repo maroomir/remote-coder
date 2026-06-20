@@ -1,6 +1,6 @@
 # Remote AI Coder
 
-Run Claude Code, Codex, or Gemini on your local development machine by sending a Telegram message. Remote AI Coder isolates each request in a Git worktree, commits the result on a separate branch, and reports the outcome back to Telegram.
+Run Claude Code, Codex, Gemini, or Ollama on your local development machine by sending a Telegram message. Remote AI Coder isolates each request in a Git worktree, commits the result on a separate branch, and reports the outcome back to Telegram.
 
 *English: this document · 한국어: [README.ko.md](README.ko.md)*
 
@@ -12,7 +12,7 @@ Run Claude Code, Codex, or Gemini on your local development machine by sending a
 - Telegram as a lightweight remote control for local coding agents.
 - One Telegram bot per registered project, with project-scoped allowlists and settings.
 - Request-specific Git worktrees, branch creation, commit, push, and result notifications.
-- Claude, Codex, and Gemini runners behind the same job flow.
+- Claude, Codex, Gemini, and Ollama runners behind the same job flow.
 - Reply-linked jobs continue the same AI CLI session, so follow-ups build on prior context.
 - Local admin UI for project setup, advanced settings, logs, and conversation memory.
 - Read-only `plan:`, `ask:`, and `research:` modes when you want analysis without commits. PLAN mode asks open decisions through inline buttons first, then finalizes the plan from your answers; RESEARCH mode asks the selected AI CLI to use internet search when useful.
@@ -46,7 +46,7 @@ Open `http://127.0.0.1:8000/`, add your first project, and message the project b
 - `ngrok` or another HTTPS tunnel for Telegram webhooks
 - One Telegram bot token per project
 - Allowed Telegram Chat IDs, and optionally User IDs
-- At least one local AI CLI: `claude`, `codex`, or `gemini`
+- At least one local AI CLI/provider: `claude`, `codex`, `gemini`, or `ollama`
 - A local Git repository to automate
 - GitHub CLI (`gh`) authenticated with `gh auth login` when using `/pr`
 
@@ -59,7 +59,7 @@ Telegram message
  -> command parser or natural-language confirmation
  -> JobManager
  -> Git worktree
- -> Claude / Codex / Gemini runner
+ -> Claude / Codex / Gemini / Ollama runner
  -> branch, commit, push, and Telegram result
 ```
 
@@ -89,6 +89,7 @@ Natural-language examples:
 
 ```text
 Fix the login validation bug with model: codex
+ask: model: ollama explain the parser flow
 plan: outline the migration before changing code
 /ask what test command does this repo use?
 /research compare current Telegram webhook security guidance
@@ -102,16 +103,17 @@ Day-to-day setup happens in the local admin UI. Files live under `REMOTE_CODER_H
 - `projects.json` stores project records, bot tokens, allowlists, root paths, and default models.
 - `advanced_settings.json` stores global behavior such as timeouts, sandbox mode, language, worktree retention, and memory limits.
 - `worktrees/<project>/` contains managed job worktrees and logs.
+- `ollama_sessions/` stores local Ollama reply-chain transcripts for session continuity.
 - On server startup, queued Jobs stored in SQLite are rerun; Jobs that were running when the server stopped are marked failed with `server_restart` for `/status` review.
 
-Useful overrides: `REMOTE_CODER_HOME`, `PROJECTS_CONFIG_PATH`, `CONVERSATION_DB_PATH`, and `JOB_DB_PATH`.
+Useful overrides: `REMOTE_CODER_HOME`, `PROJECTS_CONFIG_PATH`, `CONVERSATION_DB_PATH`, `JOB_DB_PATH`, `OLLAMA_HOST`, and `REMOTE_CODER_OLLAMA_DEFAULT_MODEL`.
 
 ## Security Notes
 
 - Treat `~/.remote-coder/projects.json` as a secret; bot tokens are stored in plain text.
 - Keep the admin UI on localhost.
 - Do not paste secrets or sensitive code into Telegram messages.
-- Dangerous runner modes such as Claude `--dangerously-skip-permissions`, Gemini `--approval-mode yolo`, and Codex `danger-full-access` can modify local files.
+- Dangerous runner modes such as Claude `--dangerously-skip-permissions`, Gemini `--approval-mode yolo`, Codex `danger-full-access`, and Ollama-generated patches can modify local files.
 - See [`SECURITY.md`](SECURITY.md) before publishing, exposing, or sharing a deployment.
 
 ## More Docs
