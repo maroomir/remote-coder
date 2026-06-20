@@ -1,4 +1,5 @@
 import json
+import logging
 
 import respx
 from httpx import Response
@@ -191,3 +192,29 @@ def test_register_all_enabled_projects_returns_false_when_empty(tmp_path):
     settings = _settings_with_registry(tmp_path)
 
     assert register_all_enabled_projects("https://abcd.ngrok-free.app", settings) is False
+
+
+@respx.mock
+def test_setwebhook_failure_does_not_log_bot_token(tmp_path, caplog):
+    # httpx errors carry the request URL (which embeds the raw token) in their
+    # string form; the failure path must log only the exception type, never it.
+    token = "987654:SECRET-token-value"
+    respx.post(f"https://api.telegram.org/bot{token}/setWebhook").mock(
+        return_value=Response(500, json={"ok": False})
+    )
+    record = ProjectRecord(
+        name="leakproj",
+        root_path=tmp_path,
+        default_model=ModelName.CLAUDE,
+        enabled=True,
+        bot_token=SecretStr(token),
+        allowed_chat_ids=[123],
+        allowed_user_ids=[],
+    )
+
+    with caplog.at_level(logging.WARNING, logger="app.telegram.webhook_registration"):
+        assert TelegramWebhookRegistrar("https://abcd.ngrok-free.app").sync_project(record) is False
+
+    assert "setWebhook request failed" in caplog.text
+    assert token not in caplog.text
+    assert "HTTPStatusError" in caplog.text

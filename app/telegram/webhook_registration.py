@@ -84,7 +84,7 @@ class TelegramWebhookRegistrar:
             _webhooklog.warning(
                 "setWebhook request failed project=%s err=%s",
                 record.name,
-                exc,
+                type(exc).__name__,
                 project=record.name,
             )
             return False
@@ -120,7 +120,7 @@ class TelegramWebhookRegistrar:
                 _webhooklog.warning(
                     "setMyCommands request failed project=%s err=%s",
                     project_name,
-                    exc,
+                    type(exc).__name__,
                     project=project_name,
                 )
                 return False
@@ -150,7 +150,7 @@ class TelegramWebhookRegistrar:
             _webhooklog.warning(
                 "setChatMenuButton request failed project=%s err=%s",
                 project_name,
-                exc,
+                type(exc).__name__,
                 project=project_name,
             )
             return False
