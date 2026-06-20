@@ -124,6 +124,63 @@ def test_ollama_runner_chat_timeout_is_classified(tmp_path: Path, monkeypatch):
     assert "timed out after 7s" in result.stderr
 
 
+def _patch_response(diff_body: str):
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"model": "m", "message": {"role": "assistant", "content": diff_body}},
+        )
+
+    return handler
+
+
+def test_ollama_runner_refuses_patch_targeting_git_dir(tmp_path: Path, monkeypatch):
+    # A `.git/hooks/` path is inside the worktree, so `git apply` would accept it;
+    # the runner must refuse it before shelling out to git.
+    monkeypatch.setenv("REMOTE_CODER_HOME", str(tmp_path / "home"))
+    diff = (
+        "```diff\n"
+        "diff --git a/.git/hooks/post-commit b/.git/hooks/post-commit\n"
+        "--- a/.git/hooks/post-commit\n+++ b/.git/hooks/post-commit\n"
+        "@@ -0,0 +1 @@\n+evil\n"
+        "```"
+    )
+    run_mock = Mock()
+    with (
+        patch("app.ai.ollama.httpx.Client", return_value=_transport(_patch_response(diff))),
+        patch("app.ai.ollama.subprocess.run", run_mock),
+    ):
+        result = OllamaRunner().run(
+            RunnerInput(instruction="x", cwd=tmp_path, timeout_seconds=10, model_id="m", mode=JobMode.AGENT)
+        )
+
+    assert result.exit_code != 0
+    assert ".git/" in result.stderr
+    run_mock.assert_not_called()
+
+
+def test_ollama_runner_refuses_patch_with_parent_traversal(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("REMOTE_CODER_HOME", str(tmp_path / "home"))
+    diff = (
+        "```diff\n"
+        "diff --git a/../../etc/evil b/../../etc/evil\n"
+        "--- a/../../etc/evil\n+++ b/../../etc/evil\n"
+        "@@ -0,0 +1 @@\n+evil\n"
+        "```"
+    )
+    run_mock = Mock()
+    with (
+        patch("app.ai.ollama.httpx.Client", return_value=_transport(_patch_response(diff))),
+        patch("app.ai.ollama.subprocess.run", run_mock),
+    ):
+        result = OllamaRunner().run(
+            RunnerInput(instruction="x", cwd=tmp_path, timeout_seconds=10, model_id="m", mode=JobMode.AGENT)
+        )
+
+    assert result.exit_code != 0
+    run_mock.assert_not_called()
+
+
 def test_load_session_messages_keeps_recent_in_chronological_order(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("REMOTE_CODER_HOME", str(tmp_path / "home"))
     directory = ollama_session_dir()

@@ -207,6 +207,26 @@ def _extract_patch_blocks(text: str) -> list[str]:
     return patches
 
 
+def _patch_targets_unsafe_path(patch: str) -> bool:
+    """Reject a patch whose target escapes the worktree or writes inside `.git/`.
+
+    `git apply` already refuses absolute/`..` traversal, but a path inside `.git/`
+    (e.g. a hook) is within the tree and would otherwise apply, so guard it here.
+    """
+    for line in patch.splitlines():
+        if not (line.startswith("--- ") or line.startswith("+++ ")):
+            continue
+        target = line[4:].split("\t", 1)[0].strip()
+        if target == "/dev/null":
+            continue
+        if target.startswith("a/") or target.startswith("b/"):
+            target = target[2:]
+        parts = target.replace("\\", "/").split("/")
+        if target.startswith("/") or ".." in parts or parts[:1] == [".git"]:
+            return True
+    return False
+
+
 class OllamaRunner(AiRunner):
     name = "ollama"
 
@@ -355,6 +375,13 @@ class OllamaRunner(AiRunner):
         stdout_parts: list[str] = []
         stderr_parts: list[str] = []
         for patch in patches:
+            if _patch_targets_unsafe_path(patch):
+                return _PatchApplyResult(
+                    returncode=1,
+                    patch_count=0,
+                    stdout="".join(stdout_parts),
+                    stderr="refused an Ollama patch targeting a path outside the project or inside .git/",
+                )
             try:
                 proc = subprocess.run(
                     ["git", "apply", "--whitespace=nowarn"],
