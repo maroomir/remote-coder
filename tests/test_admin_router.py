@@ -856,6 +856,7 @@ def test_api_prerequisites_returns_report(
             AiCliStatus(name="claude", installed=True),
             AiCliStatus(name="codex", installed=False),
             AiCliStatus(name="gemini", installed=False),
+            AiCliStatus(name="ollama", installed=False),
         ],
         github_cli=AiCliStatus(name="gh", installed=True),
     )
@@ -875,6 +876,7 @@ def test_api_prerequisites_returns_report(
         "claude": True,
         "codex": False,
         "gemini": False,
+        "ollama": False,
     }
     assert body["github_cli"] == {"name": "gh", "installed": True}
 

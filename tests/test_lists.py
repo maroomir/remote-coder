@@ -17,10 +17,10 @@ def test_render_labeled_list_indents_multiline_values():
 
 def test_render_command_list_uses_signature_and_description_lines():
     output = render_command_list(
-        [("/model", "<claude|codex|gemini>", "Change the default model")]
+        [("/model", "<claude|codex|gemini|ollama>", "Change the default model")]
     )
 
     assert output == (
-        "- /model <claude|codex|gemini>\n"
+        "- /model <claude|codex|gemini|ollama>\n"
         "  Change the default model"
     )

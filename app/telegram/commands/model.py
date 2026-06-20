@@ -35,6 +35,14 @@ class ModelCommand(TelegramCommand):
         if len(tokens) == 2 and tokens[1] in {model.value for model in ModelName}:
             selected = ModelName(tokens[1])
             ctx.model_preferences.set(project_name, message.chat_id, selected)
+            if selected == ModelName.OLLAMA and not get_model_options(selected):
+                return ui_message(
+                    "model.provider_selected_empty_ollama",
+                    "Model provider selected.\n\n"
+                    "- Default model: {provider}\n"
+                    "- No local Ollama models found. Start Ollama and run `ollama pull <model>`.",
+                    provider=selected.value,
+                )
             return ui_message(
                 "model.provider_selected",
                 "Model provider selected.\n\n- Default model: {provider}\n- Choose a specific model.",
@@ -74,19 +82,24 @@ class ModelCommand(TelegramCommand):
     ) -> list[list[InlineButton]] | None:
         tokens = message.text.strip().split() if message is not None else []
         if len(tokens) <= 1:
-            return [
+            return _button_rows(
                 [
                     InlineButton("claude", "/model claude"),
                     InlineButton("codex", "/model codex"),
                     InlineButton("gemini", "/model gemini"),
-                ]
-            ]
+                    InlineButton("ollama", "/model ollama"),
+                ],
+                per_row=2,
+            )
         if len(tokens) == 2 and tokens[1] in {model.value for model in ModelName}:
             provider = ModelName(tokens[1])
+            options = get_model_options(provider)
+            if not options:
+                return None
             return _button_rows(
                 [
                     InlineButton(option.label, f"/model {provider.value} {option.value}")
-                    for option in get_model_options(provider)
+                    for option in options
                 ],
                 per_row=1,
             )

@@ -143,8 +143,8 @@
     "setup.ngrok": { en: "ngrok tunnel", ko: "ngrok 터널" },
     "setup.aiCli": { en: "AI CLI", ko: "AI CLI" },
     "setup.aiCliNone": {
-      en: "None found (install at least one: claude / codex / gemini)",
-      ko: "설치된 것 없음 (claude / codex / gemini 중 최소 1개 설치)",
+      en: "None found (install at least one: claude / codex / gemini / ollama)",
+      ko: "설치된 것 없음 (claude / codex / gemini / ollama 중 최소 1개 설치)",
     },
     "setup.githubCli": { en: "GitHub CLI", ko: "GitHub CLI" },
     "setup.githubCliNone": {
@@ -262,8 +262,8 @@
       ko: "AI 작업 타임아웃 (초)",
     },
     "advanced.jobTimeoutHint": {
-      en: "If a Claude/Codex/Gemini runner does not finish within this time, the job fails. Default: 1800.",
-      ko: "Claude/Codex/Gemini 러너가 이 시간 내에 끝나지 않으면 작업이 실패합니다. 기본값: 1800.",
+      en: "If a Claude/Codex/Gemini/Ollama runner does not finish within this time, the job fails. Default: 1800.",
+      ko: "Claude/Codex/Gemini/Ollama 러너가 이 시간 내에 끝나지 않으면 작업이 실패합니다. 기본값: 1800.",
     },
     "advanced.gitRemoteLabel": { en: "Git remote name", ko: "Git 원격 이름" },
     "advanced.gitRemoteHint": {

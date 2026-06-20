@@ -14,7 +14,7 @@ def test_check_prerequisites_all_ok(monkeypatch) -> None:
     assert report.ngrok_ok is True
     assert report.ngrok_detail == ""
     installed = {cli.name: cli.installed for cli in report.ai_clis}
-    assert installed == {"claude": True, "codex": False, "gemini": False}
+    assert installed == {"claude": True, "codex": False, "gemini": False, "ollama": False}
     assert report.github_cli.name == "gh"
     assert report.github_cli.installed is False
 

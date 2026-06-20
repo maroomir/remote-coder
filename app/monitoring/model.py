@@ -10,6 +10,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final
 
+import httpx
+
+from app.ai.ollama import list_ollama_model_names, ollama_base_url, ollama_session_dir
 from app.ai.usage import extract_runner_usage, format_token_usage, merge_token_usage
 from app.jobs.schemas import Job
 from app.models import ModelName
@@ -648,8 +651,98 @@ def _gemini_model_stats(data: dict[str, Any]) -> tuple[str | None, dict[str, int
     return str(model_name), _normalize_token_dict(model_stats.get("tokens"))
 
 
+class OllamaUsageProvider(ModelUsageProvider):
+    def format_monitor(self, timeout_seconds: int) -> str:
+        lines: list[str] = ["[Ollama]"]
+        try:
+            proc = subprocess.run(
+                ["ollama", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                shell=False,
+            )
+        except FileNotFoundError:
+            lines.append("CLI: `ollama` command not found. Check Ollama installation and PATH.")
+            return "\n".join(lines)
+        except subprocess.TimeoutExpired:
+            lines.append("`ollama --version` timed out.")
+        else:
+            ver = (proc.stdout or proc.stderr or "").strip()
+            if ver:
+                snippet = ver if len(ver) <= 500 else ver[:500] + "..."
+                lines.append(f"CLI version:\n{snippet}")
+            else:
+                lines.append(f"Version check failed (exit {proc.returncode}).")
+
+        models = list_ollama_model_names(timeout_seconds=timeout_seconds)
+        if models:
+            displayed = ", ".join(models[:20])
+            suffix = f" (+{len(models) - 20} more)" if len(models) > 20 else ""
+            lines.append(f"Local models ({len(models)}): {displayed}{suffix}")
+        else:
+            lines.append("Local models: none found or Ollama server is not reachable.")
+            lines.append("Hint: run `ollama serve` and `ollama pull <model>`.")
+
+        loaded = self._loaded_models(timeout_seconds)
+        if loaded:
+            lines.append(f"Loaded models: {', '.join(loaded)}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _loaded_models(timeout_seconds: int) -> list[str]:
+        try:
+            with httpx.Client(timeout=timeout_seconds) as client:
+                response = client.get(f"{ollama_base_url()}/api/ps")
+                response.raise_for_status()
+                data = response.json()
+        except (httpx.HTTPError, json.JSONDecodeError, ValueError):
+            return []
+        raw_models = data.get("models") if isinstance(data, dict) else None
+        if not isinstance(raw_models, list):
+            return []
+        names: list[str] = []
+        for item in raw_models:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name") or item.get("model")
+            if isinstance(name, str) and name.strip():
+                names.append(name.strip())
+        return names
+
+    def read_local_usage(self) -> LocalUsageSnapshot | None:
+        root = ollama_session_dir()
+        newest: tuple[Path, dict[str, Any], datetime | None] | None = None
+        today = datetime.now().astimezone().date()
+        requests_today = 0
+        for path in _iter_recent_files(root, "*.jsonl"):
+            for item in _read_jsonl_objects(path):
+                if item.get("role") != "assistant" or not isinstance(
+                    item.get("token_usage"), dict
+                ):
+                    continue
+                observed = _parse_datetime(item.get("timestamp"))
+                if observed and observed.astimezone().date() == today:
+                    requests_today += 1
+                if _is_newer(observed, newest[2] if newest else None):
+                    newest = (path, item, observed)
+        if newest is None:
+            return None
+
+        path, item, observed = newest
+        return LocalUsageSnapshot(
+            source=_compact_home(path),
+            observed_at=observed,
+            actual_model=_string_or_none(item.get("model")),
+            token_metrics=_normalize_token_dict(item.get("token_usage")) or None,
+            requests_today=requests_today,
+            remaining_note="Ollama local runs do not expose a provider quota; usage is local tokens only.",
+        )
+
+
 _USAGE_PROVIDERS: dict[ModelName, ModelUsageProvider] = {
     ModelName.CLAUDE: ClaudeUsageProvider(),
     ModelName.CODEX: CodexUsageProvider(),
     ModelName.GEMINI: GeminiUsageProvider(),
+    ModelName.OLLAMA: OllamaUsageProvider(),
 }

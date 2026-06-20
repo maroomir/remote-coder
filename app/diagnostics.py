@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app import tunnel
 
-AI_CLI_TOOLS = ("claude", "codex", "gemini")
+AI_CLI_TOOLS = ("claude", "codex", "gemini", "ollama")
 GITHUB_CLI_TOOL = "gh"
 
 

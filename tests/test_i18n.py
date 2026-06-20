@@ -50,11 +50,11 @@ def test_translate_text_translates_model_provider_detail_prompt():
 
 
 def test_translate_text_preserves_help_list_layout():
-    raw = "Commands:\n- /model <claude|codex|gemini>\n  Change the default model"
+    raw = "Commands:\n- /model <claude|codex|gemini|ollama>\n  Change the default model"
 
     out = translate_text(raw, UiLanguage.KOREAN)
 
-    assert out == "명령어 목록:\n- /model <claude|codex|gemini>\n  기본 모델 변경"
+    assert out == "명령어 목록:\n- /model <claude|codex|gemini|ollama>\n  기본 모델 변경"
 
 
 def test_translate_text_localizes_monitor_list_labels_and_headings():

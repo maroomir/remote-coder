@@ -99,7 +99,7 @@ def test_help_command_dispatch(project_registry: ProjectRegistry):
     assert "📋 Commands" in text
     assert "/clear branch:" not in text
     assert "/clear" in text and "<branch|worktrees|memory>" in text
-    assert "- /model <claude|codex|gemini>\n  Change the default model" in text
+    assert "- /model <claude|codex|gemini|ollama>\n  Change the default model" in text
     assert "cmd" not in text and "description" not in text
 
 
@@ -634,7 +634,10 @@ def test_model_command_shows_model_buttons(project_registry: ProjectRegistry):
         [
             InlineButton("claude", "/model claude"),
             InlineButton("codex", "/model codex"),
+        ],
+        [
             InlineButton("gemini", "/model gemini"),
+            InlineButton("ollama", "/model ollama"),
         ]
     ]
 
@@ -680,14 +683,41 @@ def test_model_command_updates_preference_to_gemini(project_registry: ProjectReg
     assert ctx.model_preferences.get(ctx.project_name, 77) == ModelName.GEMINI
 
 
+def test_model_command_ollama_without_models_explains_setup(project_registry: ProjectRegistry):
+    registry = CommandRegistry([ModelCommand()])
+    ctx = _ctx(project_registry)
+
+    with patch("app.ai.model_catalog.list_ollama_model_names", return_value=()):
+        text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model ollama"), ctx)
+
+    assert text is not None
+    assert "- Default model: ollama" in text
+    assert "No local Ollama models found" in text
+    assert ctx.model_preferences.get(ctx.project_name, 77) == ModelName.OLLAMA
+
+
+def test_model_command_shows_ollama_detail_buttons(project_registry: ProjectRegistry):
+    registry = CommandRegistry([ModelCommand()])
+    with patch("app.ai.model_catalog.list_ollama_model_names", return_value=("llama3.2:latest",)):
+        response = registry.dispatch_rich(
+            TelegramMessage(chat_id=77, user_id=1, text="/model ollama"),
+            _ctx(project_registry),
+        )
+
+    assert response is not None
+    assert response.inline_buttons == [
+        [InlineButton("llama3.2:latest", "/model ollama llama3.2:latest")]
+    ]
+
+
 def test_model_command_returns_consistent_usage(project_registry: ProjectRegistry):
     registry = CommandRegistry([ModelCommand()])
     text = registry.dispatch(TelegramMessage(chat_id=77, user_id=1, text="/model nope"), _ctx(project_registry))
     assert text == (
         "Usage\n\n"
         "- /model\n"
-        "- /model <claude|codex|gemini>\n"
-        "- /model <claude|codex|gemini> <model_id>"
+        "- /model <claude|codex|gemini|ollama>\n"
+        "- /model <claude|codex|gemini|ollama> <model_id>"
     )
 
 

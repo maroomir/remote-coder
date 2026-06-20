@@ -48,7 +48,7 @@ def format_usage(*lines: str) -> str:
     return "Usage\n\n" + "\n".join(f"- {line}" for line in lines)
 
 
-MODEL_USAGE = "<claude|codex|gemini>"
+MODEL_USAGE = "<claude|codex|gemini|ollama>"
 
 
 @dataclass
@@ -72,7 +72,7 @@ def _help_response_skips_notifier_body_i18n(message_text: str) -> bool:
 
 
 _HELP_COMMAND_ROWS: tuple[tuple[str, str, str], ...] = (
-    ("/model", "<claude|codex|gemini>", "Change the default model"),
+    ("/model", "<claude|codex|gemini|ollama>", "Change the default model"),
     ("/status", "<job_id>", "Check job status"),
     ("/log", "<job_id>", "Show job AI output logs"),
     ("/branch", "[name]", "Show or switch branches"),

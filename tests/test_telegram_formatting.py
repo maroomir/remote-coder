@@ -91,11 +91,11 @@ def test_prepare_outgoing_keeps_list_text_without_pre_entity():
 
 
 def test_entities_mark_help_command_signature_as_code():
-    text = "Help\n\nCommands:\n- /model <claude|codex|gemini>\n  Change the default model"
+    text = "Help\n\nCommands:\n- /model <claude|codex|gemini|ollama>\n  Change the default model"
 
     entities = build_message_entities(text)
 
-    signature = "/model <claude|codex|gemini>"
+    signature = "/model <claude|codex|gemini|ollama>"
     assert {
         "type": "code",
         "offset": text.index(signature),

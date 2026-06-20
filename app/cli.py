@@ -125,7 +125,7 @@ def run_doctor() -> None:
         print(f"  ✅ AI CLI: {', '.join(installed)}")
     else:
         print(
-            "  ⚠️ AI CLI (claude/codex/gemini) not found. Install at least one. "
+            "  ⚠️ AI CLI/provider (claude/codex/gemini/ollama) not found. Install at least one. "
             "(e.g. npm install -g @anthropic-ai/claude-code)"
         )
     if report.github_cli.installed:

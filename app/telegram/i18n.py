@@ -495,6 +495,11 @@ _MESSAGE_CATALOG_KO: dict[str, str] = {
         "- 기본 모델: {provider}\n"
         "- 세부 모델을 선택하세요."
     ),
+    "model.provider_selected_empty_ollama": (
+        "모델 제공자가 선택되었습니다.\n\n"
+        "- 기본 모델: {provider}\n"
+        "- 로컬 Ollama 모델을 찾지 못했습니다. Ollama를 시작하고 `ollama pull <model>`을 실행하세요."
+    ),
     "model.updated": "모델 설정이 변경되었습니다.\n\n- 기본 모델: {selection}",
     "model.unknown_specific": "알 수 없는 세부 모델입니다: {model_id}\n\n{usage}",
     "job.accepted": (

@@ -3,6 +3,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import httpx
+
 from app.jobs.schemas import Job, JobRequest, JobStatus
 from app.monitoring.code import ProjectCodeStats, count_project_code
 from app.monitoring.memory import format_memory_monitor
@@ -74,6 +76,13 @@ def test_format_model_monitor_gemini_not_installed():
     with patch("app.monitoring.model.subprocess.run", side_effect=FileNotFoundError):
         text = format_model_monitor(ModelName.GEMINI, timeout_seconds=2)
     assert "[Gemini]" in text
+
+
+def test_format_model_monitor_ollama_not_installed():
+    with patch("app.monitoring.model.subprocess.run", side_effect=FileNotFoundError):
+        text = format_model_monitor(ModelName.OLLAMA, timeout_seconds=2)
+    assert "[Ollama]" in text
+    assert "`ollama` command not found" in text
 
 
 def test_format_model_monitor_includes_recent_job_usage():
@@ -278,3 +287,51 @@ def test_format_model_monitor_includes_gemini_local_chat_usage(tmp_path: Path, m
     assert "Requests today from local logs: 1" in text
     assert "input=30" in text
     assert "not account remaining quota snapshots" in text
+
+
+def test_format_model_monitor_includes_ollama_models_and_usage(tmp_path: Path, monkeypatch):
+    home = tmp_path / ".remote-coder"
+    session_dir = home / "ollama_sessions"
+    session_dir.mkdir(parents=True)
+    today = datetime.now().astimezone().replace(microsecond=0)
+    (session_dir / "session.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp": today.isoformat(),
+                "role": "assistant",
+                "content": "done",
+                "model": "llama3.2:latest",
+                "token_usage": {"input": 20, "output": 5, "total": 25},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("REMOTE_CODER_HOME", str(home))
+
+    def tags_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "llama3.2:latest"}]})
+        if request.url.path == "/api/ps":
+            return httpx.Response(200, json={"models": [{"name": "llama3.2:latest"}]})
+        raise AssertionError(request.url.path)
+
+    real_httpx_client = httpx.Client
+    with (
+        patch("app.monitoring.model.subprocess.run") as mock_run,
+        patch("app.monitoring.model.list_ollama_model_names", return_value=("llama3.2:latest",)),
+        patch(
+            "app.monitoring.model.httpx.Client",
+            side_effect=lambda **_kwargs: real_httpx_client(
+                transport=httpx.MockTransport(tags_handler)
+            ),
+        ),
+    ):
+        mock_run.return_value = Mock(returncode=0, stdout="ollama version is 0.13.0\n", stderr="")
+        text = format_model_monitor(ModelName.OLLAMA, timeout_seconds=2)
+
+    assert "CLI version:\nollama version is 0.13.0" in text
+    assert "Local models (1): llama3.2:latest" in text
+    assert "Loaded models: llama3.2:latest" in text
+    assert "Observed detailed model: llama3.2:latest" in text
+    assert "Observed tokens: 25" in text
