@@ -33,8 +33,13 @@ class JobMode(StrEnum):
 READ_ONLY_JOB_MODES = frozenset({JobMode.PLAN, JobMode.ASK, JobMode.RESEARCH})
 
 
-def is_read_only_job_mode(mode: JobMode) -> bool:
-    return mode in READ_ONLY_JOB_MODES
+def is_read_only_job_mode(mode: JobMode | str) -> bool:
+    # Delegate to the mode registry so addon modes are covered too. Imported lazily to avoid a
+    # circular import (mode_registry imports JobMode from this module).
+    from app.jobs.mode_registry import get_mode_registry
+
+    name = mode.value if isinstance(mode, JobMode) else str(mode)
+    return get_mode_registry().is_read_only(name)
 
 
 class FixKind(StrEnum):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from app.jobs.schemas import JobMode
 
@@ -131,3 +132,10 @@ class ModeRegistry:
 
     def slash_names(self) -> list[str]:
         return [spec.name for spec in self._specs.values() if spec.slash]
+
+
+@lru_cache
+def get_mode_registry() -> ModeRegistry:
+    # Process-wide singleton built once at boot. Later phases load YAML addons into the same
+    # instance; consumers (schemas, parser, command registry) read from this shared registry.
+    return ModeRegistry()
