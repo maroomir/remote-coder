@@ -16,6 +16,7 @@ alwaysApply: true
 - Avoid `shell=True`; use list-based subprocess arguments.
 - Dangerous options such as `--dangerously-skip-permissions` must be documented and used only after project path and user allowlist checks.
 - Commit AI-generated changes only to a separate branch. Do not add automatic deployment to the MVP.
+- Declarative mode addons (`~/.remote-coder/addons/*.yaml`) are read-only only: `read_only` must be boolean `true`, write/commit/push capability stays builtin-exclusive, and `prompt` text never grants permission. Parse with `yaml.safe_load`, reject builtin/trigger collisions, and skip a bad file per-file with a short reason token only (no paths/tokens/field values in logs). Rationale: `docs/mode-addons-design.md`.
 - Admin UI logs must not store full Telegram message text. Log only a first-line preview of at most 80 characters.
 - Do not place bot tokens or project absolute paths in log message bodies.
 - Pass `chat_id`, `job_id`, `project`, and similar context through structured `logging extra` fields that match `LOG_RECORD_CONTEXT_KEYS`.
