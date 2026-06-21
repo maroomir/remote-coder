@@ -23,6 +23,10 @@ def worktrees_root() -> Path:
     return (remote_coder_home() / "worktrees").resolve()
 
 
+def addons_dir() -> Path:
+    return remote_coder_home() / "addons"
+
+
 def default_worktree_base_dir(project_name: str) -> Path:
     return (worktrees_root() / project_name).resolve()
 

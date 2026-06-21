@@ -9,11 +9,12 @@ from fastapi import FastAPI, Request
 from app.admin.advanced_settings import AdvancedSettings, FileAdvancedSettingsStore, advanced_settings_path
 from app.admin.router import create_admin_router
 from app.ai.factory import AiRunnerFactory
-from app.config import get_settings, worktrees_root
+from app.config import addons_dir, get_settings, worktrees_root
 from app.git.ai_commit import AiCommitBodyGenerator
 from app.git.branch_naming import TimestampSlugStrategy
 from app.git.service import GitWorktreeService
 from app.jobs.manager import JobManager
+from app.jobs.mode_registry import get_mode_registry, load_addon_modes
 from app.jobs.schemas import Job
 from app.jobs.store import SQLiteJobStore
 from app.monitoring.log_buffer import InMemoryLogBuffer, attach_app_memory_log_handler
@@ -51,6 +52,10 @@ project_registry.ensure_empty_registry_file()
 advanced_settings_store = FileAdvancedSettingsStore(advanced_settings_path())
 advanced_settings_store.load()
 _adv: AdvancedSettings = advanced_settings_store.get()
+
+# Load declarative read-only addon modes once at boot into the shared registry. Per-file failures
+# are logged and skipped inside load_addon_modes, so a bad YAML never blocks startup.
+load_addon_modes(get_mode_registry(), addons_dir())
 
 log_buffer = InMemoryLogBuffer(max_entries=2000)
 attach_app_memory_log_handler(log_buffer)
