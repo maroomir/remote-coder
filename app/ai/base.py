@@ -39,50 +39,22 @@ class RunnerExecutionError(RuntimeError):
 
 
 
-_PLAN_DECISIONS_INSTRUCTION = (
-    "You are in PLAN mode. Read the codebase and produce a concrete change plan. "
-    "Do not modify files.\n\n"
-    "Before finalizing, decide whether the plan depends on choices only the user can make "
-    "(for example: which library/database to use, reuse an existing module vs. create a new one, "
-    "scope or behavior trade-offs). If such open decisions exist, do NOT write the plan yet. "
-    "Instead output ONLY a single fenced block exactly like this and nothing else:\n"
-    "```plan-decisions\n"
-    '{"questions": [{"id": "short_id", "header": "Short label", '
-    '"question": "The decision to make?", "options": ['
-    '{"label": "Option A", "description": "What this choice means"}, '
-    '{"label": "Option B", "description": "What this choice means"}]}]}\n'
-    "```\n"
-    "Rules for the block: at most 3 questions; each question has 2-4 options; keep labels short "
-    "and descriptions to one sentence; valid JSON only. If there are no genuine open decisions, "
-    "skip the block entirely and just write the plan as usual.\n\n"
-    "User request:\n"
-)
+def instruction_for_runner_mode(instruction: str, mode: JobMode | str) -> str:
+    # PLAN keeps its own branch: its prompt drives the plan-decisions orchestration flow, not a
+    # plain read-only preset. Every other mode (builtin or addon) is data-driven: prepend the
+    # registered prompt prefix. Unregistered modes fall through to the raw instruction (AGENT-like).
+    from app.jobs.mode_registry import get_mode_registry
 
-
-_RESEARCH_INSTRUCTION = (
-    "You are in RESEARCH mode. Read the repository context and answer the user's research "
-    "question. Do not modify files.\n\n"
-    "Use internet search when it is useful or necessary for the question, similar to a deep "
-    "research workflow. Compare multiple perspectives or sources when possible, and clearly "
-    "separate repository-derived facts from external findings. Include citations or source "
-    "links for external claims, call out uncertainty or limitations, and finish with a direct "
-    "answer to the user's problem.\n\n"
-    "User research request:\n"
-)
-
-
-def instruction_for_runner_mode(instruction: str, mode: JobMode) -> str:
     if mode == JobMode.PLAN:
-        return f"{_PLAN_DECISIONS_INSTRUCTION}{instruction}"
-    if mode == JobMode.ASK:
-        return (
-            "You are in ASK mode. Analyze the codebase and answer the user's question. "
-            "Do not modify files.\n\n"
-            f"User question:\n{instruction}"
-        )
-    if mode == JobMode.RESEARCH:
-        return f"{_RESEARCH_INSTRUCTION}{instruction}"
-    return instruction
+        spec = get_mode_registry().lookup(JobMode.PLAN.value)
+        prefix = spec.prompt if spec is not None else ""
+        return f"{prefix}{instruction}"
+
+    name = mode.value if isinstance(mode, JobMode) else str(mode)
+    spec = get_mode_registry().lookup(name)
+    if spec is None:
+        return instruction
+    return f"{spec.prompt}{instruction}"
 
 
 @dataclass
