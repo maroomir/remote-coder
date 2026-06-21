@@ -8,6 +8,10 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
+### Added
+
+- **Declarative mode addons**: drop a YAML file under `~/.remote-coder/addons/` to add a new read-only prompt-preset mode (slash command plus natural-language prefix) without code changes; addons are read-only only and load once at startup. See [docs/mode-addons.md](docs/mode-addons.md).
+
 ## [0.5.3] — 2026-06-20
 
 ### Added

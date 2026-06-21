@@ -16,6 +16,7 @@ Telegram 메시지 하나로 내 로컬 개발 머신의 Claude Code, Codex, Gem
 - 답장(reply)으로 연결된 Job은 동일한 AI CLI 세션을 이어가며 이전 맥락 위에서 작업합니다.
 - 프로젝트 설정, 고급 옵션, 로그, 대화 기억을 로컬 관리 UI에서 확인합니다.
 - 커밋 없이 분석만 하는 읽기 전용 `plan:` / `ask:` / `research:` 모드를 지원합니다. PLAN 모드는 결정이 필요한 선택지를 인라인 버튼으로 먼저 묻고, 답을 반영해 최종 계획을 완성합니다. RESEARCH 모드는 유용할 때 선택된 AI CLI가 인터넷 검색을 사용하도록 지시합니다.
+- 선언형 모드 애드온: `~/.remote-coder/addons/`에 YAML 파일을 넣으면 코드 변경 없이 직접 만든 읽기 전용 프롬프트 프리셋 모드를 추가할 수 있습니다. [docs/mode-addons.ko.md](docs/mode-addons.ko.md)를 참고하세요.
 
 ## 빠른 시작
 

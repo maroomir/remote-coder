@@ -16,6 +16,7 @@ Run Claude Code, Codex, Gemini, or Ollama on your local development machine by s
 - Reply-linked jobs continue the same AI CLI session, so follow-ups build on prior context.
 - Local admin UI for project setup, advanced settings, logs, and conversation memory.
 - Read-only `plan:`, `ask:`, and `research:` modes when you want analysis without commits. PLAN mode asks open decisions through inline buttons first, then finalizes the plan from your answers; RESEARCH mode asks the selected AI CLI to use internet search when useful.
+- Declarative mode addons: drop a YAML file under `~/.remote-coder/addons/` to add your own read-only prompt-preset mode without code changes. See [docs/mode-addons.md](docs/mode-addons.md).
 
 ## Quick Start
 
