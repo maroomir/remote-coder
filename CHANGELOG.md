@@ -8,9 +8,23 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 
 ## [Unreleased]
 
+## [0.5.4] — 2026-06-22
+
 ### Added
 
+- **Ollama local model runner**: Projects can use Ollama-backed local models alongside the existing cloud/CLI runners, with model selection, diagnostics, monitoring output, and admin controls wired into the same Telegram and dashboard flows.
 - **Declarative mode addons**: drop a YAML file under `~/.remote-coder/addons/` to add a new read-only prompt-preset mode (slash command plus natural-language prefix) without code changes; addons are read-only only and load once at startup. See [docs/mode-addons.md](docs/mode-addons.md).
+
+### Changed
+
+- **Mode handling is registry-driven**: Built-in AGENT, ASK, PLAN, and RESEARCH behavior now flows through a shared mode registry, so Telegram parsing, AI prompts, read-only checks, and addon validation use one source of truth.
+- **Ollama and addon documentation**: README and runner documentation now cover Ollama setup, local model behavior, and declarative mode addon design.
+
+### Fixed
+
+- **Sensitive Telegram data stays out of logs**: Webhook registration errors no longer include bot tokens, webhook secret checks use constant-time comparison, and `projects.json` is restricted to owner-only permissions.
+- **Safer Ollama patch handling**: Ollama-generated patches reject unsafe paths before applying changes.
+- **More accurate job metadata**: Runner token usage is no longer double-counted, and Git change collection reports rename destinations instead of the removed source path.
 
 ## [0.5.3] — 2026-06-20
 
