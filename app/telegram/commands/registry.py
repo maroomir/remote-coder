@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.jobs.mode_registry import get_mode_registry
 from app.models import UiLanguage
 from app.telegram.commands.base import (
     CommandContext,
@@ -17,6 +18,37 @@ from app.telegram.commands.monitor import MonitorCommand
 from app.telegram.commands.status import LogCommand, ReportsCommand, StatusCommand
 from app.telegram.commands.system import HelpCommand, InitCommand, StartCommand
 from app.telegram.i18n import translate_text
+
+
+# Existing setMyCommands descriptions for the builtin slash modes, kept verbatim so the bot menu
+# stays byte-identical after the move to registry-driven generation. Addon modes derive their
+# description from the spec help/label instead.
+_BUILTIN_MODE_COMMAND_DESCRIPTIONS = {
+    "plan": "plan mode message (example: /plan review login flow)",
+    "ask": "ask mode message (example: /ask explain the JobManager role)",
+    "research": "research mode message (example: /research compare webhook retry strategies)",
+}
+
+
+def _mode_slash_passthrough() -> set[str]:
+    # Slash mode triggers handled by the natural-language flow rather than a TelegramCommand. /fix
+    # is a real command but routes through the fix flow, so it is included explicitly.
+    registry = get_mode_registry()
+    passthrough = {f"/{name}" for name in registry.slash_names()}
+    passthrough.add("/fix")
+    return passthrough
+
+
+def _mode_command_description(mode_name: str) -> str:
+    builtin = _BUILTIN_MODE_COMMAND_DESCRIPTIONS.get(mode_name)
+    if builtin is not None:
+        return builtin
+    spec = get_mode_registry().lookup(mode_name)
+    if spec is not None and spec.help.get("en"):
+        return spec.help["en"]
+    if spec is not None and spec.label.get("en"):
+        return spec.label["en"]
+    return f"{mode_name} mode"
 
 
 class CommandRegistry:
@@ -37,7 +69,7 @@ class CommandRegistry:
                 ctx.confirmation_store.pop(scope_project, message.chat_id)
                 return init_cmd.execute(message, ctx)
 
-        if head in {"/plan", "/ask", "/research", "/fix"}:
+        if head in _mode_slash_passthrough():
             return None
 
         pending = ctx.confirmation_store.get(scope_project, message.chat_id)
@@ -80,23 +112,14 @@ class CommandRegistry:
             for command in self._commands.values()
             if command.description
         ]
-        return base + [
+        mode_entries = [
             {
-                "command": "plan",
-                "description": translate_text("plan mode message (example: /plan review login flow)", language),
-            },
-            {
-                "command": "ask",
-                "description": translate_text("ask mode message (example: /ask explain the JobManager role)", language),
-            },
-            {
-                "command": "research",
-                "description": translate_text(
-                    "research mode message (example: /research compare webhook retry strategies)",
-                    language,
-                ),
-            },
+                "command": name,
+                "description": translate_text(_mode_command_description(name), language),
+            }
+            for name in get_mode_registry().slash_names()
         ]
+        return base + mode_entries
 
 
 def build_default_commands() -> list[TelegramCommand]:

@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from fastapi import BackgroundTasks, HTTPException
 
+from app.jobs.mode_registry import get_mode_registry
 from app.jobs.schemas import JobMode
 from app.monitoring.events import EventLogger
 from app.projects.registry import normalize_webhook_token_hash_path_segment
@@ -21,6 +22,22 @@ from app.security.auth import AllowlistAuthService
 
 _inbound = EventLogger("app.telegram.inbound", "telegram.inbound")
 _authlog = EventLogger("app.security.auth", "auth.reject")
+
+
+def _read_only_mode_for_slash(slash_head: str) -> JobMode | str | None:
+    # A bare read-only slash mode (e.g. /plan) opens the instruction prompt flow. Writable modes
+    # are excluded so addons cannot hijack this prompt-for-instruction entry point.
+    registry = get_mode_registry()
+    name = registry.resolve_trigger(slash_head)
+    if name is None or not registry.is_read_only(name):
+        return None
+    spec = registry.lookup(name)
+    if spec is None or not spec.slash:
+        return None
+    for builtin in JobMode:
+        if builtin.value == name:
+            return builtin
+    return name
 
 
 class WebhookUpdateHandler:
@@ -181,14 +198,10 @@ class WebhookUpdateHandler:
         if pending_result is not None:
             return pending_result
 
-        if message_head_lower in {"/plan", "/ask", "/research"} and len(message_tokens) == 1:
-            mode_by_command = {
-                "/plan": JobMode.PLAN,
-                "/ask": JobMode.ASK,
-                "/research": JobMode.RESEARCH,
-            }
-            mode = mode_by_command[message_head_lower]
-            return self._natural_flow_factory().prompt_for_mode_instruction(req, mode)
+        if len(message_tokens) == 1:
+            mode = _read_only_mode_for_slash(message_head_lower)
+            if mode is not None:
+                return self._natural_flow_factory().prompt_for_mode_instruction(req, mode)
 
         if message_head_lower == "/fix" and len(message_tokens) == 1:
             return self._fix_flow_factory().prompt_for_instruction(req)

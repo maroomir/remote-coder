@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.jobs.mode_registry import get_mode_registry
 from app.jobs.schemas import JobMode, JobRequest
 from app.monitoring.events import EventLogger
 from app.telegram.confirmations import PendingConfirmation
@@ -74,16 +75,21 @@ class NaturalFlow:
 
         return None
 
-    def prompt_for_mode_instruction(self, req: WebhookRequest, mode: JobMode) -> dict[str, str]:
+    def prompt_for_mode_instruction(
+        self, req: WebhookRequest, mode: JobMode | str
+    ) -> dict[str, str]:
+        mode_name = mode.value if isinstance(mode, JobMode) else str(mode)
         req.command_context.confirmation_store.set(
             req.scope_project,
             req.chat_id,
             PendingConfirmation(
                 command_name=NATURAL_JOB_MODE_INPUT,
-                action=mode.value,
+                action=mode_name,
             ),
         )
-        req.background_tasks.add_task(req.notifier.send_text, req.chat_id, format_mode_input_prompt(mode))
+        req.background_tasks.add_task(
+            req.notifier.send_text, req.chat_id, format_mode_input_prompt(mode)
+        )
         return {"status": "ok"}
 
     def handle_natural(self, req: WebhookRequest) -> dict[str, str]:
@@ -177,12 +183,8 @@ class NaturalFlow:
     ) -> dict[str, str]:
         cc = req.command_context
         cc.confirmation_store.pop(req.scope_project, req.chat_id)
-        mode_prefixes = {
-            JobMode.PLAN.value: "/plan",
-            JobMode.ASK.value: "/ask",
-            JobMode.RESEARCH.value: "/research",
-        }
-        mode_prefix = mode_prefixes.get(pending.action, "/ask")
+        spec = get_mode_registry().lookup(pending.action)
+        mode_prefix = f"/{pending.action}" if spec is not None and spec.slash else "/ask"
         try:
             parsed_request = self._parser.parse_natural(
                 f"{mode_prefix} {req.message.text}",

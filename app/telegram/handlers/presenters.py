@@ -24,8 +24,9 @@ def format_natural_job_confirmation(
         f"- Work branch: {current_branch}",
         f"- Model: {format_model_selection(request.model, request.model_id)}",
     ]
+    mode_name = request.mode.value if isinstance(request.mode, JobMode) else str(request.mode)
     if is_read_only_job_mode(request.mode):
-        lines.append(f"- Mode: {request.mode.value} (read-only, no commit/push)")
+        lines.append(f"- Mode: {mode_name} (read-only, no commit/push)")
     else:
         lines.append("- Mode: agent (may edit code, commit, and push)")
     if request.branch:
@@ -66,7 +67,7 @@ def format_natural_job_cancelled(request: JobRequest | None) -> str:
     )
 
 
-def format_mode_input_prompt(mode: JobMode) -> str:
+def format_mode_input_prompt(mode: JobMode | str) -> str:
     if mode is JobMode.PLAN:
         return (
             "Send the instruction to run in plan mode.\n\n"
@@ -85,7 +86,8 @@ def format_mode_input_prompt(mode: JobMode) -> str:
             "Example: Compare FastAPI deployment options for this project\n"
             "Example: model: codex Research the safest webhook retry strategy"
         )
-    raise AssertionError(mode)
+    mode_name = mode.value if isinstance(mode, JobMode) else str(mode)
+    return f"Send the instruction to run in {mode_name} mode."
 
 
 def format_fix_mode_input_prompt() -> str:

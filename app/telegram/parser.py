@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 from app.git.service import GitWorktreeService
+from app.jobs.mode_registry import get_mode_registry
 from app.jobs.schemas import JobMode, JobRequest, is_read_only_job_mode
 from app.models import ModelName
 from app.projects.registry import ProjectRegistry
@@ -34,30 +36,58 @@ class CommandParseError(ValueError):
 
 _MODEL_OPTION_PATTERN = "|".join(model.value for model in ModelName)
 
-_SLASH_MODE_FIX = re.compile(r"^/(plan|ask|research|fix)\b\s*", re.IGNORECASE)
-_PREFIX_MODE_FIX = re.compile(
-    r"^(plan|ask|research|fix|계획|질문|조사|수정)\s*[:：]\s*",
-    re.IGNORECASE,
-)
 _REPLY_JOB_ID_PATTERN = re.compile(
     r"\bJob ID:\s*`?([A-Za-z0-9_.:-]+)`?",
     re.IGNORECASE,
 )
 
 
-def _job_mode_from_keyword(key: str) -> JobMode:
-    lowered = key.lower()
-    if lowered in ("plan", "계획"):
-        return JobMode.PLAN
-    if lowered in ("ask", "질문"):
-        return JobMode.ASK
-    if lowered in ("research", "조사"):
-        return JobMode.RESEARCH
-    raise AssertionError(key)
+def _mode_trigger_keywords() -> list[str]:
+    # Every keyword that can lead a message: slash mode names plus their aliases, including the
+    # fix triggers. Built from the registry so addon modes get triggers without code changes.
+    registry = get_mode_registry()
+    keywords: list[str] = []
+    for name in registry.names():
+        spec = registry.lookup(name)
+        if spec is None:
+            continue
+        if spec.slash:
+            keywords.append(name)
+        keywords.extend(spec.aliases)
+    return keywords
+
+
+def _slash_trigger_keywords() -> list[str]:
+    # Only slash-enabled mode names trigger via "/name"; aliases (e.g. Korean) never do. "fix" is
+    # added explicitly because AGENT_FIX keeps slash=False yet still owns its own "/fix" branch.
+    return [*get_mode_registry().slash_names(), "fix"]
+
+
+@lru_cache
+def _build_slash_mode_pattern() -> re.Pattern[str]:
+    alternatives = "|".join(re.escape(kw) for kw in _slash_trigger_keywords())
+    return re.compile(rf"^/({alternatives})\b\s*", re.IGNORECASE)
+
+
+@lru_cache
+def _build_prefix_mode_pattern() -> re.Pattern[str]:
+    alternatives = "|".join(re.escape(kw) for kw in _mode_trigger_keywords())
+    return re.compile(rf"^({alternatives})\s*[:：]\s*", re.IGNORECASE)
+
+
+def _resolved_mode_for_keyword(key: str) -> JobMode | str:
+    # Builtins stay JobMode for identity-based branches downstream; addon modes return their name.
+    name = get_mode_registry().resolve_trigger(key)
+    if name is None:
+        raise AssertionError(key)
+    for builtin in JobMode:
+        if builtin.value == name:
+            return builtin
+    return name
 
 
 def is_fix_mode_keyword(key: str) -> bool:
-    return key.lower() in ("fix", "수정")
+    return get_mode_registry().resolve_trigger(key) == JobMode.AGENT_FIX.value
 
 
 class FixModeParseResult:
@@ -133,24 +163,17 @@ class CommandParser:
         return model, branch, commit, remaining
 
     @staticmethod
-    def _strip_leading_job_mode(text: str) -> tuple[JobMode | None, str, bool]:
+    def _strip_leading_job_mode(text: str) -> tuple[JobMode | str | None, str, bool]:
         stripped = text.strip()
-        slash = _SLASH_MODE_FIX.match(stripped)
-        if slash:
-            key = slash.group(1).lower()
-            remainder = stripped[slash.end() :].strip()
+        for pattern in (_build_slash_mode_pattern(), _build_prefix_mode_pattern()):
+            match = pattern.match(stripped)
+            if not match:
+                continue
+            key = match.group(1)
+            remainder = stripped[match.end() :].strip()
             if is_fix_mode_keyword(key):
                 return None, remainder, True
-            mode = _job_mode_from_keyword(key)
-            return mode, remainder, False
-        prefix = _PREFIX_MODE_FIX.match(stripped)
-        if prefix:
-            key = prefix.group(1)
-            remainder = stripped[prefix.end() :].strip()
-            if is_fix_mode_keyword(key):
-                return None, remainder, True
-            mode = _job_mode_from_keyword(key)
-            return mode, remainder, False
+            return _resolved_mode_for_keyword(key), remainder, False
         return JobMode.AGENT, stripped, False
 
     def parse_fix_instruction(self, text: str) -> FixModeParseResult | None:

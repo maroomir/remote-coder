@@ -8,7 +8,12 @@ from app.models import ModelName, UiLanguage
 from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.conversation import ConversationEntry, SQLiteConversationStore
 from app.telegram.model_preferences import InMemoryModelPreferenceStore, ModelPreference
-from app.telegram.parser import CommandParseError, CommandParser
+from app.telegram.parser import (
+    CommandParseError,
+    CommandParser,
+    _build_prefix_mode_pattern,
+    _build_slash_mode_pattern,
+)
 
 
 def test_parse_natural_returns_job_request(project_registry: ProjectRegistry):
@@ -806,3 +811,28 @@ def test_parse_natural_plan_empty_body_shows_examples(project_registry: ProjectR
     parser = CommandParser(project_registry=project_registry, default_model=ModelName.CLAUDE)
     with pytest.raises(CommandParseError, match="Example"):
         parser.parse_natural("plan:", "remote-coder", chat_id=1, user_id=2)
+
+
+def test_slash_mode_pattern_matches_only_english_triggers():
+    pattern = _build_slash_mode_pattern()
+    assert pattern.match("/plan foo") is not None
+    assert pattern.match("/ask foo") is not None
+    assert pattern.match("/research foo") is not None
+    assert pattern.match("/fix foo") is not None
+
+
+def test_slash_mode_pattern_rejects_korean_aliases():
+    pattern = _build_slash_mode_pattern()
+    assert pattern.match("/계획 foo") is None
+    assert pattern.match("/질문 foo") is None
+    assert pattern.match("/조사 foo") is None
+    assert pattern.match("/수정 foo") is None
+
+
+def test_prefix_mode_pattern_matches_korean_aliases():
+    pattern = _build_prefix_mode_pattern()
+    assert pattern.match("계획: x") is not None
+    assert pattern.match("질문: x") is not None
+    assert pattern.match("조사: x") is not None
+    assert pattern.match("수정: x") is not None
+    assert pattern.match("plan: x") is not None

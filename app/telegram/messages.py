@@ -16,14 +16,15 @@ class OutboundButton:
     style: str | None = None
 
 
+def _job_mode_name(job: Job) -> str:
+    mode = job.request.mode
+    return mode.value if isinstance(mode, JobMode) else str(mode)
+
+
 def build_job_accepted_message(job: Job) -> tuple[str, list[list[OutboundButton]]]:
     mode_line = ""
-    if job.request.mode is JobMode.PLAN:
-        mode_line = ui_message("job.mode_line", "\n- Mode: {mode}", mode="plan")
-    elif job.request.mode is JobMode.ASK:
-        mode_line = ui_message("job.mode_line", "\n- Mode: {mode}", mode="ask")
-    elif job.request.mode is JobMode.RESEARCH:
-        mode_line = ui_message("job.mode_line", "\n- Mode: {mode}", mode="research")
+    if is_read_only_job_mode(job.request.mode):
+        mode_line = ui_message("job.mode_line", "\n- Mode: {mode}", mode=_job_mode_name(job))
     text = ui_message(
         "job.accepted",
         "✅ Job accepted\n\n"
