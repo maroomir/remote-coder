@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.ai.model_catalog import format_model_selection
-from app.jobs.schemas import JobMode, JobRequest, is_read_only_job_mode
+from app.jobs.schemas import JobMode, JobRequest, is_read_only_job_mode, job_mode_name
 from app.telegram.commands import InlineButton
 from app.telegram.commands import NAV_CLOSE_CALLBACK
 
@@ -24,7 +24,7 @@ def format_natural_job_confirmation(
         f"- Work branch: {current_branch}",
         f"- Model: {format_model_selection(request.model, request.model_id)}",
     ]
-    mode_name = request.mode.value if isinstance(request.mode, JobMode) else str(request.mode)
+    mode_name = job_mode_name(request.mode)
     if is_read_only_job_mode(request.mode):
         lines.append(f"- Mode: {mode_name} (read-only, no commit/push)")
     else:
@@ -86,8 +86,7 @@ def format_mode_input_prompt(mode: JobMode | str) -> str:
             "Example: Compare FastAPI deployment options for this project\n"
             "Example: model: codex Research the safest webhook retry strategy"
         )
-    mode_name = mode.value if isinstance(mode, JobMode) else str(mode)
-    return f"Send the instruction to run in {mode_name} mode."
+    return f"Send the instruction to run in {job_mode_name(mode)} mode."
 
 
 def format_fix_mode_input_prompt() -> str:

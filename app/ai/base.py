@@ -44,13 +44,14 @@ def instruction_for_runner_mode(instruction: str, mode: JobMode | str) -> str:
     # plain read-only preset. Every other mode (builtin or addon) is data-driven: prepend the
     # registered prompt prefix. Unregistered modes fall through to the raw instruction (AGENT-like).
     from app.jobs.mode_registry import get_mode_registry
+    from app.jobs.schemas import job_mode_name
 
     if mode == JobMode.PLAN:
         spec = get_mode_registry().lookup(JobMode.PLAN.value)
         prefix = spec.prompt if spec is not None else ""
         return f"{prefix}{instruction}"
 
-    name = mode.value if isinstance(mode, JobMode) else str(mode)
+    name = job_mode_name(mode)
     spec = get_mode_registry().lookup(name)
     if spec is None:
         return instruction

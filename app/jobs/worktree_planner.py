@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.git.service import GitWorktreeService
-from app.jobs.schemas import Job, is_read_only_job_mode
+from app.jobs.schemas import Job, is_read_only_job_mode, job_mode_name
 from app.monitoring.events import EventLogger
 
 _joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
@@ -33,7 +33,7 @@ def prepare_worktree_plan(
         )
         _joblog.info(
             "created detached worktree mode=%s worktree=%s",
-            job.request.mode.value,
+            job_mode_name(job.request.mode),
             path.name,
             **job_ctx,
         )

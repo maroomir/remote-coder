@@ -33,13 +33,18 @@ class JobMode(StrEnum):
 READ_ONLY_JOB_MODES = frozenset({JobMode.PLAN, JobMode.ASK, JobMode.RESEARCH})
 
 
+def job_mode_name(mode: JobMode | str) -> str:
+    # A mode is either a builtin JobMode enum or an addon mode name (plain str). This collapses
+    # both to the display/lookup name so callers never touch .value on a str and crash.
+    return mode.value if isinstance(mode, JobMode) else str(mode)
+
+
 def is_read_only_job_mode(mode: JobMode | str) -> bool:
     # Delegate to the mode registry so addon modes are covered too. Imported lazily to avoid a
     # circular import (mode_registry imports JobMode from this module).
     from app.jobs.mode_registry import get_mode_registry
 
-    name = mode.value if isinstance(mode, JobMode) else str(mode)
-    return get_mode_registry().is_read_only(name)
+    return get_mode_registry().is_read_only(job_mode_name(mode))
 
 
 class FixKind(StrEnum):
@@ -51,7 +56,7 @@ class JobRequest(BaseModel):
     model: ModelName
     model_id: str | None = None
     instruction: str
-    mode: JobMode = JobMode.AGENT
+    mode: JobMode | str = JobMode.AGENT
     job_id: str | None = None
     branch: str | None = None
     commit: bool = True
@@ -64,6 +69,21 @@ class JobRequest(BaseModel):
     session_id: str | None = None
     resume_session_token: str | None = None
     plan_decisions_resolved: bool = False
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def _normalize_mode(cls, value: JobMode | str) -> JobMode | str:
+        # Builtin values collapse back to the JobMode enum so downstream identity checks
+        # (mode is JobMode.PLAN/AGENT_FIX) keep working. Addon names stay plain str. Unknown
+        # values are kept as-is rather than rejected so persisted SQLite rows always deserialize;
+        # an unregistered mode is treated as AGENT (writable display) by the registry fallbacks.
+        if isinstance(value, JobMode):
+            return value
+        name = str(value)
+        for builtin in JobMode:
+            if builtin.value == name:
+                return builtin
+        return name
 
     @field_validator("branch")
     @classmethod

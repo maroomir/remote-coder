@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.jobs.mode_registry import get_mode_registry
-from app.jobs.schemas import JobMode, JobRequest
+from app.jobs.schemas import JobMode, JobRequest, job_mode_name
 from app.monitoring.events import EventLogger
 from app.telegram.confirmations import PendingConfirmation
 from app.telegram.handlers.presenters import (
@@ -78,7 +78,7 @@ class NaturalFlow:
     def prompt_for_mode_instruction(
         self, req: WebhookRequest, mode: JobMode | str
     ) -> dict[str, str]:
-        mode_name = mode.value if isinstance(mode, JobMode) else str(mode)
+        mode_name = job_mode_name(mode)
         req.command_context.confirmation_store.set(
             req.scope_project,
             req.chat_id,
@@ -116,7 +116,7 @@ class NaturalFlow:
 
         _cmdlog.info(
             "natural request parsed mode=%s model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
-            request.mode.value,
+            job_mode_name(request.mode),
             request.model.value,
             request.branch or "-",
             request.commit,
@@ -162,7 +162,7 @@ class NaturalFlow:
         cc.confirmation_store.pop(req.scope_project, req.chat_id)
         _cmdlog.info(
             "natural pending replaced mode=%s model=%s branch=%s commit=%s instruction_len=%d reply_to=%s",
-            parsed_request.mode.value,
+            job_mode_name(parsed_request.mode),
             parsed_request.model.value,
             parsed_request.branch or "-",
             parsed_request.commit,
@@ -208,7 +208,7 @@ class NaturalFlow:
             return {"status": "ignored"}
         _cmdlog.info(
             "pending mode input parsed mode=%s model=%s instruction_len=%d reply_to=%s",
-            parsed_request.mode.value,
+            job_mode_name(parsed_request.mode),
             parsed_request.model.value,
             len(parsed_request.instruction),
             parsed_request.reply_to_message_id or "-",

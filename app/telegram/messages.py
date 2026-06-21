@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from app.ai.model_catalog import format_model_selection
 from app.ai.usage import format_token_usage
 from app.jobs.plan_decisions import PLAN_EXECUTE_CALLBACK_PREFIX
-from app.jobs.schemas import Job, JobMode, is_read_only_job_mode
+from app.jobs.schemas import Job, JobMode, is_read_only_job_mode, job_mode_name
 from app.telegram.i18n import ui_message
 
 
@@ -16,15 +16,10 @@ class OutboundButton:
     style: str | None = None
 
 
-def _job_mode_name(job: Job) -> str:
-    mode = job.request.mode
-    return mode.value if isinstance(mode, JobMode) else str(mode)
-
-
 def build_job_accepted_message(job: Job) -> tuple[str, list[list[OutboundButton]]]:
     mode_line = ""
     if is_read_only_job_mode(job.request.mode):
-        mode_line = ui_message("job.mode_line", "\n- Mode: {mode}", mode=_job_mode_name(job))
+        mode_line = ui_message("job.mode_line", "\n- Mode: {mode}", mode=job_mode_name(job.request.mode))
     text = ui_message(
         "job.accepted",
         "✅ Job accepted\n\n"
@@ -164,7 +159,7 @@ def build_job_result_message(job: Job) -> str:
                 "- Project: {project}\n"
                 "- Model used: {model}\n"
                 "- Token usage: {token_usage}{response_block}",
-                mode=job.request.mode.value,
+                mode=job_mode_name(job.request.mode),
                 job_id=job.id,
                 session_line=_ui_session_line(job),
                 project=job.request.project,

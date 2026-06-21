@@ -6,7 +6,7 @@ from pathlib import Path
 from app.ai.base import RunnerInput
 from app.git.commit_message import CommitMessageFormatter
 from app.jobs.plan_decisions import PlanDecisionQuestion, parse_plan_decisions
-from app.jobs.schemas import Job, JobMode, is_read_only_job_mode
+from app.jobs.schemas import Job, JobMode, is_read_only_job_mode, job_mode_name
 from app.monitoring.events import EventLogger
 
 _joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
@@ -123,7 +123,7 @@ def run_job(manager, job_id: str) -> Job:
             job.mark_succeeded()
             manager._job_store.update(job)
             _joblog.info(
-                "succeeded read_only mode=%s", job.request.mode.value, **manager._job_ctx(job)
+                "succeeded read_only mode=%s", job_mode_name(job.request.mode), **manager._job_ctx(job)
             )
             if job.request.mode is JobMode.PLAN and not job.request.plan_decisions_resolved:
                 plan_decision_questions = parse_plan_decisions(runner_result.stdout)
