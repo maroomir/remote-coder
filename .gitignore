@@ -14,7 +14,8 @@ build/
 dist/
 
 # Documentation
-docs/upgrade-feature
+docs/upgrade-feature/
+docs/stabilize/
 
 # 개발 문서
 TODO
