@@ -49,6 +49,59 @@ def test_get_latest_succeeded_branch_for_project_chat():
     assert store.get_latest_succeeded_branch_for_project_chat("p", 99) is None
 
 
+def test_get_latest_succeeded_job_for_branch_returns_newest_match():
+    store = InMemoryJobStore()
+    t0 = datetime.now(UTC)
+    old = Job(
+        id="old",
+        request=JobRequest(
+            project="p", model=ModelName.CLAUDE, instruction="i", chat_id=5, requested_by=5
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-feature",
+        commit_hash="aaa",
+        finished_at=t0,
+    )
+    new = Job(
+        id="new",
+        request=JobRequest(
+            project="p", model=ModelName.CLAUDE, instruction="i", chat_id=5, requested_by=5
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-feature",
+        commit_hash="bbb",
+        finished_at=t0 + timedelta(seconds=1),
+    )
+    store.create(old)
+    store.create(new)
+
+    job = store.get_latest_succeeded_job_for_branch("p", 5, "remote-feature")
+    assert job is not None
+    assert job.id == "new"
+    assert store.get_latest_succeeded_job_for_branch("p", 5, "remote-missing") is None
+    assert store.get_latest_succeeded_job_for_branch("p", 99, "remote-feature") is None
+
+
+def test_sqlite_get_latest_succeeded_job_for_branch(tmp_path: Path):
+    store = SQLiteJobStore(tmp_path / "jobs.sqlite3")
+    job = Job(
+        id="j",
+        request=JobRequest(
+            project="p", model=ModelName.CLAUDE, instruction="i", chat_id=7, requested_by=7
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-x",
+        commit_hash="abc",
+    )
+    store.create(job)
+
+    reopened = SQLiteJobStore(tmp_path / "jobs.sqlite3")
+    fetched = reopened.get_latest_succeeded_job_for_branch("p", 7, "remote-x")
+    assert fetched is not None
+    assert fetched.id == "j"
+    assert reopened.get_latest_succeeded_job_for_branch("p", 7, "remote-y") is None
+
+
 def test_get_latest_succeeded_branch_for_project_chat_same_chat_different_projects():
     store = InMemoryJobStore()
     t0 = datetime.now(UTC)

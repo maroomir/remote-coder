@@ -1159,6 +1159,38 @@ def test_pr_content_uses_ascii_fallback_for_non_ascii_conversation(project_regis
     assert "AI result omitted because it contains non-ASCII text." in body
 
 
+def test_pr_content_includes_model_and_change_summary_from_succeeded_job(
+    project_registry: ProjectRegistry,
+):
+    from app.jobs.diff_review import build_diff_review_summary
+
+    ctx = _ctx(project_registry)
+    ctx.conversation_store = Mock()
+    ctx.conversation_store.get_entries_for_branch.return_value = [("fix the bug", "done")]
+    job = Job(
+        id="pr-job",
+        request=JobRequest(
+            project="remote-coder",
+            model=ModelName.CLAUDE,
+            instruction="fix the bug",
+            chat_id=42,
+            requested_by=42,
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-fix",
+        commit_hash="abc1234",
+        runner_actual_model="Claude Sonnet 4.5",
+        diff_review=build_diff_review_summary([("app/foo.py", 10, 2), ("poetry.lock", 200, 0)]),
+    )
+    ctx.job_store.create(job)
+
+    _title, body = PrCommand()._build_pr_content("remote-fix", "remote-coder", 42, ctx)
+
+    assert "**Model:** Claude Sonnet 4.5" in body
+    assert "## Change summary (2 files, +210/-2)" in body
+    assert "Risk: poetry.lock: dependency lockfile changed" in body
+
+
 def test_clear_branch_command_requests_confirmation(project_registry: ProjectRegistry):
     ctx = _ctx(project_registry)
     registry = CommandRegistry([ClearCommand()])

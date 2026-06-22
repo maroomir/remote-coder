@@ -14,6 +14,7 @@ from app.telegram.commands.base import (
     effective_project_name_for_chat,
     format_usage,
 )
+from app.jobs.pr_content import build_pr_body
 from app.telegram.i18n import ui_message
 
 
@@ -402,31 +403,16 @@ class PrCommand(TelegramCommand):
         chat_id: int,
         ctx: CommandContext,
     ) -> tuple[str, str]:
-        if ctx.conversation_store is None:
-            return _branch_to_pr_title(branch), f"Work branch: `{branch}`"
+        entries: list[tuple[str, str | None]] = []
+        if ctx.conversation_store is not None:
+            entries = ctx.conversation_store.get_entries_for_branch(project_name, chat_id, branch)
 
-        entries = ctx.conversation_store.get_entries_for_branch(project_name, chat_id, branch)
-        if not entries:
-            return _branch_to_pr_title(branch), f"Work branch: `{branch}`"
+        job = ctx.job_store.get_latest_succeeded_job_for_branch(project_name, chat_id, branch)
 
-        title = _ascii_pr_text(entries[0][0], _branch_to_pr_title(branch))[:70].rstrip()
-
-        body_parts: list[str] = [f"Work branch: `{branch}`\n\n", "## Work request\n"]
-        for i, (user_text, job_result) in enumerate(entries, 1):
-            if len(entries) > 1:
-                body_parts.append(f"### Request {i}\n")
-            safe_user_text = _ascii_pr_text(
-                user_text,
-                "Request omitted because it contains non-ASCII text.",
-            )
-            body_parts.append(f"**Request:** {safe_user_text}\n")
-            if job_result:
-                safe_job_result = _ascii_pr_text(
-                    job_result,
-                    "AI result omitted because it contains non-ASCII text.",
-                )
-                body_parts.append(f"\n**AI result:**\n{safe_job_result}\n")
-            if i < len(entries):
-                body_parts.append("\n---\n")
-
-        return title, "\n".join(body_parts)
+        title = (
+            _ascii_pr_text(entries[0][0], _branch_to_pr_title(branch))[:70].rstrip()
+            if entries
+            else _branch_to_pr_title(branch)
+        )
+        body = build_pr_body(branch, entries, job)
+        return title, body

@@ -32,6 +32,11 @@ class JobStore(Protocol):
     ) -> list[str]:
         ...
 
+    def get_latest_succeeded_job_for_branch(
+        self, project: str, chat_id: int, branch: str
+    ) -> Job | None:
+        ...
+
     def list_recent_for_chat(self, chat_id: int, limit: int = 20) -> list[Job]:
         ...
 
@@ -153,6 +158,26 @@ class InMemoryJobStore:
                     seen.add(branch)
                     branches.append(branch)
             return branches
+
+    def get_latest_succeeded_job_for_branch(
+        self, project: str, chat_id: int, branch: str
+    ) -> Job | None:
+        with self._lock:
+            candidates = [
+                job
+                for job in self._all_jobs()
+                if job.request.project == project
+                and job.request.chat_id == chat_id
+                and job.status == JobStatus.SUCCEEDED
+                and job.branch == branch
+            ]
+            if not candidates:
+                return None
+            candidates.sort(
+                key=lambda job: (job.finished_at or job.created_at, job.created_at),
+                reverse=True,
+            )
+            return candidates[0]
 
 
 def _job_to_payload(job: Job) -> str:
@@ -393,6 +418,29 @@ class SQLiteJobStore:
                 seen.add(branch)
                 branches.append(branch)
         return branches
+
+    def get_latest_succeeded_job_for_branch(
+        self, project: str, chat_id: int, branch: str
+    ) -> Job | None:
+        with self._lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                row = conn.execute(
+                    """
+                    SELECT payload
+                    FROM jobs
+                    WHERE request_project = ?
+                      AND request_chat_id = ?
+                      AND status = ?
+                      AND branch = ?
+                    ORDER BY COALESCE(finished_at, created_at) DESC, created_at DESC, row_id DESC
+                    LIMIT 1
+                    """,
+                    (project, chat_id, JobStatus.SUCCEEDED.value, branch),
+                ).fetchone()
+            finally:
+                conn.close()
+        return _payload_to_job(str(row[0])) if row else None
 
     @staticmethod
     def _row_values(job: Job) -> tuple[str, str | None, str, int, str, str | None, str | None, str]:
