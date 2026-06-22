@@ -15,6 +15,7 @@ from app.telegram.commands.clear_stop import ClearCommand, StopCommand
 from app.telegram.commands.fix import FixCommand
 from app.telegram.commands.model import ModelCommand
 from app.telegram.commands.monitor import MonitorCommand
+from app.telegram.commands.result_actions import CherryPickCommand, DiscardCommand
 from app.telegram.commands.status import LogCommand, ReportsCommand, StatusCommand
 from app.telegram.commands.system import HelpCommand, InitCommand, StartCommand
 from app.telegram.i18n import translate_text
@@ -74,11 +75,23 @@ class CommandRegistry:
 
         pending = ctx.confirmation_store.get(scope_project, message.chat_id)
         if pending is not None:
-            command = self._commands.get(pending.command_name)
-            confirmed = ctx.confirmation_store.pop(scope_project, message.chat_id)
-            if isinstance(command, ConfirmableCommand) and confirmed is not None:
-                return command.confirm(message, ctx, confirmed)
-            return "Could not process the pending confirmation."
+            # A fresh slash command for a *different* command starts over instead of being
+            # swallowed as a (cancelling) confirmation. This keeps the per-branch result-card
+            # actions from silently cancelling each other when the user taps one button, then
+            # another, before confirming. The same command's confirm tokens are not slash
+            # commands, so the normal confirm path below is unaffected.
+            is_fresh_other_command = (
+                head.startswith("/")
+                and head in self._commands
+                and head != pending.command_name
+            )
+            if not is_fresh_other_command:
+                command = self._commands.get(pending.command_name)
+                confirmed = ctx.confirmation_store.pop(scope_project, message.chat_id)
+                if isinstance(command, ConfirmableCommand) and confirmed is not None:
+                    return command.confirm(message, ctx, confirmed)
+                return "Could not process the pending confirmation."
+            ctx.confirmation_store.pop(scope_project, message.chat_id)
 
         if not head.startswith("/"):
             return None
@@ -139,6 +152,8 @@ def build_default_commands() -> list[TelegramCommand]:
         ClearCommand(),
         StopCommand(),
         FixCommand(),
+        DiscardCommand(),
+        CherryPickCommand(),
     ]
 
 

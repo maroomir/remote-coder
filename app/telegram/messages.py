@@ -84,7 +84,18 @@ def build_job_result_buttons(job: Job) -> list[list[OutboundButton]]:
                     ui_message("job.rebase_button", "Rebase"),
                     f"/rebase {job.branch}",
                 ),
-            ]
+            ],
+            [
+                OutboundButton(
+                    ui_message("job.cherrypick_button", "Cherry-pick to main"),
+                    f"/cherrypick {job.branch}",
+                ),
+                OutboundButton(
+                    ui_message("job.discard_button", "Discard branch"),
+                    f"/discard {job.branch}",
+                    style="danger",
+                ),
+            ],
         ]
     return []
 

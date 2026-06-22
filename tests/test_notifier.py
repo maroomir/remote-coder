@@ -722,6 +722,11 @@ def test_build_job_result_buttons_for_committed_agent_and_fix_success():
         assert rows[0][1].label == "Rebase"
         assert rows[0][1].callback_data == "/rebase remote-fix"
         assert rows[0][1].style is None
+        assert rows[1][0].label == "Cherry-pick to main"
+        assert rows[1][0].callback_data == "/cherrypick remote-fix"
+        assert rows[1][1].label == "Discard branch"
+        assert rows[1][1].callback_data == "/discard remote-fix"
+        assert rows[1][1].style == "danger"
 
 
 def test_build_job_result_buttons_requires_agent_commit_and_branch():

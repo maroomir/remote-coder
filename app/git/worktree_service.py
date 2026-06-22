@@ -688,6 +688,79 @@ class GitWorktreeService:
         _gitlog.info("rebase_branch_onto_main_and_merge done branch=%s", branch)
         return summary
 
+    def cherry_pick_branch_onto_main(
+        self,
+        project_path: Path,
+        branch: str,
+        remote: str,
+        worktree_ops_base: Path,
+    ) -> str:
+        """Cherry-pick the branch tip's commit onto main and push, in an isolated worktree.
+
+        Operates on a fresh worktree checked out from the up-to-date integration branch so the
+        project's main checkout is never disturbed. Aborts and cleans up on any conflict.
+        """
+        _gitlog.info("cherry_pick_branch_onto_main start branch=%s", branch)
+        main_branch = self.resolve_integrate_branch(project_path)
+        self._run_git_checked(
+            project_path, ["fetch", remote, main_branch], f"git fetch {remote} {main_branch} failed"
+        )
+        self._run_git_checked(
+            project_path, ["fetch", remote, branch], f"git fetch {remote} {branch} failed"
+        )
+
+        commit_result = self._run_git(
+            project_path, ["rev-parse", self._remote_branch_ref(remote, branch)]
+        )
+        if commit_result.returncode != 0:
+            raise RuntimeError(
+                f"failed to resolve {remote}/{branch}: {commit_result.stderr.strip()}"
+            )
+        commit_sha = commit_result.stdout.strip()
+
+        worktree_ops_base.mkdir(parents=True, exist_ok=True)
+        op_id = self._new_rebase_operation_id()
+        op_path = worktree_ops_base / op_id
+
+        self._run_git_checked(
+            project_path,
+            [
+                "worktree",
+                "add",
+                "--detach",
+                str(op_path),
+                self._remote_branch_ref(remote, main_branch),
+            ],
+            "worktree add for cherry-pick failed",
+        )
+
+        try:
+            cp = self._run_git(op_path, ["cherry-pick", commit_sha])
+            if cp.returncode != 0:
+                self._run_git(op_path, ["cherry-pick", "--abort"])
+                raise RuntimeError(f"git cherry-pick failed (conflict?): {cp.stderr.strip()}")
+
+            self._run_git_checked(
+                op_path,
+                ["push", remote, f"HEAD:{main_branch}"],
+                f"git push cherry-pick to {remote}/{main_branch} failed",
+            )
+        finally:
+            # Best-effort cleanup: never let a removal failure mask the cherry-pick error above.
+            cleanup = self._run_git(project_path, ["worktree", "remove", "--force", str(op_path)])
+            if cleanup.returncode != 0:
+                _gitlog.warning(
+                    "failed to remove cherry-pick worktree stderr_len=%d", len(cleanup.stderr)
+                )
+
+        short_sha = commit_sha[:7]
+        summary = (
+            f"Cherry-pick complete: applied `{short_sha}` from `{branch}` "
+            f"onto `{main_branch}` and pushed to `{remote}`."
+        )
+        _gitlog.info("cherry_pick_branch_onto_main done branch=%s", branch)
+        return summary
+
     def create_github_pr(
         self,
         project_path: Path,

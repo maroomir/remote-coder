@@ -13,6 +13,7 @@
 - **봇 토큰 OS 키링 저장**: 봇 토큰과 webhook secret을 평문 `projects.json` 대신 OS 키링(macOS Keychain / Linux Secret Service / Windows Credential Locker)에 저장합니다. 키링이 있는 환경에서 처음 실행하면 기존 평문 시크릿을 키링으로 1회 이전하고(`projects.json.pre-keyring.bak`로 백업), 파일에서 제거합니다. 사용 가능한 키링 백엔드가 없으면 기존 평문 파일은 그대로 동작하며(또는 `REMOTE_CODER_ALLOW_PLAINTEXT_SECRETS=1` 옵트인), 그 외 신규 설치에서는 안내와 함께 부팅을 중단(fail-closed)합니다.
 - **완료 알림의 diff/리스크 리뷰 카드**: 완료된 AGENT 또는 fix 작업 알림에 파일별 변경 요약(추가/삭제 줄 수)을 임팩트 순으로 표시하고, 고신뢰 리스크 항목(의존성 lockfile, DB 마이그레이션, 대량 삭제, 공유 유틸리티)을 강조해 모바일에서 변경 사항을 검토하기 쉽게 했습니다.
 - **풍부한 PR 본문 자동 생성**: `/pr`이 기존 작업 요청 이력에 더해 사용 모델, 임팩트 순 변경 요약, diff 리스크 항목에서 도출한 알려진 제약(known limitations) 섹션을 포함한 구조화된 본문을 생성합니다.
+- **결과 카드 되돌리기·체리픽 액션**: 완료된 AGENT 또는 fix 작업 알림에 "Discard branch"·"Cherry-pick to main" 인라인 버튼을 제공합니다. 둘 다 Yes/No 확인을 거치며, discard는 브랜치를 로컬·원격·worktree에서 삭제하고, cherry-pick은 격리된 worktree에서 브랜치 커밋을 main에 적용해 push합니다. 동일 브랜치에 대한 discard·cherry-pick·rebase는 상호 배타적으로 실행됩니다.
 
 ## [0.5.4] — 2026-06-22
 

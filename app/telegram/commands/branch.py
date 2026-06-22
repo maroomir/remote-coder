@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import re
-from threading import Lock
 
+from app.git.branch_ops_lock import acquire_branch_op, release_branch_op
 from app.telegram.commands.base import (
     CommandContext,
     InlineButton,
@@ -107,8 +107,6 @@ class BranchCommand(TelegramCommand):
 class RebaseCommand(TelegramCommand):
     name = "/rebase"
     description = "Rebase a branch onto main and push it"
-    _inflight_guard = Lock()
-    _inflight_keys: set[tuple[str, str, str]] = set()
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
         tokens = message.text.strip().split()
@@ -135,7 +133,7 @@ class RebaseCommand(TelegramCommand):
             return f"Project not found or disabled: {project_name}"
 
         inflight_key = (str(entry.root_path.resolve()), effective_git_remote_name(ctx), branch)
-        if not self._mark_inflight(inflight_key):
+        if not acquire_branch_op(inflight_key):
             return f"`{branch}` rebase/merge is already running. Wait for the completion message."
 
         ops_base = entry.worktree_base_dir / "_rebase_ops"
@@ -159,20 +157,7 @@ class RebaseCommand(TelegramCommand):
         except RuntimeError as exc:
             return f"/rebase failed: {exc}"
         finally:
-            self._clear_inflight(inflight_key)
-
-    @classmethod
-    def _mark_inflight(cls, key: tuple[str, str, str]) -> bool:
-        with cls._inflight_guard:
-            if key in cls._inflight_keys:
-                return False
-            cls._inflight_keys.add(key)
-            return True
-
-    @classmethod
-    def _clear_inflight(cls, key: tuple[str, str, str]) -> None:
-        with cls._inflight_guard:
-            cls._inflight_keys.discard(key)
+            release_branch_op(inflight_key)
 
     def _delete_rebased_branch_enabled(self, ctx: CommandContext) -> bool:
         if ctx.advanced_settings_store is None:

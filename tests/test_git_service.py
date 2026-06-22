@@ -627,3 +627,83 @@ def test_rebase_branch_onto_main_removes_linked_worktree_before_add(mock_run, _m
     )
     idx_add = next(i for i, c in enumerate(commands) if c[1:3] == ["worktree", "add"] and "-B" in c)
     assert idx_list < idx_remove_linked < idx_add
+
+
+@patch("app.git.service.uuid.uuid4", return_value=SimpleNamespace(hex="ccccccccdddddddd"))
+@patch("app.git.service.subprocess.run")
+def test_cherry_pick_branch_onto_main_applies_and_pushes(mock_run, _mock_uuid, tmp_path: Path):
+    project_path = tmp_path / "repo"
+    project_path.mkdir()
+    branch = "remote-fix"
+    commands: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs):
+        commands.append(list(argv))
+        cmd = argv
+        stdout = ""
+        if cmd[:4] == ["git", "rev-parse", "--verify", "main"]:
+            stdout = "deadbeef\n"
+        elif cmd[:3] == ["git", "rev-parse", "origin/remote-fix"]:
+            stdout = "feedface00000000\n"
+        elif cmd[:2] == ["git", "fetch"]:
+            pass
+        elif cmd[:3] == ["git", "worktree", "add"]:
+            assert "--detach" in cmd
+            assert "origin/main" in cmd
+        elif cmd[:2] == ["git", "cherry-pick"]:
+            assert "feedface00000000" in cmd
+        elif cmd[:2] == ["git", "push"]:
+            assert "HEAD:main" in cmd
+        elif cmd[:3] == ["git", "worktree", "remove"]:
+            pass
+        else:
+            raise AssertionError(f"unexpected git argv: {cmd}")
+        return Mock(returncode=0, stdout=stdout, stderr="")
+
+    mock_run.side_effect = fake_run
+    service = GitWorktreeService(base_dir=tmp_path)
+    ops = tmp_path / "rebase_ops"
+    summary = service.cherry_pick_branch_onto_main(project_path, branch, "origin", ops)
+
+    assert "Cherry-pick complete" in summary
+    assert "feedfac" in summary  # short sha
+    idx_cp = next(i for i, c in enumerate(commands) if c[1] == "cherry-pick")
+    idx_push = next(i for i, c in enumerate(commands) if c[1] == "push")
+    idx_remove = next(i for i, c in enumerate(commands) if c[1:3] == ["worktree", "remove"])
+    assert idx_cp < idx_push < idx_remove
+
+
+@patch("app.git.service.uuid.uuid4", return_value=SimpleNamespace(hex="ccccccccdddddddd"))
+@patch("app.git.service.subprocess.run")
+def test_cherry_pick_branch_aborts_and_cleans_up_on_conflict(mock_run, _mock_uuid, tmp_path: Path):
+    project_path = tmp_path / "repo"
+    project_path.mkdir()
+    commands: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs):
+        commands.append(list(argv))
+        cmd = argv
+        stdout = ""
+        rc = 0
+        stderr = ""
+        if cmd[:4] == ["git", "rev-parse", "--verify", "main"]:
+            stdout = "deadbeef\n"
+        elif cmd[:3] == ["git", "rev-parse", "origin/remote-fix"]:
+            stdout = "feedface00000000\n"
+        elif cmd[:2] == ["git", "cherry-pick"] and "--abort" not in cmd:
+            rc = 1
+            stderr = "conflict"
+        return Mock(returncode=rc, stdout=stdout, stderr=stderr)
+
+    mock_run.side_effect = fake_run
+    service = GitWorktreeService(base_dir=tmp_path)
+    ops = tmp_path / "rebase_ops"
+    try:
+        service.cherry_pick_branch_onto_main(project_path, "remote-fix", "origin", ops)
+    except RuntimeError as exc:
+        assert "cherry-pick failed" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError on conflict")
+
+    assert any(c[:2] == ["git", "cherry-pick"] and "--abort" in c for c in commands)
+    assert any(c[1:3] == ["worktree", "remove"] for c in commands)
