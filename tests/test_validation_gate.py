@@ -198,7 +198,7 @@ def test_fix_gate_fails_keeps_parent_commit_and_preserves_changes(test_settings,
     git_service = Mock()
     git_service.find_linked_worktree_for_branch.return_value = Path("/tmp/wt-existing")
     git_service.collect_changes.return_value = ["b.py"]
-    git_service.collect_diff_numstat.return_value = []
+    git_service.collect_diff_numstat.return_value = [("b.py", 5, 1)]
     manager = _manager(test_settings, gated_registry, git_service, store=store)
 
     with patch(
@@ -210,6 +210,9 @@ def test_fix_gate_fails_keeps_parent_commit_and_preserves_changes(test_settings,
     assert final.status.value == "succeeded"
     assert final.validation_failed is True
     assert final.validation_summary == "fix failed"
+    # The review card is still built on the validation-failure path (matches execution_pipeline).
+    assert final.diff_review is not None
+    assert final.diff_review.file_count == 1
     # Parent commit untouched; no amend or force-push happened.
     assert final.commit_hash == parent.commit_hash
     git_service.amend_commit.assert_not_called()

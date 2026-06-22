@@ -553,8 +553,14 @@ _MESSAGE_CATALOG_KO: dict[str, str] = {
         "- 커밋: {commit}\n"
         "- 변경 파일: {changed}\n"
         "- 사용 모델: {model}\n"
-        "- 토큰 사용량: {token_usage}{response_block}"
+        "- 토큰 사용량: {token_usage}{review_card}{validation_block}{response_block}"
     ),
+    "job.review_card": (
+        "\n\n리뷰 ({file_count}개 파일, +{added}/-{deleted}):\n{file_lines}{risk_block}"
+    ),
+    "job.review_risk_block": "\n위험 항목:\n{risk_lines}",
+    "job.validation_block": "\n\n검증 실패 (변경 보존, 미커밋):\n{summary}",
+    "job.validation_failed_uncommitted": "(검증 실패 - 변경 보존, 미커밋)",
     "job.failed": (
         "{mode_prefix}❌ 작업 실패\n\n"
         "- Job ID: {job_id}{session_line}\n"

@@ -47,3 +47,22 @@ def test_result_message_without_review_card_when_absent():
     # The rest of the completed card is unchanged.
     assert "Job completed" in text
     assert "remote-work" in text
+
+
+def test_korean_completed_message_renders_review_card_and_validation_block():
+    # Regression: the Korean job.completed template must include the review-card and validation
+    # placeholders, or features A and D render invisibly under Korean UI.
+    from app.models import UiLanguage
+
+    review = build_diff_review_summary([("poetry.lock", 200, 0)])
+    job = _succeeded_agent_job(diff_review=review)
+    job.commit_hash = None
+    job.validation_failed = True
+    job.validation_summary = "1 failed, 3 passed"
+
+    korean = build_job_result_message(job).render(UiLanguage.KOREAN)
+
+    assert "리뷰 (1개 파일" in korean
+    assert "poetry.lock" in korean
+    assert "검증 실패" in korean
+    assert "1 failed, 3 passed" in korean

@@ -120,8 +120,11 @@ def run_fix_job(manager, job_id: str) -> Job:
                 **manager._job_ctx(job),
             )
         elif not manager._run_validation_gate(job, entry, worktree_path):
-            # Validation gate failed: keep the parent commit intact and preserve the new changes
-            # in the worktree for the user to inspect, rather than amending a broken state.
+            # Build the review card first so it renders whether the gate passes or fails, matching
+            # execution_pipeline. Validation gate failed: keep the parent commit intact and preserve
+            # the new changes in the worktree for the user to inspect, rather than amending a broken
+            # state.
+            job.diff_review = manager._build_diff_review(job, worktree_path)
             job.branch = parent_job.branch
             job.commit_hash = parent_job.commit_hash
             job.mark_succeeded()
