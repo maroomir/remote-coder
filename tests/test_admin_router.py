@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 import respx
 from httpx import Response
 from fastapi import FastAPI
@@ -195,6 +196,57 @@ def test_admin_api_projects_post_and_delete(test_settings, project_registry, adv
     assert del_r.status_code == 200
     names_after = [p["name"] for p in del_r.json()["projects"]]
     assert "extra" not in names_after
+
+
+def test_admin_api_projects_keyring_store_isolation(
+    test_settings, advanced_settings_store, log_buffer, conversation_store, tmp_path, isolate_remote_coder_home
+):
+    from app.projects.registry import ProjectRegistry
+    from app.projects.secret_store import InMemorySecretStore
+
+    store = InMemorySecretStore()
+    registry = ProjectRegistry(isolate_remote_coder_home / "kr-projects.json", store)
+    app = FastAPI()
+    app.include_router(create_admin_router(
+        test_settings, registry, advanced_settings_store, log_buffer, conversation_store
+    ))
+    client = TestClient(app)
+
+    repo_a = tmp_path / "repo_a"
+    repo_a.mkdir()
+    repo_b = tmp_path / "repo_b"
+    repo_b.mkdir()
+    resp_a = client.post(
+        "/api/projects",
+        json={
+            "name": "alpha", "root_path": str(repo_a), "default_model": "claude",
+            "enabled": True, "bot_token": "111:AAA-alpha-token", "allowed_chat_ids": [1],
+            "allowed_user_ids": [],
+        },
+    )
+    resp_b = client.post(
+        "/api/projects",
+        json={
+            "name": "beta", "root_path": str(repo_b), "default_model": "claude",
+            "enabled": True, "bot_token": "222:BBB-beta-token", "allowed_chat_ids": [2],
+            "allowed_user_ids": [],
+        },
+    )
+    assert resp_a.status_code == 200 and resp_b.status_code == 200
+
+    # QAS-Sec-1/2: secrets stay out of the public response and the file.
+    assert "AAA-alpha-token" not in resp_a.text
+    assert "BBB-beta-token" not in resp_b.text
+    file_raw = (isolate_remote_coder_home / "kr-projects.json").read_text(encoding="utf-8")
+    assert "AAA-alpha-token" not in file_raw
+    assert "BBB-beta-token" not in file_raw
+
+    # QAS-Sec-3: deleting alpha clears only alpha's secret; beta survives.
+    del_r = client.delete("/api/projects/alpha")
+    assert del_r.status_code == 200
+    with pytest.raises(RuntimeError):
+        store.load("alpha", {})
+    assert store.load("beta", {})[0] == "222:BBB-beta-token"
 
 
 def test_admin_api_projects_syncs_bot_instance_manager(
