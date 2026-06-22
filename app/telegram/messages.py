@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from app.ai.model_catalog import format_model_selection
 from app.ai.usage import format_token_usage
+from app.jobs.diff_review import DiffReviewSummary, FileDiffStat
 from app.jobs.plan_decisions import PLAN_EXECUTE_CALLBACK_PREFIX
 from app.jobs.schemas import Job, JobMode, is_read_only_job_mode, job_mode_name
 from app.telegram.i18n import ui_message
@@ -120,6 +121,35 @@ def _ui_token_usage(job: Job) -> str:
     )
 
 
+def _format_file_stat_line(stat: FileDiffStat) -> str:
+    if stat.is_binary:
+        return f"• {stat.path} (binary)"
+    return f"• {stat.path} (+{stat.added or 0}/-{stat.deleted or 0})"
+
+
+def _ui_review_card(summary: DiffReviewSummary | None) -> str:
+    if summary is None or not summary.files:
+        return ""
+    file_lines = "\n".join(_format_file_stat_line(stat) for stat in summary.files)
+    risk_block = ""
+    if summary.risk_flags:
+        risk_lines = "\n".join(f"⚠️ {flag}" for flag in summary.risk_flags)
+        risk_block = ui_message(
+            "job.review_risk_block",
+            "\nRisk flags:\n{risk_lines}",
+            risk_lines=risk_lines,
+        )
+    return ui_message(
+        "job.review_card",
+        "\n\nReview ({file_count} files, +{added}/-{deleted}):\n{file_lines}{risk_block}",
+        file_count=summary.file_count,
+        added=summary.total_added,
+        deleted=summary.total_deleted,
+        file_lines=file_lines,
+        risk_block=risk_block,
+    )
+
+
 def _ui_session_line(job: Job) -> str:
     session_id = job.request.session_id
     if not session_id:
@@ -194,7 +224,7 @@ def build_job_result_message(job: Job) -> str:
             "- Commit: {commit}\n"
             "- Changed files: {changed}\n"
             "- Model used: {model}\n"
-            "- Token usage: {token_usage}{response_block}",
+            "- Token usage: {token_usage}{review_card}{response_block}",
             job_id=job.id,
             session_line=_ui_session_line(job),
             project=job.request.project,
@@ -203,6 +233,7 @@ def build_job_result_message(job: Job) -> str:
             changed=changed,
             model=model_label,
             token_usage=_ui_token_usage(job),
+            review_card=_ui_review_card(job.diff_review),
             response_block=_ui_response_block(job.runner_stdout_summary),
         )
 

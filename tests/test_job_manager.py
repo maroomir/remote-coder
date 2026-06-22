@@ -17,6 +17,7 @@ def test_job_manager_submit_and_run_success(test_settings, project_registry):
     git_service = Mock()
     git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
     git_service.collect_changes.return_value = ["a.py"]
+    git_service.collect_diff_numstat.return_value = []
     git_service.commit_all.return_value = "abc123"
     factory = Mock()
     runner = Mock()
@@ -663,6 +664,7 @@ def test_job_manager_push_failure_sets_stage(test_settings, project_registry):
     git_service = Mock()
     git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
     git_service.collect_changes.return_value = ["a.py"]
+    git_service.collect_diff_numstat.return_value = []
     git_service.commit_all.return_value = "abc"
     git_service.push_branch.side_effect = RuntimeError("push denied")
     factory = Mock()
@@ -706,6 +708,7 @@ def test_job_manager_reuses_existing_branch_worktree(test_settings, project_regi
     git_service.local_branch_exists.return_value = True
     git_service.find_linked_worktree_for_branch.return_value = existing_worktree
     git_service.collect_changes.return_value = ["a.py"]
+    git_service.collect_diff_numstat.return_value = []
     git_service.commit_all.return_value = "abc123"
     factory = Mock()
     runner = Mock()
@@ -761,6 +764,7 @@ def test_job_manager_uses_detached_worktree_when_requested_branch_is_checked_out
     git_service.branch_is_checked_out.return_value = True
     git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
     git_service.collect_changes.return_value = ["a.py"]
+    git_service.collect_diff_numstat.return_value = []
     git_service.commit_all.return_value = "abc123"
     factory = Mock()
     runner = Mock()
@@ -909,6 +913,7 @@ def test_job_manager_auto_merge_to_main_calls_rebase_after_push(test_settings, p
     git_service = Mock()
     git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
     git_service.collect_changes.return_value = ["a.py"]
+    git_service.collect_diff_numstat.return_value = []
     git_service.commit_all.return_value = "abc123"
     git_service.rebase_branch_onto_main_and_merge.return_value = "rebase ok"
     factory = Mock()
@@ -958,6 +963,7 @@ def test_job_manager_auto_merge_failure_sets_integrate_stage(test_settings, proj
     git_service = Mock()
     git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
     git_service.collect_changes.return_value = ["a.py"]
+    git_service.collect_diff_numstat.return_value = []
     git_service.commit_all.return_value = "abc123"
     git_service.rebase_branch_onto_main_and_merge.side_effect = RuntimeError("non-ff")
     factory = Mock()
@@ -1002,6 +1008,7 @@ def test_job_manager_logs_lifecycle_on_success(test_settings, project_registry, 
     git_service = Mock()
     git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
     git_service.collect_changes.return_value = ["a.py"]
+    git_service.collect_diff_numstat.return_value = []
     git_service.commit_all.return_value = "abc123"
     factory = Mock()
     runner = Mock()
@@ -1129,6 +1136,7 @@ def test_job_manager_forwards_selected_model_to_ai_commit_generator(test_setting
     git_service = Mock()
     git_service.prepare_detached_worktree.return_value = Path("/tmp/wt")
     git_service.collect_changes.return_value = ["a.py"]
+    git_service.collect_diff_numstat.return_value = []
     git_service.commit_all.return_value = "abc123"
     factory = Mock()
     runner = Mock()
@@ -1286,6 +1294,7 @@ def test_execute_fix_job_source_runs_runner_and_amends(test_settings, project_re
     git_service = Mock()
     git_service.find_linked_worktree_for_branch.return_value = Path("/tmp/wt-existing")
     git_service.collect_changes.return_value = ["b.py"]
+    git_service.collect_diff_numstat.return_value = []
     git_service.amend_commit.return_value = "new1234"
     runner = Mock()
     runner.run.return_value = RunnerResult(

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.jobs.diff_review import DiffReviewSummary
 from app.models import ModelName
 
 _SAFE_BRANCH_TOKEN = re.compile(r"^[A-Za-z0-9/._-]+$")
@@ -122,6 +123,7 @@ class Job(BaseModel):
     branch: str | None = None
     commit_hash: str | None = None
     changed_files: list[str] = Field(default_factory=list)
+    diff_review: DiffReviewSummary | None = None
     error: str | None = None
     error_stage: str | None = None
     runner_actual_model: str | None = None

@@ -12,6 +12,7 @@ from app.config import Settings
 from app.git.ai_commit import AiCommitBodyGenerator
 from app.git.branch_naming import BranchNamingStrategy
 from app.git.service import GitWorktreeService
+from app.jobs.diff_review import DiffReviewSummary, build_diff_review_summary
 from app.jobs.execution_pipeline import run_job
 from app.jobs.fix_pipeline import run_fix_job
 from app.jobs.fix_support import (
@@ -168,6 +169,18 @@ class JobManager:
         if event is not None:
             event.set()
         return True
+
+    def _build_diff_review(self, job: Job, worktree_path: Path) -> DiffReviewSummary | None:
+        # The review card is a reporting aid, so a numstat failure must never fail the job; we log
+        # and fall back to no card, leaving the existing changed-files list intact.
+        try:
+            raw_stats = self._git_service.collect_diff_numstat(worktree_path)
+        except RuntimeError as exc:
+            _joblog.warning("diff review skipped: %s", exc, **self._job_ctx(job))
+            return None
+        if not raw_stats:
+            return None
+        return build_diff_review_summary(raw_stats)
 
     def _prepare_worktree_plan(
         self, job: Job, project_path: Path, worktree_base: Path

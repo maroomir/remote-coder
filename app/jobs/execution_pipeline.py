@@ -159,6 +159,7 @@ def run_job(manager, job_id: str) -> Job:
                         "branch created in worktree branch=%s", job.branch, **manager._job_ctx(job)
                     )
                 job.changed_files = manager._git_service.collect_changes(worktree_path)
+                job.diff_review = manager._build_diff_review(job, worktree_path)
 
                 if job.request.commit:
                     ai_title = None

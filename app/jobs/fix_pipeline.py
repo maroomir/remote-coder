@@ -120,6 +120,7 @@ def run_fix_job(manager, job_id: str) -> Job:
                 **manager._job_ctx(job),
             )
         else:
+            job.diff_review = manager._build_diff_review(job, worktree_path)
             failed_stage = "fix_message"
             ai_title = None
             ai_body = None

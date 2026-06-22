@@ -11,6 +11,7 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 ### Added
 
 - **OS keyring storage for bot tokens**: Bot tokens and webhook secrets are now stored in the OS keyring (macOS Keychain / Linux Secret Service / Windows Credential Locker) instead of plaintext `projects.json`. On first start with a keyring available, existing plaintext secrets are migrated once into the keyring — backed up as `projects.json.pre-keyring.bak` — and removed from the file. When no keyring backend is available, the server keeps an existing plaintext file working (or honors `REMOTE_CODER_ALLOW_PLAINTEXT_SECRETS=1`) and otherwise fails closed at startup with guidance.
+- **Diff/risk review card in completion notifications**: A completed AGENT or fix job now shows an impact-ranked per-file change summary (added/deleted line counts) plus high-confidence risk flags (dependency lockfiles, database migrations, large deletions, shared utilities) so changes are easier to review on mobile.
 
 ## [0.5.4] — 2026-06-22
 

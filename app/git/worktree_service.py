@@ -215,6 +215,51 @@ class GitWorktreeService:
         _gitlog.info("branch_is_checked_out branch=%s checked_out=%s", branch_name, checked_out)
         return checked_out
 
+    def collect_diff_numstat(self, worktree_path: Path) -> list[tuple[str, int | None, int | None]]:
+        """Return per-file (path, added, deleted) line counts for the job's changes against HEAD.
+
+        Uses `git add -N` (intent-to-add) first so brand-new untracked files show up in the diff
+        with their real line counts, then diffs the working tree against HEAD. This captures the
+        job's edits whether or not they have been committed yet, and must be called before the
+        worktree is cleaned up. Binary files report `--` in numstat, which we surface as None so
+        callers can label them instead of pretending they had zero line edits.
+        """
+        intent = self._run_git(worktree_path, ["add", "-N", "."])
+        if intent.returncode != 0:
+            _gitlog.warning("collect_diff_numstat intent-to-add failed stderr_len=%d", len(intent.stderr))
+            raise RuntimeError(f"failed to stage diff stats: {intent.stderr.strip()}")
+        result = self._run_git(worktree_path, ["diff", "HEAD", "--numstat", "-z"])
+        if result.returncode != 0:
+            _gitlog.warning("collect_diff_numstat failed stderr_len=%d", len(result.stderr))
+            raise RuntimeError(f"failed to collect diff stats: {result.stderr.strip()}")
+        # `-z` NUL-terminates each record. For renames numstat emits the old and new paths as two
+        # extra NUL fields after the counts, so we consume those follow-up fields when present.
+        stats: list[tuple[str, int | None, int | None]] = []
+        fields = [field for field in result.stdout.split("\0") if field]
+        index = 0
+        while index < len(fields):
+            record = fields[index]
+            index += 1
+            parts = record.split("\t")
+            if len(parts) < 3:
+                continue
+            # Rejoin any trailing fragments so a (legal) tab inside a filename is preserved
+            # instead of silently truncating the path at the first tab.
+            added_token, deleted_token, path = parts[0], parts[1], "\t".join(parts[2:])
+            if not path:
+                # Rename/copy: the path is empty in the count record and the real old/new paths
+                # follow as the next two NUL fields. Keep the new (destination) path.
+                if index + 1 < len(fields):
+                    path = fields[index + 1]
+                    index += 2
+                else:
+                    continue
+            added = int(added_token) if added_token.isdigit() else None
+            deleted = int(deleted_token) if deleted_token.isdigit() else None
+            stats.append((path, added, deleted))
+        _gitlog.info("collect_diff_numstat count=%d", len(stats))
+        return stats
+
     def collect_changes(self, worktree_path: Path) -> list[str]:
         result = self._run_git(worktree_path, ["status", "--porcelain", "-z"])
         if result.returncode != 0:
