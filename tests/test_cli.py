@@ -21,6 +21,7 @@ def test_cli_exposes_all_subcommands() -> None:
 def test_cli_up_no_tunnel_runs_server_only(monkeypatch) -> None:
     calls = []
     monkeypatch.setattr("app.cli.uvicorn.run", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr("app.cli._prepare_secret_storage", lambda: None)
 
     def fail_tunnel(*_a, **_k):  # pragma: no cover - must not be reached
         raise AssertionError("tunnel must not start with --no-tunnel")
@@ -66,6 +67,7 @@ def test_cli_up_orchestrates_tunnel_register_and_serve(monkeypatch) -> None:
 
     run_calls = []
     monkeypatch.setattr("app.cli.uvicorn.run", lambda *a, **k: run_calls.append(k))
+    monkeypatch.setattr("app.cli._prepare_secret_storage", lambda: None)
 
     main(["up", "--port", "8001"])
 
@@ -94,6 +96,7 @@ def test_cli_doctor_reports_status(monkeypatch, capsys) -> None:
 def test_cli_up_no_tunnel_forwards_server_args(monkeypatch) -> None:
     calls = []
     monkeypatch.setattr("app.cli.uvicorn.run", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr("app.cli._prepare_secret_storage", lambda: None)
 
     main(["up", "--no-tunnel", "--host", "0.0.0.0", "--port", "9000", "--reload", "--log-level", "debug"])
 
@@ -137,8 +140,50 @@ def test_cli_defaults_to_up(monkeypatch) -> None:
 
     run_calls = []
     monkeypatch.setattr("app.cli.uvicorn.run", lambda *a, **k: run_calls.append(k))
+    monkeypatch.setattr("app.cli._prepare_secret_storage", lambda: None)
 
     main([])
 
     assert started == [True]
     assert run_calls and run_calls[0]["port"] == 8000
+
+
+def test_prepare_secret_storage_migrates_when_keyring_active(
+    isolate_remote_coder_home, monkeypatch
+) -> None:
+    import json
+
+    from app.cli import _prepare_secret_storage
+    from app.projects import secret_store as ss
+    from app.projects.secret_store import InMemorySecretStore
+
+    path = isolate_remote_coder_home / "projects.json"
+    path.write_text(
+        json.dumps(
+            {
+                "default_project": "p",
+                "projects": [
+                    {
+                        "name": "p",
+                        "root_path": "/tmp/repo",
+                        "default_model": "claude",
+                        "enabled": True,
+                        "bot_token": "plain-token",
+                        "webhook_secret": None,
+                        "allowed_chat_ids": [1],
+                        "allowed_user_ids": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = InMemorySecretStore()
+    monkeypatch.setattr(ss, "build_secret_store", lambda _p: store)
+
+    _prepare_secret_storage()
+
+    raw = path.read_text(encoding="utf-8")
+    assert "plain-token" not in raw
+    assert json.loads(raw)["secret_backend"] == "keyring"
+    assert store.load("p", {}) == ("plain-token", None)

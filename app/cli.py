@@ -59,7 +59,27 @@ def _run_server(*, host: str, port: int, reload: bool, log_level: str) -> None:
     uvicorn.run("app.main:app", host=host, port=port, reload=reload, log_level=log_level)
 
 
+def _prepare_secret_storage() -> None:
+    """Enforce the secret-backend policy and migrate plaintext secrets once, before serving.
+
+    Runs only when starting the server (`remote-coder up`), never on import, so tests that
+    import ``app.main`` never touch the OS keyring or the user's real registry file.
+    """
+    from app.config import get_settings
+    from app.projects.migration import mark_secret_backend, migrate_plaintext_to_keyring
+    from app.projects.registry import projects_config_path
+    from app.projects.secret_store import SECRET_BACKEND_KEYRING, build_secret_store
+
+    config_path = projects_config_path(get_settings().projects_config_path)
+    target = build_secret_store(config_path)  # raises (fail-closed) when no backend and no opt-in
+    if target.backend_name == SECRET_BACKEND_KEYRING:
+        migrate_plaintext_to_keyring(config_path, target)
+        mark_secret_backend(config_path, SECRET_BACKEND_KEYRING)
+
+
 def run_up(*, host: str, port: int, reload: bool, log_level: str, tunnel: bool = True) -> None:
+    _prepare_secret_storage()
+
     if not tunnel:
         _run_server(host=host, port=port, reload=reload, log_level=log_level)
         return
@@ -103,9 +123,10 @@ def run_up(*, host: str, port: int, reload: bool, log_level: str, tunnel: bool =
 
 def _has_enabled_projects(settings) -> bool:
     from app.projects.registry import ProjectRegistry, projects_config_path
+    from app.projects.secret_store import secret_store_for_file
 
     config_path = projects_config_path(settings.projects_config_path)
-    registry = ProjectRegistry(config_path)
+    registry = ProjectRegistry(config_path, secret_store_for_file(config_path))
     registry.load()
     return any(project.enabled for project in registry.list_projects())
 

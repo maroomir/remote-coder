@@ -175,10 +175,11 @@ def register_all_enabled_projects(public_base_url: str, settings: "Settings") ->
     when every enabled project synced successfully; missing/empty registry is a failure.
     """
     from app.projects.registry import ProjectRegistry, projects_config_path
+    from app.projects.secret_store import secret_store_for_file
     from app.telegram.commands import default_telegram_bot_commands
 
     config_path = projects_config_path(settings.projects_config_path)
-    registry = ProjectRegistry(config_path)
+    registry = ProjectRegistry(config_path, secret_store_for_file(config_path))
     registry.load()
 
     enabled = [record for record in registry.list_projects() if record.enabled]

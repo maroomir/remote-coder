@@ -25,6 +25,7 @@ from app.projects.registry import (
     compute_token_hash_prefix,
     projects_config_path,
 )
+from app.projects.secret_store import secret_store_for_file
 from app.security.auth import AllowlistAuthService
 from app.system_startup import recover_startup_jobs, run_startup_project_pulls
 from app.telegram.commands import (
@@ -47,7 +48,9 @@ from app.telegram.webhook_registration import TelegramWebhookRegistrar
 
 settings = get_settings()
 _projects_path = projects_config_path(settings.projects_config_path)
-project_registry = ProjectRegistry(_projects_path)
+# Read secrets in whichever backend the file already uses; `remote-coder up` runs the
+# one-time plaintext->keyring migration before the server is imported.
+project_registry = ProjectRegistry(_projects_path, secret_store_for_file(_projects_path))
 project_registry.ensure_empty_registry_file()
 advanced_settings_store = FileAdvancedSettingsStore(advanced_settings_path())
 advanced_settings_store.load()
