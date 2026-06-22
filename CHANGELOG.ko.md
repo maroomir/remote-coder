@@ -15,6 +15,7 @@
 - **풍부한 PR 본문 자동 생성**: `/pr`이 기존 작업 요청 이력에 더해 사용 모델, 임팩트 순 변경 요약, diff 리스크 항목에서 도출한 알려진 제약(known limitations) 섹션을 포함한 구조화된 본문을 생성합니다.
 - **결과 카드 되돌리기·체리픽 액션**: 완료된 AGENT 또는 fix 작업 알림에 "Discard branch"·"Cherry-pick to main" 인라인 버튼을 제공합니다. 둘 다 Yes/No 확인을 거치며, discard는 브랜치를 로컬·원격·worktree에서 삭제하고, cherry-pick은 격리된 worktree에서 브랜치 커밋을 main에 적용해 push합니다. 동일 브랜치에 대한 discard·cherry-pick·rebase는 상호 배타적으로 실행됩니다.
 - **프로젝트별 선택적 검증 게이트와 보수적 커밋**: 프로젝트에 `test_command`를 설정할 수 있습니다(`/projects` 관리 UI). 설정하면 AGENT·fix 작업이 러너 성공 후 worktree에서 명령을 실행해 통과할 때만 커밋하고, 실패 시 변경을 미커밋 상태로 보존하며 worktree를 유지하고 검증 출력을 결과에 보고합니다. `test_command`가 없는 프로젝트는 기존 "항상 커밋" 동작을 유지합니다.
+- **반복 읽기 전용 스케줄 작업**: `/schedule <간격> <모드> <지시문>`으로 반복 읽기 전용 작업(research·ask·plan 전용, agent/fix 불가)을 등록하고, `/schedule`은 기존 스케줄을 확인 버튼이 붙은 제거 버튼과 함께 나열합니다. 스케줄은 재시작 후에도 유지되고 단일 백그라운드 스레드에서 실행되며 커밋·push를 하지 않습니다. PLAN 결과는 무언가를 쓰려면 여전히 수동 Run-plan 탭이 필요합니다.
 
 ## [0.5.4] — 2026-06-22
 

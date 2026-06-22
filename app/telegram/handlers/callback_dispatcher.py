@@ -14,6 +14,7 @@ from app.telegram.commands import (
     FIX_SOURCE_PENDING_ACTION,
     TelegramMessage,
 )
+from app.telegram.commands.schedule import SCHEDULE_DELETE_PREFIX
 from app.telegram.confirmations import PendingConfirmation
 from app.telegram.handlers.presenters import (
     CLOSE_PANEL,
@@ -124,6 +125,10 @@ class CallbackDispatcher:
             return self._handle_confirmation_callback(
                 cq, notifier, command_context, scope_project, cq_chat_id, background_tasks
             )
+        if cq.data.startswith(f"{SCHEDULE_DELETE_PREFIX}:ask:"):
+            return self._handle_schedule_delete_ask(
+                cq, notifier, command_context, scope_project, cq_chat_id, background_tasks
+            )
         return self._handle_command_callback(
             cq,
             cq_chat_id,
@@ -133,6 +138,62 @@ class CallbackDispatcher:
             command_context,
             background_tasks,
         )
+
+    def _handle_schedule_delete_ask(
+        self,
+        cq: TelegramCallbackQuery,
+        notifier: Notifier,
+        command_context: CommandContext,
+        scope_project: str | None,
+        cq_chat_id: int,
+        background_tasks: BackgroundTasks,
+    ) -> dict[str, str]:
+        # Tapping a schedule in the list sets a pending delete and shows a Yes/No gate; the answer
+        # then routes through the normal pending-confirmation path to ScheduleCommand.confirm.
+        notifier.answer_callback_query(cq.id)
+        schedule_id = (cq.data or "").split(":", 2)[2]
+        # Scope check: only let the user target a schedule owned by this chat and project, so a
+        # crafted callback cannot stage a delete of another chat's or project's schedule.
+        store = command_context.schedule_store
+        schedule = store.get(schedule_id) if store is not None else None
+        if (
+            schedule is None
+            or schedule.chat_id != cq_chat_id
+            or schedule.project != scope_project
+        ):
+            background_tasks.add_task(
+                notifier.send_text, cq_chat_id, "That schedule no longer exists."
+            )
+            return {"status": "ignored"}
+        command_context.confirmation_store.set(
+            scope_project,
+            cq_chat_id,
+            PendingConfirmation(command_name="/schedule", action=schedule_id),
+        )
+        text = "Remove this schedule? This stops its future runs."
+        mid = cq.message.message_id if cq.message is not None else None
+        if mid is not None:
+            background_tasks.add_task(
+                partial(self._send_schedule_confirm, notifier, cq_chat_id, mid, text)
+            )
+        else:
+            background_tasks.add_task(notifier.send_text, cq_chat_id, text)
+        return {"status": "ok"}
+
+    @staticmethod
+    def _send_schedule_confirm(
+        notifier: Notifier, chat_id: int, message_id: int, text: str
+    ) -> None:
+        from app.telegram.commands import InlineButton
+
+        rows = [
+            [
+                InlineButton("Yes, remove", f"{SCHEDULE_DELETE_PREFIX}:yes"),
+                InlineButton("No", f"{SCHEDULE_DELETE_PREFIX}:no"),
+            ]
+        ]
+        if not notifier.edit_message(chat_id, message_id, text, rows):
+            notifier.send_with_buttons(chat_id, text, rows)
 
     def _handle_confirmation_callback(
         self,

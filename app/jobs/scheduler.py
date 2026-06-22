@@ -34,6 +34,16 @@ def build_scheduled_job_request(schedule: ScheduleRecord) -> JobRequest:
 
 
 class JobScheduler:
+    """Interval scheduler for read-only jobs, run on a single stdlib daemon thread.
+
+    Intentionally simple for a personal single-host tool: due jobs run sequentially on the one
+    scheduler thread, so a long-running scheduled job delays other due schedules until it finishes
+    (intervals are never lost — each schedule's next-run is advanced before it runs). Because the
+    thread is a daemon, process exit never hangs; an in-flight scheduled job is abandoned on hard
+    shutdown rather than drained. Run a single server process: multiple workers would each run their
+    own scheduler and fire every schedule N times.
+    """
+
     def __init__(
         self,
         *,

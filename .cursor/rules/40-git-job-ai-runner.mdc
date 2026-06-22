@@ -37,6 +37,7 @@ alwaysApply: true
 - Job state must support at least `queued`, `running`, `succeeded`, `failed`, and `cancelled`.
 - On server startup, recover unfinished Jobs from SQLite: rerun latest `queued` Jobs, mark latest `running` Jobs failed with `error_stage="server_restart"`, and do not send Telegram notifications for the recovery state change itself.
 - Serialize AGENT, PLAN, ASK, and AGENT_FIX execution per project so two jobs never mutate or inspect the same project worktree state concurrently. Different projects may run concurrently.
+- Scheduled/recurring jobs (`/schedule`) must be **read-only only** (research, ask, or plan) and never commit or push unattended. Enforce this with the same read-only check the execution pipeline uses, persist schedules in SQLite, run them through the normal per-project-locked job path, and scope schedule listing/removal to the owning project and chat. A PLAN result's Run-plan button still requires a manual human tap to start a writable AGENT job. Run a single server process (the scheduler is one in-process thread).
 - Apply per-job timeouts.
 - Record the stage where a failure occurred.
 - Store commit hash, branch name, changed files, observed detailed model name, and token usage when available.

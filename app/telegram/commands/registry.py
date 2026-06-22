@@ -16,6 +16,7 @@ from app.telegram.commands.fix import FixCommand
 from app.telegram.commands.model import ModelCommand
 from app.telegram.commands.monitor import MonitorCommand
 from app.telegram.commands.result_actions import CherryPickCommand, DiscardCommand
+from app.telegram.commands.schedule import ScheduleCommand
 from app.telegram.commands.status import LogCommand, ReportsCommand, StatusCommand
 from app.telegram.commands.system import HelpCommand, InitCommand, StartCommand
 from app.telegram.i18n import translate_text
@@ -154,6 +155,7 @@ def build_default_commands() -> list[TelegramCommand]:
         FixCommand(),
         DiscardCommand(),
         CherryPickCommand(),
+        ScheduleCommand(),
     ]
 
 

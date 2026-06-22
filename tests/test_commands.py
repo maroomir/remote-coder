@@ -153,6 +153,7 @@ def test_default_bot_commands_expose_telegram_menu_entries():
         "clear",
         "stop",
         "fix",
+        "schedule",
         "plan",
         "ask",
         "research",

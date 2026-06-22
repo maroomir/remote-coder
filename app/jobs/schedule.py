@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.jobs.schemas import JobMode, READ_ONLY_JOB_MODES
+from app.jobs.schemas import JobMode, is_read_only_job_mode
 from app.models import ModelName
 
 # Minimum interval guards against accidentally hammering the AI CLI / provider quota with a
@@ -31,7 +31,9 @@ class ScheduleRecord(BaseModel):
     def _only_read_only_modes(cls, value: JobMode) -> JobMode:
         # Scheduled jobs run unattended, so they are restricted to read-only modes (no commits,
         # no pushes). Write modes must stay manual; a PLAN result still surfaces a Run-plan button.
-        if value not in READ_ONLY_JOB_MODES:
+        # Delegate to the same read-only check the execution pipeline uses so there is one source
+        # of truth — a mode the pipeline would treat as writable can never be scheduled.
+        if not is_read_only_job_mode(value):
             raise ValueError("scheduled jobs must use a read-only mode (ask, research, or plan)")
         return value
 
