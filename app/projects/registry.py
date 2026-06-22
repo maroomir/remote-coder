@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, SecretStr, field_validator, model_validat
 
 from app.config import default_worktree_base_dir, resolve_state_path
 from app.models import ModelName
+from app.projects.secret_store import PlaintextSecretStore, SecretStore
 
 _NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
@@ -98,10 +99,11 @@ class ProjectsFilePayload(BaseModel):
 
 
 class ProjectRegistry:
-    def __init__(self, config_path: Path) -> None:
+    def __init__(self, config_path: Path, secret_store: SecretStore | None = None) -> None:
         self._path = config_path
         self._lock = Lock()
         self._payload = ProjectsFilePayload(default_project="", projects=[])
+        self._secrets: SecretStore = secret_store or PlaintextSecretStore()
 
     @property
     def config_path(self) -> Path:
@@ -203,6 +205,8 @@ class ProjectRegistry:
                 new_default = ""
             self._payload = ProjectsFilePayload(default_project=new_default, projects=projects)
             self._write_file_unlocked(self._payload)
+            # Drop the removed project's out-of-band secrets (no-op for plaintext).
+            self._secrets.delete(name)
 
     def to_public_dict(self) -> dict:
         # 호출 측에서 이미 락을 잡고 있으면 데드락이 나므로, API 응답 용도로만 사용하세요.
@@ -252,7 +256,21 @@ class ProjectRegistry:
             data = yaml.safe_load(raw) or {}
         else:
             data = json.loads(raw) if raw.strip() else {}
+        if isinstance(data, dict):
+            # secret_backend is file-only metadata; the injected store decides how to read.
+            data.pop("secret_backend", None)
+            data["projects"] = [self._inject_secrets(p) for p in data.get("projects") or []]
         return ProjectsFilePayload.model_validate(data)
+
+    def _inject_secrets(self, project: dict) -> dict:
+        if not isinstance(project, dict):
+            return project
+        project = dict(project)
+        bot_token, webhook_secret = self._secrets.load(project.get("name", ""), project)
+        if bot_token is not None:
+            project["bot_token"] = bot_token
+        project["webhook_secret"] = webhook_secret
+        return project
 
     def _write_file_unlocked(self, payload: ProjectsFilePayload) -> None:
         storable = self._payload_to_storable_dict(payload)
@@ -269,24 +287,26 @@ class ProjectRegistry:
         except OSError:
             pass
 
-    @staticmethod
-    def _project_record_to_storable_dict(record: ProjectRecord) -> dict:
+    def _project_record_to_storable_dict(self, record: ProjectRecord) -> dict:
         # worktree_base_dir 는 name 기준으로 항상 도출하므로 저장하지 않는다.
         data = record.model_dump(
             mode="json", exclude={"bot_token", "webhook_secret", "worktree_base_dir"}
         )
-        data["bot_token"] = record.bot_token.get_secret_value()
-        data["webhook_secret"] = (
-            record.webhook_secret.get_secret_value() if record.webhook_secret else None
+        # The secret store decides where secrets go: inline (plaintext) or out of band (keyring).
+        self._secrets.store(
+            record.name,
+            record.bot_token.get_secret_value(),
+            record.webhook_secret.get_secret_value() if record.webhook_secret else None,
+            data,
         )
         return data
 
-    @staticmethod
-    def _payload_to_storable_dict(payload: ProjectsFilePayload) -> dict:
+    def _payload_to_storable_dict(self, payload: ProjectsFilePayload) -> dict:
         return {
             "default_project": payload.default_project,
+            "secret_backend": self._secrets.backend_name,
             "projects": [
-                ProjectRegistry._project_record_to_storable_dict(p) for p in payload.projects
+                self._project_record_to_storable_dict(p) for p in payload.projects
             ],
         }
 

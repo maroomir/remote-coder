@@ -16,6 +16,7 @@ from app.projects.registry import (
     mask_bot_token,
     projects_config_path,
 )
+from app.projects.secret_store import SECRET_BACKEND_KEYRING, InMemorySecretStore
 
 
 def _seed_registry(path: Path, root: Path, name: str = "remote-coder") -> ProjectRegistry:
@@ -249,6 +250,90 @@ def test_build_public_webhook_url_matches_registry_webhook_path(project_registry
     row = next(p for p in public["projects"] if p["name"] == "remote-coder")
     assert build_public_webhook_url("https://example.com", token) == "https://example.com" + row["webhook_path"]
     assert build_public_webhook_url("https://example.com/", token) == "https://example.com" + row["webhook_path"]
+
+
+def test_keyring_backend_keeps_secrets_out_of_file(
+    isolate_remote_coder_home: Path, tmp_path: Path
+) -> None:
+    # QAS-Sec-1: with an out-of-band store, no secret material lands in projects.json.
+    path = isolate_remote_coder_home / "keyring-mode.json"
+    root = tmp_path / "repo"
+    root.mkdir(parents=True)
+    store = InMemorySecretStore()
+    reg = ProjectRegistry(path, store)
+    reg.add_project(
+        ProjectRecord(
+            name="remote-coder",
+            root_path=root,
+            default_model=ModelName.CLAUDE,
+            enabled=True,
+            bot_token=SecretStr("super-secret-token"),
+            webhook_secret=SecretStr("super-secret-webhook"),
+            allowed_chat_ids=[123],
+        )
+    )
+
+    raw = path.read_text(encoding="utf-8")
+    assert "super-secret-token" not in raw
+    assert "super-secret-webhook" not in raw
+    assert json.loads(raw)["secret_backend"] == SECRET_BACKEND_KEYRING
+
+
+def test_keyring_backend_round_trip_restores_secrets(
+    isolate_remote_coder_home: Path, tmp_path: Path
+) -> None:
+    path = isolate_remote_coder_home / "keyring-roundtrip.json"
+    root = tmp_path / "repo"
+    root.mkdir(parents=True)
+    store = InMemorySecretStore()
+    reg = ProjectRegistry(path, store)
+    reg.add_project(
+        ProjectRecord(
+            name="remote-coder",
+            root_path=root,
+            default_model=ModelName.CLAUDE,
+            enabled=True,
+            bot_token=SecretStr("super-secret-token"),
+            webhook_secret=SecretStr("super-secret-webhook"),
+            allowed_chat_ids=[123],
+        )
+    )
+
+    reloaded = ProjectRegistry(path, store)
+    reloaded.load()
+    restored = reloaded.get("remote-coder")
+    assert restored is not None
+    assert restored.bot_token.get_secret_value() == "super-secret-token"
+    assert restored.webhook_secret is not None
+    assert restored.webhook_secret.get_secret_value() == "super-secret-webhook"
+    # Token-hash routing still works because the in-memory token is restored.
+    prefix = compute_token_hash_prefix("super-secret-token")
+    assert reloaded.get_by_token_hash(prefix) is not None
+
+
+def test_remove_project_deletes_keyring_secret(
+    isolate_remote_coder_home: Path, tmp_path: Path
+) -> None:
+    # SC-9: deleting a project clears its out-of-band secrets (no orphan).
+    path = isolate_remote_coder_home / "keyring-delete.json"
+    root = tmp_path / "repo"
+    root.mkdir(parents=True)
+    store = InMemorySecretStore()
+    reg = ProjectRegistry(path, store)
+    reg.add_project(
+        ProjectRecord(
+            name="remote-coder",
+            root_path=root,
+            default_model=ModelName.CLAUDE,
+            enabled=True,
+            bot_token=SecretStr("token"),
+            allowed_chat_ids=[123],
+        )
+    )
+    reg.remove_project("remote-coder")
+    assert store.delete_calls == 1
+    with pytest.raises(RuntimeError):
+        store.load("remote-coder", {})
 
 
 def test_load_incomplete_projects_json_fails_validation(tmp_path: Path) -> None:
