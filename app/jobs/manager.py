@@ -32,9 +32,10 @@ from app.jobs.result_writer import (
 )
 from app.jobs.schemas import FixKind, Job, JobMode, JobRequest
 from app.jobs.store import JobStore
+from app.jobs.validation import run_validation_command
 from app.jobs.worktree_planner import WorktreePlan as _WorktreePlan, prepare_worktree_plan
 from app.monitoring.events import EventLogger
-from app.projects.registry import ProjectRegistry
+from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.notifier import Notifier
 
 _joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
@@ -181,6 +182,37 @@ class JobManager:
         if not raw_stats:
             return None
         return build_diff_review_summary(raw_stats)
+
+    # Cap the validation command separately from the runner so a hung test suite cannot hold the
+    # per-project lock for a second full job timeout on top of the runner's.
+    _VALIDATION_TIMEOUT_CAP_SECONDS = 600
+
+    def _run_validation_gate(self, job: Job, entry: ProjectRecord, worktree_path: Path) -> bool:
+        # Conservative-commit gate: when the project configures a validation command, run it in the
+        # worktree and let the caller commit only if it passes. No command configured means the gate
+        # is off and the existing always-commit behavior is preserved.
+        command = entry.test_command
+        if not command:
+            return True
+        timeout_seconds = min(
+            self._effective_job_timeout_seconds(), self._VALIDATION_TIMEOUT_CAP_SECONDS
+        )
+        _joblog.info(
+            "stage=validation command_set=yes timeout=%d", timeout_seconds, **self._job_ctx(job)
+        )
+        result = run_validation_command(command, worktree_path, timeout_seconds)
+        if result.passed:
+            _joblog.info("validation passed", **self._job_ctx(job))
+            return True
+        job.validation_failed = True
+        job.validation_summary = result.output_summary
+        _joblog.warning(
+            "validation failed exit=%s timed_out=%s; preserving changes uncommitted",
+            result.exit_code,
+            result.timed_out,
+            **self._job_ctx(job),
+        )
+        return False
 
     def _prepare_worktree_plan(
         self, job: Job, project_path: Path, worktree_base: Path

@@ -203,6 +203,11 @@
       en: "Blank allows by chat ID only.",
       ko: "비우면 채팅 ID만으로 허용합니다.",
     },
+    "projects.testCommandOptional": { en: "Validation command (optional)", ko: "검증 명령 (선택)" },
+    "projects.testCommandHint": {
+      en: "When set, AGENT/FIX jobs run this in the worktree and commit only if it passes. Blank keeps the always-commit behavior.",
+      ko: "설정하면 AGENT/FIX 작업이 worktree에서 이 명령을 실행해 통과할 때만 커밋합니다. 비우면 항상 커밋합니다.",
+    },
     "projects.btnAdd": { en: "Add", ko: "추가" },
     "projects.btnSave": { en: "Save (PUT)", ko: "저장 (PUT)" },
     "projects.btnClear": { en: "Clear form", ko: "폼 비우기" },

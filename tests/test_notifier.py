@@ -254,6 +254,50 @@ def test_notifier_send_job_result_success():
     assert "Token usage" in payload
 
 
+def test_result_message_reports_validation_failure_uncommitted():
+    from app.telegram.messages import build_job_result_message
+
+    job = Job(
+        id="j-val",
+        request=JobRequest(
+            project="proj", model=ModelName.CLAUDE, instruction="x", chat_id=1, requested_by=1
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-test",
+        commit_hash=None,
+        changed_files=["a.py"],
+        validation_failed=True,
+        validation_summary="1 failed, 3 passed",
+    )
+
+    text = build_job_result_message(job)
+
+    assert "✅ Job completed" in text
+    assert "(validation failed - changes kept, not committed)" in text
+    assert "Validation failed (changes kept, not committed):" in text
+    assert "1 failed, 3 passed" in text
+
+
+def test_result_message_omits_validation_block_when_not_failed():
+    from app.telegram.messages import build_job_result_message
+
+    job = Job(
+        id="j-ok",
+        request=JobRequest(
+            project="proj", model=ModelName.CLAUDE, instruction="x", chat_id=1, requested_by=1
+        ),
+        status=JobStatus.SUCCEEDED,
+        branch="remote-test",
+        commit_hash="abc1234",
+        changed_files=["a.py"],
+    )
+
+    text = build_job_result_message(job)
+
+    assert "Validation failed" not in text
+    assert "Commit: abc1234" in text
+
+
 @respx.mock
 def test_notifier_send_job_result_success_includes_runner_usage():
     route = respx.post("https://api.telegram.org/bottoken/sendMessage").mock(

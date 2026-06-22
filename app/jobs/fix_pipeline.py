@@ -119,6 +119,18 @@ def run_fix_job(manager, job_id: str) -> Job:
                 parent_job.id,
                 **manager._job_ctx(job),
             )
+        elif not manager._run_validation_gate(job, entry, worktree_path):
+            # Validation gate failed: keep the parent commit intact and preserve the new changes
+            # in the worktree for the user to inspect, rather than amending a broken state.
+            job.branch = parent_job.branch
+            job.commit_hash = parent_job.commit_hash
+            job.mark_succeeded()
+            manager._job_store.update(job)
+            _joblog.info(
+                "fix validation failed; parent commit kept, changes preserved parent=%s",
+                parent_job.id,
+                **manager._job_ctx(job),
+            )
         else:
             job.diff_review = manager._build_diff_review(job, worktree_path)
             failed_stage = "fix_message"
@@ -174,6 +186,7 @@ def run_fix_job(manager, job_id: str) -> Job:
             worktree_path is not None
             and created_worktree_for_job
             and job.status.value == "succeeded"
+            and not job.validation_failed
             and not manager._effective_keep_worktree_on_success()
         ):
             try:

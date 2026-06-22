@@ -66,6 +66,10 @@ class ProjectRecord(BaseModel):
     webhook_secret: SecretStr | None = None
     allowed_chat_ids: list[int]
     allowed_user_ids: list[int] = Field(default_factory=list)
+    # Optional per-project validation command (e.g. "pytest -q"). When set, AGENT/FIX jobs run it
+    # in the worktree after the runner succeeds and commit only if it passes (conservative commit).
+    # Unset (the default) preserves the existing always-commit behavior.
+    test_command: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -235,6 +239,7 @@ class ProjectRegistry:
             "webhook_secret_set": bool(secret_plain),
             "allowed_chat_ids": list(record.allowed_chat_ids),
             "allowed_user_ids": list(record.allowed_user_ids),
+            "test_command": record.test_command or "",
             "webhook_path": f"/telegram/webhook/{prefix}",
             "token_hash_prefix": prefix,
         }

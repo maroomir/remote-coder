@@ -124,6 +124,8 @@ class Job(BaseModel):
     commit_hash: str | None = None
     changed_files: list[str] = Field(default_factory=list)
     diff_review: DiffReviewSummary | None = None
+    validation_failed: bool = False
+    validation_summary: str | None = None
     error: str | None = None
     error_stage: str | None = None
     runner_actual_model: str | None = None

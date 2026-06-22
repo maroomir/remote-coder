@@ -378,6 +378,101 @@ def test_admin_api_projects_put_omitted_webhook_secret_preserves(
     assert updated.webhook_secret is not None
     assert updated.webhook_secret.get_secret_value() == "persist-wh-secret"
 
+
+def test_admin_api_projects_test_command_create_update_and_public(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store, tmp_path
+):
+    app = FastAPI()
+    app.include_router(
+        create_admin_router(
+            test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+        )
+    )
+    client = TestClient(app)
+
+    root = tmp_path / "tc_repo"
+    root.mkdir()
+
+    create = client.post(
+        "/api/projects",
+        json={
+            "name": "tc",
+            "root_path": str(root),
+            "default_model": "claude",
+            "enabled": True,
+            "bot_token": "888888:AA-tc-bot",
+            "allowed_chat_ids": [9],
+            "allowed_user_ids": [],
+            "test_command": "pytest -q",
+        },
+    )
+    assert create.status_code == 200
+    stored = project_registry.get("tc")
+    assert stored is not None and stored.test_command == "pytest -q"
+    tc_public = next(p for p in create.json()["projects"] if p["name"] == "tc")
+    assert tc_public["test_command"] == "pytest -q"
+
+    # Blank test_command clears the gate (opt-in stays off).
+    res = client.put(
+        "/api/projects/tc",
+        json={
+            "name": "tc",
+            "root_path": str(root),
+            "default_model": "claude",
+            "enabled": True,
+            "allowed_chat_ids": [9],
+            "allowed_user_ids": [],
+            "test_command": "",
+        },
+    )
+    assert res.status_code == 200
+    cleared = project_registry.get("tc")
+    assert cleared is not None and cleared.test_command is None
+
+
+def test_admin_api_projects_put_omitted_test_command_preserves(
+    test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store, tmp_path
+):
+    app = FastAPI()
+    app.include_router(
+        create_admin_router(
+            test_settings, project_registry, advanced_settings_store, log_buffer, conversation_store
+        )
+    )
+    client = TestClient(app)
+
+    root = tmp_path / "tc_keep_repo"
+    root.mkdir()
+    client.post(
+        "/api/projects",
+        json={
+            "name": "tc-keep",
+            "root_path": str(root),
+            "default_model": "claude",
+            "enabled": True,
+            "bot_token": "999999:AA-tc-keep-bot",
+            "allowed_chat_ids": [9],
+            "allowed_user_ids": [],
+            "test_command": "make test",
+        },
+    )
+
+    # Updating without sending test_command must keep the existing value.
+    res = client.put(
+        "/api/projects/tc-keep",
+        json={
+            "name": "tc-keep",
+            "root_path": str(root),
+            "default_model": "claude",
+            "enabled": True,
+            "allowed_chat_ids": [9],
+            "allowed_user_ids": [],
+        },
+    )
+    assert res.status_code == 200
+    kept = project_registry.get("tc-keep")
+    assert kept is not None and kept.test_command == "make test"
+
     client.delete("/api/projects/wh-omit")
 
 

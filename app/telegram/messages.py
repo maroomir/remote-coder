@@ -106,6 +106,17 @@ def _ui_response_block(summary: str | None) -> str:
     return ui_message("job.response_block", "\n\nAI response:\n{summary}", summary=summary)
 
 
+def _ui_validation_block(job: Job) -> str:
+    if not job.validation_failed:
+        return ""
+    summary = job.validation_summary or ui_message("common.unavailable", "unavailable")
+    return ui_message(
+        "job.validation_block",
+        "\n\nValidation failed (changes kept, not committed):\n{summary}",
+        summary=summary,
+    )
+
+
 def _ui_failure_details(job: Job) -> str:
     details: list[str] = []
     if job.error_stage:
@@ -218,7 +229,12 @@ def build_job_result_message(job: Job) -> str:
             "(none - no branch; no changes)",
         )
         commit_line = job.commit_hash or "-"
-        if job.changed_files and not job.request.commit:
+        if job.validation_failed:
+            commit_line = ui_message(
+                "job.validation_failed_uncommitted",
+                "(validation failed - changes kept, not committed)",
+            )
+        elif job.changed_files and not job.request.commit:
             commit_line = ui_message("job.no_commit_skipped", "(no commit - commit/push skipped)")
         elif job.changed_files and job.request.commit and not job.commit_hash:
             commit_line = ui_message("job.nothing_staged_skipped", "(nothing staged - push skipped)")
@@ -235,7 +251,7 @@ def build_job_result_message(job: Job) -> str:
             "- Commit: {commit}\n"
             "- Changed files: {changed}\n"
             "- Model used: {model}\n"
-            "- Token usage: {token_usage}{review_card}{response_block}",
+            "- Token usage: {token_usage}{review_card}{validation_block}{response_block}",
             job_id=job.id,
             session_line=_ui_session_line(job),
             project=job.request.project,
@@ -245,6 +261,7 @@ def build_job_result_message(job: Job) -> str:
             model=model_label,
             token_usage=_ui_token_usage(job),
             review_card=_ui_review_card(job.diff_review),
+            validation_block=_ui_validation_block(job),
             response_block=_ui_response_block(job.runner_stdout_summary),
         )
 

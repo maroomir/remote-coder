@@ -69,6 +69,60 @@ def test_worktree_base_dir_is_derived_and_not_persisted(isolate_remote_coder_hom
     assert "worktree_base_dir" not in raw["projects"][0]
 
 
+def test_test_command_persists_and_reloads(
+    isolate_remote_coder_home: Path, tmp_path: Path
+) -> None:
+    path = isolate_remote_coder_home / "tc-roundtrip.json"
+    root = tmp_path / "repo"
+    root.mkdir(parents=True)
+    reg = ProjectRegistry(path)
+    reg.add_project(
+        ProjectRecord(
+            name="remote-coder",
+            root_path=root,
+            bot_token=SecretStr("token"),
+            allowed_chat_ids=[123],
+            test_command="pytest -q",
+        )
+    )
+
+    reloaded = ProjectRegistry(path)
+    reloaded.load()
+    entry = reloaded.get("remote-coder")
+    assert entry is not None
+    assert entry.test_command == "pytest -q"
+
+
+def test_registry_loads_legacy_file_without_test_command(
+    isolate_remote_coder_home: Path, tmp_path: Path
+) -> None:
+    # Files written before the field existed must still load (backward compatible default None).
+    path = isolate_remote_coder_home / "legacy.json"
+    root = tmp_path / "repo"
+    root.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "default_project": "remote-coder",
+                "projects": [
+                    {
+                        "name": "remote-coder",
+                        "root_path": str(root),
+                        "bot_token": "token",
+                        "allowed_chat_ids": [123],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    reg = ProjectRegistry(path)
+    reg.load()
+    entry = reg.get("remote-coder")
+    assert entry is not None
+    assert entry.test_command is None
+
+
 def test_registry_file_is_written_with_owner_only_permissions(
     isolate_remote_coder_home: Path, tmp_path: Path
 ) -> None:

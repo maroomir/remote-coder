@@ -123,6 +123,10 @@
             <label class="field" for="f-users" data-i18n="projects.allowedUserIdsOptional">Allowed User IDs (optional)</label>
             <p class="hint" style="margin:0.35rem 0 0" data-i18n="projects.userIdsHint">Blank allows by chat ID only.</p>
             <input id="f-users" name="allowed_user_ids" autocomplete="off" placeholder="123456789" />
+
+            <label class="field" for="f-test-command" data-i18n="projects.testCommandOptional">Validation command (optional)</label>
+            <p class="hint" style="margin:0.35rem 0 0" data-i18n="projects.testCommandHint">When set, AGENT/FIX jobs run this in the worktree and commit only if it passes. Blank keeps the always-commit behavior.</p>
+            <input id="f-test-command" name="test_command" autocomplete="off" placeholder="pytest -q" />
           </details>
 
           <div class="form-actions">
@@ -329,6 +333,7 @@
         $("#f-wh-secret").value = "";
         $("#f-chats").value = (p.allowed_chat_ids || []).join(", ");
         $("#f-users").value = (p.allowed_user_ids || []).join(", ");
+        $("#f-test-command").value = p.test_command || "";
         f.name.readOnly = true;
         $("#btn-submit").textContent = i18n.t("projects.btnSave");
         setGlobalMsg("info", i18n.t("projects.editInfo"));
@@ -375,6 +380,7 @@
       const ws = $("#f-wh-secret").value.trim();
       if (ws) body.webhook_secret = ws;
       else if (!editing) body.webhook_secret = null;
+      body.test_command = $("#f-test-command").value.trim();
       const url = editing ? "/api/projects/" + encodeURIComponent(body.name) : "/api/projects";
       const method = editing ? "PUT" : "POST";
       setBusy(true);

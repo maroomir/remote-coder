@@ -14,6 +14,7 @@ When compiling history in one pass, it helps to read the Git log alongside the d
 - **Diff/risk review card in completion notifications**: A completed AGENT or fix job now shows an impact-ranked per-file change summary (added/deleted line counts) plus high-confidence risk flags (dependency lockfiles, database migrations, large deletions, shared utilities) so changes are easier to review on mobile.
 - **Richer automatic PR bodies**: `/pr` now builds a structured body that includes the model used, an impact-ranked change summary, and a known-limitations section derived from the diff risk flags, in addition to the existing work-request history.
 - **Result-card revert and cherry-pick actions**: A completed AGENT or fix job notification now offers "Discard branch" and "Cherry-pick to main" inline buttons. Both run behind a Yes/No confirmation; discard removes the branch locally, on the remote, and its worktree, while cherry-pick applies the branch's commit onto main in an isolated worktree and pushes it. Discard, cherry-pick, and rebase of the same branch are mutually exclusive.
+- **Optional per-project validation gate with conservative commit**: A project can set a `test_command` (managed in the `/projects` admin UI). When set, AGENT and fix jobs run it in the worktree after the runner succeeds and commit only if it passes; on failure the changes are kept uncommitted, the worktree is preserved, and the result reports the validation output. Projects without a `test_command` keep the existing always-commit behavior.
 
 ## [0.5.4] — 2026-06-22
 

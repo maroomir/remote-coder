@@ -161,7 +161,15 @@ def run_job(manager, job_id: str) -> Job:
                 job.changed_files = manager._git_service.collect_changes(worktree_path)
                 job.diff_review = manager._build_diff_review(job, worktree_path)
 
-                if job.request.commit:
+                # The gate only matters when a commit would actually happen; running it for a
+                # no-commit request would waste time and could spuriously flag validation_failed.
+                validation_passed = (
+                    manager._run_validation_gate(job, entry, worktree_path)
+                    if job.request.commit
+                    else True
+                )
+
+                if job.request.commit and validation_passed:
                     ai_title = None
                     ai_body = None
                     if manager._ai_commit_body_generator is not None:
@@ -190,7 +198,13 @@ def run_job(manager, job_id: str) -> Job:
                     )
                 else:
                     job.commit_hash = None
-                    _joblog.info("commit skipped by request", **manager._job_ctx(job))
+                    if job.request.commit and not validation_passed:
+                        _joblog.info(
+                            "commit skipped by validation gate (changes preserved)",
+                            **manager._job_ctx(job),
+                        )
+                    else:
+                        _joblog.info("commit skipped by request", **manager._job_ctx(job))
 
                 if job.request.commit and job.commit_hash:
                     failed_stage = "git_push"
@@ -244,6 +258,10 @@ def run_job(manager, job_id: str) -> Job:
         manager._cancelled_job_ids.discard(job_id)
         read_only_succeeded = is_read_only_job_mode(job.request.mode) and job.status.value == "succeeded"
         cleanup_on_success = read_only_succeeded or not manager._effective_keep_worktree_on_success()
+        # Validation gate failed: keep the worktree so the uncommitted changes survive for the user
+        # to inspect, fix, or commit manually, regardless of the keep-on-success setting.
+        if job.validation_failed:
+            cleanup_on_success = False
         _joblog.info(
             "job finalizing status=%s created_worktree=%s cleanup_on_success=%s",
             job.status.value,

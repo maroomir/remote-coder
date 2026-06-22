@@ -14,6 +14,7 @@ alwaysApply: true
 - Let users specify a branch name; otherwise generate a safe slug plus timestamp.
 - If there are no changes, do not create a branch, commit, or push.
 - If changes exist, create a branch, commit, then push to the configured remote (`origin` by default).
+- A project may set an optional `test_command`. When set, AGENT/FIX jobs run it in the worktree after the runner succeeds and commit only if it passes; on failure, keep the changes uncommitted, preserve the worktree, and report the validation output. This gate is opt-in and must default OFF (unset `test_command` preserves the always-commit behavior). The validation command runs with `shell=False` (shlex-split argv) and a capped timeout.
 - Collect changed files before commit and store them in the job result.
 - Automatic commit messages must use `type: title`, bullet body lines, and `committed by remote-coder: <job-id>`.
 - The title must summarize the functional change, not copy the user's raw request.

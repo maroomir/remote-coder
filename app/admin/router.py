@@ -57,6 +57,7 @@ class ProjectUpsertBody(BaseModel):
     webhook_secret: str | None = None
     allowed_chat_ids: list[int] | None = None
     allowed_user_ids: list[int] | None = None
+    test_command: str | None = None
 
 
 class DefaultProjectBody(BaseModel):
@@ -97,6 +98,12 @@ def _render_admin_page(template_name: str, lang: UiLanguage) -> str:
     html = _load_template_html(template_name)
     inject = f'<script>window.__UI_LANG__="{lang.value}";</script>\n</head>'
     return html.replace("</head>", inject, 1)
+
+
+def _normalize_test_command(value: str | None) -> str | None:
+    # Treat blank input as "no validation command" so the conservative-commit gate stays opt-in.
+    stripped = (value or "").strip()
+    return stripped or None
 
 
 def _sync_bot_instance(manager: BotInstanceManager | None, record: ProjectRecord) -> None:
@@ -453,6 +460,7 @@ def create_admin_router(
             webhook_secret=webhook_secret,
             allowed_chat_ids=list(body.allowed_chat_ids),
             allowed_user_ids=list(body.allowed_user_ids or []),
+            test_command=_normalize_test_command(body.test_command),
         )
         try:
             registry.add_project(record)
@@ -490,6 +498,11 @@ def create_admin_router(
             if body.allowed_user_ids is not None
             else existing.allowed_user_ids
         )
+        test_command = (
+            _normalize_test_command(body.test_command)
+            if body.test_command is not None
+            else existing.test_command
+        )
         record = ProjectRecord(
             name=body.name,
             root_path=body.root_path,
@@ -499,6 +512,7 @@ def create_admin_router(
             webhook_secret=webhook_secret,
             allowed_chat_ids=allowed_chat_ids,
             allowed_user_ids=allowed_user_ids,
+            test_command=test_command,
         )
         try:
             registry.update_project(name, record)
