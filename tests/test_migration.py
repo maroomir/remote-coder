@@ -162,6 +162,27 @@ def test_migration_rollback_keeps_unrelated_keyring_entries(tmp_path: Path) -> N
     assert store.load("gamma", {}) == ("pre-existing-token", None)  # survived rollback
 
 
+def test_migration_rollback_restores_overwritten_keyring_entry(tmp_path: Path) -> None:
+    # H1: a same-named pre-existing entry is restored (not deleted) when migration fails.
+    path = tmp_path / "projects.json"
+    _write_plaintext_registry(path, names=["alpha", "beta"])
+
+    class FailingStore(InMemorySecretStore):
+        def store(self, project_name, bot_token, webhook_secret, storable):
+            if project_name == "beta":
+                raise RuntimeError("keyring write failed")
+            super().store(project_name, bot_token, webhook_secret, storable)
+
+    store = FailingStore()
+    store.store("alpha", "alpha-original-token", None, {})  # prior value at the same name
+
+    with pytest.raises(RuntimeError, match="keyring write failed"):
+        migrate_plaintext_to_keyring(path, store)
+
+    # The overwritten-then-rolled-back entry is restored to its original value.
+    assert store.load("alpha", {}) == ("alpha-original-token", None)
+
+
 def test_mark_secret_backend_creates_marked_empty_file(tmp_path: Path) -> None:
     path = tmp_path / "projects.json"
     mark_secret_backend(path, SECRET_BACKEND_KEYRING)

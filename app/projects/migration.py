@@ -43,14 +43,20 @@ def migrate_plaintext_to_keyring(projects_path: Path, secret_store: SecretStore)
     backup.write_text(raw, encoding="utf-8")
     _chmod_owner_only(backup)
 
-    written_names: list[str] = []
+    # Snapshot prior secret-store state per project so a failure restores it exactly
+    # (set_password is an upsert, so a same-named pre-existing entry must not be lost).
+    prior_state: list[tuple[str, tuple[str | None, str | None] | None]] = []
     try:
         for project in plaintext_projects:
             name = project.get("name")
             token = project.get(_BOT_TOKEN_FIELD)
             secret = project.get(_WEBHOOK_SECRET_FIELD)
+            try:
+                prior = secret_store.load(name, {})
+            except Exception:
+                prior = None
+            prior_state.append((name, prior))
             secret_store.store(name, token, secret, {})
-            written_names.append(name)
             stored_token, stored_secret = secret_store.load(name, {})
             if stored_token != token or stored_secret != secret:
                 raise RuntimeError(
@@ -58,7 +64,7 @@ def migrate_plaintext_to_keyring(projects_path: Path, secret_store: SecretStore)
                 )
 
         # Strip secrets only from projects we actually moved to the keyring; leave others as-is.
-        migrated = set(written_names)
+        migrated = {name for name, _ in prior_state}
         cleaned = dict(data)
         cleaned["secret_backend"] = SECRET_BACKEND_KEYRING
         cleaned["projects"] = [
@@ -67,10 +73,13 @@ def migrate_plaintext_to_keyring(projects_path: Path, secret_store: SecretStore)
         ]
         _atomic_write(projects_path, cleaned, is_yaml)
     except Exception:
-        # Roll back only the keyring writes this run made; the untouched file stays the source of truth.
-        for name in written_names:
+        # Restore the prior keyring state; the untouched file stays the source of truth.
+        for name, prior in reversed(prior_state):
             try:
-                secret_store.delete(name)
+                if prior is None:
+                    secret_store.delete(name)
+                else:
+                    secret_store.store(name, prior[0], prior[1], {})
             except Exception:
                 pass
         backup.unlink(missing_ok=True)
