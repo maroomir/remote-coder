@@ -15,6 +15,8 @@ from app.git.branch_naming import TimestampSlugStrategy
 from app.git.service import GitWorktreeService
 from app.jobs.manager import JobManager
 from app.jobs.mode_registry import get_mode_registry, load_addon_modes
+from app.jobs.schedule_store import SQLiteScheduleStore
+from app.jobs.scheduler import JobScheduler
 from app.jobs.schemas import Job
 from app.jobs.store import SQLiteJobStore
 from app.monitoring.log_buffer import InMemoryLogBuffer, attach_app_memory_log_handler
@@ -158,6 +160,24 @@ def _record_recovered_job_result(final_job: Job) -> None:
     ).record_final_job_result(final_job)
 
 
+schedule_store = SQLiteScheduleStore(settings.schedule_db_path)
+command_context.schedule_store = schedule_store
+
+
+def _run_scheduled_job(request) -> Job | None:
+    # Scheduled jobs reuse the normal submit -> run -> record path so they get a Telegram accepted
+    # message, run under the per-project lock, and have their result recorded and notified (a PLAN
+    # result still carries the manual Run-plan button; nothing writes unattended).
+    job = job_manager.submit(request)
+    final_job = job_manager.run(job.id)
+    if final_job is not None:
+        _record_recovered_job_result(final_job)
+    return final_job
+
+
+scheduler = JobScheduler(schedule_store=schedule_store, submit_and_run=_run_scheduled_job)
+
+
 def _refresh_project_command_menus() -> None:
     # Re-push setMyCommands for every enabled project on each startup. The Telegram command
     # menu (hamburger button) and slash autocomplete are otherwise only refreshed during
@@ -239,7 +259,9 @@ async def lifespan(_app: FastAPI):
     startup_task = asyncio.create_task(
         _run_startup_side_effects_in_background(instances, advanced_settings_store.get())
     )
+    scheduler.start()
     yield
+    scheduler.stop()
     if not startup_task.done():
         startup_task.cancel()
     with suppress(asyncio.CancelledError):

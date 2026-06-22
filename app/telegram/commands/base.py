@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from app.jobs.schedule_store import ScheduleStore
 from app.jobs.schemas import Job
 from app.jobs.store import JobStore
 from app.models import ModelName
@@ -42,6 +43,7 @@ class CommandContext:
     conversation_store: SQLiteConversationStore | None = None
     job_manager: JobManager | None = None
     advanced_settings_store: FileAdvancedSettingsStore | None = None
+    schedule_store: ScheduleStore | None = None
 
 
 def format_usage(*lines: str) -> str:

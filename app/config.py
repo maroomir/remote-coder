@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     projects_config_path: Path | None = None
     conversation_db_path: Path | None = None
     job_db_path: Path | None = None
+    schedule_db_path: Path | None = None
 
     @model_validator(mode="after")
     def _normalize_webhook_public_base_url(self) -> Self:
@@ -73,6 +74,12 @@ class Settings(BaseSettings):
     def _default_job_db_path(self) -> Self:
         if self.job_db_path is None:
             self.job_db_path = resolve_state_path("jobs.sqlite3")
+        return self
+
+    @model_validator(mode="after")
+    def _default_schedule_db_path(self) -> Self:
+        if self.schedule_db_path is None:
+            self.schedule_db_path = resolve_state_path("schedules.sqlite3")
         return self
 
 
