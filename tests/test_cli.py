@@ -187,3 +187,21 @@ def test_prepare_secret_storage_migrates_when_keyring_active(
     assert "plain-token" not in raw
     assert json.loads(raw)["secret_backend"] == "keyring"
     assert store.load("p", {}) == ("plain-token", None)
+
+
+def test_run_up_exits_cleanly_when_secret_storage_fails(monkeypatch, capsys) -> None:
+    import pytest as _pytest
+
+    from app.cli import run_up
+
+    def fail():
+        raise RuntimeError("No usable OS keyring backend is available")
+
+    monkeypatch.setattr("app.cli._prepare_secret_storage", fail)
+
+    with _pytest.raises(SystemExit) as exc_info:
+        run_up(host="127.0.0.1", port=8000, reload=False, log_level="info", tunnel=False)
+
+    assert exc_info.value.code == 1
+    out = capsys.readouterr().out
+    assert "No usable OS keyring backend" in out

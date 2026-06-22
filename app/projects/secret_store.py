@@ -82,7 +82,7 @@ class KeyringSecretStore:
 
         keyring.set_password(KEYRING_SERVICE, self._account(project_name, _BOT_TOKEN_FIELD), bot_token)
         secret_account = self._account(project_name, _WEBHOOK_SECRET_FIELD)
-        if webhook_secret is not None:
+        if webhook_secret:
             keyring.set_password(KEYRING_SERVICE, secret_account, webhook_secret)
         else:
             self._delete_quietly(secret_account)
@@ -156,11 +156,15 @@ class InMemorySecretStore:
         self._secrets.pop(project_name, None)
 
 
+_PROBE_ACCOUNT = "__remote_coder_keyring_probe__"
+
+
 def usable_keyring_backend() -> object | None:
     """Return the active OS keyring backend if it can actually store secrets, else None.
 
-    The ``fail`` and ``null`` backends (and anything with non-positive priority) cannot
-    persist anything, which is the signal that we have no usable keyring.
+    The ``fail``/``null`` backends are rejected up front; everything else is confirmed with
+    an active set/get/delete probe, so a locked keychain or a chainer backend wrapping only
+    unusable backends is correctly treated as unavailable.
     """
     try:
         import keyring
@@ -180,9 +184,18 @@ def usable_keyring_backend() -> object | None:
             return None
     except Exception:
         pass
-    if getattr(backend, "priority", 0) <= 0:
+
+    try:
+        keyring.set_password(KEYRING_SERVICE, _PROBE_ACCOUNT, "ok")
+        usable = keyring.get_password(KEYRING_SERVICE, _PROBE_ACCOUNT) == "ok"
+    except Exception:
         return None
-    return backend
+    finally:
+        try:
+            keyring.delete_password(KEYRING_SERVICE, _PROBE_ACCOUNT)
+        except Exception:
+            pass
+    return backend if usable else None
 
 
 def file_secret_backend(projects_path: Path) -> str:

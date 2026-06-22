@@ -110,6 +110,58 @@ def test_migration_rolls_back_on_store_failure(tmp_path: Path) -> None:
     assert store._secrets == {}
 
 
+def test_mark_secret_backend_creates_parent_directory(tmp_path: Path) -> None:
+    # C1: a fresh install has no ~/.remote-coder yet when the keyring marker is written.
+    path = tmp_path / "nonexistent" / "projects.json"
+    mark_secret_backend(path, SECRET_BACKEND_KEYRING)
+    assert path.exists()
+    assert json.loads(path.read_text(encoding="utf-8"))["secret_backend"] == SECRET_BACKEND_KEYRING
+
+
+def test_migration_preserves_secrets_of_non_token_projects(tmp_path: Path) -> None:
+    # M1: only token-bearing projects are migrated; others keep their inline data untouched.
+    path = tmp_path / "projects.json"
+    data = {
+        "default_project": "alpha",
+        "projects": [
+            {"name": "alpha", "root_path": "/tmp/a", "enabled": True,
+             "bot_token": "alpha-token", "webhook_secret": "alpha-wh", "allowed_chat_ids": [1]},
+            {"name": "gamma", "root_path": "/tmp/g", "enabled": True,
+             "webhook_secret": "gamma-only-webhook", "allowed_chat_ids": [2]},
+        ],
+    }
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    moved = migrate_plaintext_to_keyring(path, InMemorySecretStore())
+
+    assert moved == 1
+    result = json.loads(path.read_text(encoding="utf-8"))
+    gamma = next(p for p in result["projects"] if p["name"] == "gamma")
+    assert gamma["webhook_secret"] == "gamma-only-webhook"
+    alpha = next(p for p in result["projects"] if p["name"] == "alpha")
+    assert "bot_token" not in alpha and "webhook_secret" not in alpha
+
+
+def test_migration_rollback_keeps_unrelated_keyring_entries(tmp_path: Path) -> None:
+    # H1: a store failure rolls back only this run's writes, not pre-existing keyring entries.
+    path = tmp_path / "projects.json"
+    _write_plaintext_registry(path, names=["alpha", "beta"])
+
+    class FailingStore(InMemorySecretStore):
+        def store(self, project_name, bot_token, webhook_secret, storable):
+            if project_name == "beta":
+                raise RuntimeError("keyring write failed")
+            super().store(project_name, bot_token, webhook_secret, storable)
+
+    store = FailingStore()
+    store.store("gamma", "pre-existing-token", None, {})  # legitimate prior entry
+
+    with pytest.raises(RuntimeError, match="keyring write failed"):
+        migrate_plaintext_to_keyring(path, store)
+
+    assert store.load("gamma", {}) == ("pre-existing-token", None)  # survived rollback
+
+
 def test_mark_secret_backend_creates_marked_empty_file(tmp_path: Path) -> None:
     path = tmp_path / "projects.json"
     mark_secret_backend(path, SECRET_BACKEND_KEYRING)

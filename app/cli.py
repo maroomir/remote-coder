@@ -78,7 +78,13 @@ def _prepare_secret_storage() -> None:
 
 
 def run_up(*, host: str, port: int, reload: bool, log_level: str, tunnel: bool = True) -> None:
-    _prepare_secret_storage()
+    try:
+        _prepare_secret_storage()
+    except Exception as exc:
+        # Show our own (secret-free) message in full; reduce anything else to its type.
+        detail = exc if isinstance(exc, RuntimeError) else type(exc).__name__
+        print(f"❌ Could not initialize secure secret storage: {detail}")
+        raise SystemExit(1) from exc
 
     if not tunnel:
         _run_server(host=host, port=port, reload=reload, log_level=log_level)

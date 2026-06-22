@@ -43,27 +43,34 @@ def migrate_plaintext_to_keyring(projects_path: Path, secret_store: SecretStore)
     backup.write_text(raw, encoding="utf-8")
     _chmod_owner_only(backup)
 
+    written_names: list[str] = []
     try:
         for project in plaintext_projects:
             name = project.get("name")
             token = project.get(_BOT_TOKEN_FIELD)
             secret = project.get(_WEBHOOK_SECRET_FIELD)
             secret_store.store(name, token, secret, {})
+            written_names.append(name)
             stored_token, stored_secret = secret_store.load(name, {})
             if stored_token != token or stored_secret != secret:
                 raise RuntimeError(
                     f"secret store read-back verification failed for project {name!r}"
                 )
 
+        # Strip secrets only from projects we actually moved to the keyring; leave others as-is.
+        migrated = set(written_names)
         cleaned = dict(data)
         cleaned["secret_backend"] = SECRET_BACKEND_KEYRING
-        cleaned["projects"] = [_strip_secrets(project) for project in projects]
+        cleaned["projects"] = [
+            _strip_secrets(project) if project.get("name") in migrated else project
+            for project in projects
+        ]
         _atomic_write(projects_path, cleaned, is_yaml)
     except Exception:
-        # Roll back: drop any keyring writes and the backup, leaving the file untouched.
-        for project in plaintext_projects:
+        # Roll back only the keyring writes this run made; the untouched file stays the source of truth.
+        for name in written_names:
             try:
-                secret_store.delete(project.get("name"))
+                secret_store.delete(name)
             except Exception:
                 pass
         backup.unlink(missing_ok=True)
@@ -114,6 +121,7 @@ def _strip_secrets(project: dict) -> dict:
 
 
 def _atomic_write(projects_path: Path, data: dict, is_yaml: bool) -> None:
+    projects_path.parent.mkdir(parents=True, exist_ok=True)
     if is_yaml:
         text = yaml.safe_dump(data, allow_unicode=True, default_flow_style=False)
     else:

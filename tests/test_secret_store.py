@@ -137,3 +137,41 @@ def test_build_secret_store_fails_closed_for_new_install_without_opt_in(
     monkeypatch.delenv(ss.PLAINTEXT_OPT_IN_ENV, raising=False)
     with pytest.raises(RuntimeError, match="No usable OS keyring backend"):
         build_secret_store(path)
+
+
+# --- usable_keyring_backend active probe (M2) ------------------------------------------------
+
+
+class _DummyBackend:
+    priority = 5
+
+
+def test_usable_keyring_backend_rejects_backend_when_probe_write_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import keyring
+
+    monkeypatch.setattr(keyring, "get_keyring", lambda: _DummyBackend())
+
+    def boom(*_a, **_k):
+        raise RuntimeError("keychain is locked")
+
+    monkeypatch.setattr(keyring, "set_password", boom)
+    monkeypatch.setattr(keyring, "delete_password", lambda *_a, **_k: None)
+    assert ss.usable_keyring_backend() is None
+
+
+def test_usable_keyring_backend_accepts_backend_when_probe_round_trips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import keyring
+
+    backend = _DummyBackend()
+    vault: dict = {}
+    monkeypatch.setattr(keyring, "get_keyring", lambda: backend)
+    monkeypatch.setattr(keyring, "set_password", lambda s, a, v: vault.__setitem__((s, a), v))
+    monkeypatch.setattr(keyring, "get_password", lambda s, a: vault.get((s, a)))
+    monkeypatch.setattr(keyring, "delete_password", lambda s, a: vault.pop((s, a), None))
+
+    assert ss.usable_keyring_backend() is backend
+    assert vault == {}  # probe entry is cleaned up
