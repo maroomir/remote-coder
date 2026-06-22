@@ -13,5 +13,8 @@ worktrees/
 build/
 dist/
 
+# Documentation
+docs/upgrade-feature
+
 # 개발 문서
 TODO
