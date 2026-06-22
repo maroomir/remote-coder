@@ -8,6 +8,10 @@
 
 ## [미배포]
 
+### 추가됨
+
+- **봇 토큰 OS 키링 저장**: 봇 토큰과 webhook secret을 평문 `projects.json` 대신 OS 키링(macOS Keychain / Linux Secret Service / Windows Credential Locker)에 저장합니다. 키링이 있는 환경에서 처음 실행하면 기존 평문 시크릿을 키링으로 1회 이전하고(`projects.json.pre-keyring.bak`로 백업), 파일에서 제거합니다. 사용 가능한 키링 백엔드가 없으면 기존 평문 파일은 그대로 동작하며(또는 `REMOTE_CODER_ALLOW_PLAINTEXT_SECRETS=1` 옵트인), 그 외 신규 설치에서는 안내와 함께 부팅을 중단(fail-closed)합니다.
+
 ## [0.5.4] — 2026-06-22
 
 ### 추가됨
