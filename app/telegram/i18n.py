@@ -514,8 +514,9 @@ _MESSAGE_CATALOG_KO: dict[str, str] = {
     "job.run_plan_button": "계획 실행",
     "job.open_pr_button": "PR 올리기",
     "job.rebase_button": "리베이스",
-    "pr.no_candidates": "현재 프로젝트와 채팅의 성공 Job 브랜치가 `{remote}` 원격에 남아 있지 않습니다.",
+    "pr.no_candidates": "현재 프로젝트와 채팅의 커밋된 성공 Job 브랜치가 `{remote}` 원격에 남아 있지 않습니다.",
     "pr.not_job_branch": "`{branch}`는 이 프로젝트와 채팅에서 성공한 Job 브랜치가 아닙니다.",
+    "pr.not_committed_job_branch": "`{branch}`는 이 프로젝트와 채팅에서 커밋된 성공 Job 브랜치가 아닙니다.",
     "pr.remote_branch_missing": (
         "원격 브랜치 `{branch}`를 `{remote}`에서 찾을 수 없습니다. "
         "Job 완료 후 삭제되었을 수 있습니다."

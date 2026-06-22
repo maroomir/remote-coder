@@ -24,8 +24,8 @@ alwaysApply: true
 - `/monitor branch` summarizes branch lists and counts.
 - `/branch` shows the current branch.
 - `/branch <name>` switches only to an existing local branch in the project bound to the current bot instance.
-- `/pr` candidates come from succeeded Job branches for the current project/chat intersected with live heads from `git ls-remote`; local branch presence is not required.
-- Revalidate the selected `/pr` branch against both Job history and the configured remote immediately before invoking `gh`.
+- `/pr` candidates come from committed, non-validation-failed succeeded Job branches for the current project/chat intersected with live heads from `git ls-remote`; local branch presence is not required.
+- Revalidate the selected `/pr` branch against Job ownership, commit presence, validation state, and the configured remote immediately before invoking `gh`.
 - Normalize missing `gh`, timeout, authentication, and command failures to user-facing `RuntimeError` messages; reuse the existing PR URL when GitHub reports that a PR already exists.
 - `/rebase`, `/clear`, and other broad Git/state-changing commands must run only when the user explicitly calls them.
 - `/discard <branch>` (delete branch local+remote+worktree) and `/cherrypick <branch>` (apply the branch commit onto main and push) are destructive result-card actions: they must be scoped to succeeded Job branches for the current project/chat, reject `main`/`master`, require an inline Yes/No confirmation, and run under the shared single-branch in-flight guard so they cannot overlap `/rebase` or each other on the same branch. Cherry-pick runs in an isolated worktree and pushes with a non-forcing `HEAD:main` push.

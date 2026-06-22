@@ -995,7 +995,8 @@ def _add_succeeded_job_branch(
     chat_id: int = 42,
     project: str = "remote-coder",
     job_id: str | None = None,
-    commit_hash: str = "abc1234",
+    commit_hash: str | None = "abc1234",
+    validation_failed: bool = False,
 ) -> None:
     ctx.job_store.create(
         Job(
@@ -1010,6 +1011,7 @@ def _add_succeeded_job_branch(
             status=JobStatus.SUCCEEDED,
             branch=branch,
             commit_hash=commit_hash,
+            validation_failed=validation_failed,
         )
     )
 
@@ -1059,6 +1061,36 @@ def test_pr_candidates_only_include_current_chat_succeeded_remote_job_branches(
     ctx.git_service.list_local_branches.assert_not_called()
 
 
+def test_pr_candidates_only_include_committed_succeeded_job_branches(
+    project_registry: ProjectRegistry,
+):
+    ctx = _ctx(project_registry)
+    _add_succeeded_job_branch(ctx, "remote-committed")
+    _add_succeeded_job_branch(ctx, "remote-no-commit", commit_hash=None)
+    _add_succeeded_job_branch(
+        ctx,
+        "remote-validation-failed",
+        commit_hash="abc1234",
+        validation_failed=True,
+    )
+    ctx.git_service.list_remote_branches_matching.return_value = [
+        "remote-committed",
+        "remote-no-commit",
+        "remote-validation-failed",
+    ]
+    registry = CommandRegistry([PrCommand()])
+
+    response = registry.dispatch_rich(
+        TelegramMessage(chat_id=42, user_id=1, text="/pr"), ctx
+    )
+
+    assert response is not None
+    assert response.text == "Choose a branch for the PR."
+    assert response.inline_buttons == [
+        [InlineButton("remote-committed", "/pr remote-committed")],
+    ]
+
+
 def test_pr_direct_branch_validates_job_scope_and_remote_presence(
     project_registry: ProjectRegistry,
 ):
@@ -1077,6 +1109,38 @@ def test_pr_direct_branch_validates_job_scope_and_remote_presence(
         TelegramMessage(chat_id=42, user_id=1, text="/pr remote-current"), ctx
     )
     assert "was not found on `origin`" in missing
+    ctx.git_service.create_github_pr.assert_not_called()
+
+
+def test_pr_direct_branch_requires_committed_succeeded_job_branch(
+    project_registry: ProjectRegistry,
+):
+    ctx = _ctx(project_registry)
+    _add_succeeded_job_branch(ctx, "remote-no-commit", commit_hash=None)
+    _add_succeeded_job_branch(
+        ctx,
+        "remote-validation-failed",
+        commit_hash="abc1234",
+        validation_failed=True,
+    )
+    registry = CommandRegistry([PrCommand()])
+
+    no_commit = registry.dispatch(
+        TelegramMessage(chat_id=42, user_id=1, text="/pr remote-no-commit"), ctx
+    )
+    validation_failed = registry.dispatch(
+        TelegramMessage(chat_id=42, user_id=1, text="/pr remote-validation-failed"), ctx
+    )
+
+    assert (
+        no_commit
+        == "`remote-no-commit` is not a committed succeeded Job branch for this project and chat."
+    )
+    assert (
+        validation_failed
+        == "`remote-validation-failed` is not a committed succeeded Job branch for this project and chat."
+    )
+    ctx.git_service.list_remote_branches_matching.assert_not_called()
     ctx.git_service.create_github_pr.assert_not_called()
 
 

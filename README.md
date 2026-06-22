@@ -77,14 +77,14 @@ Each project uses its own bot. The webhook path contains the first 16 hex charac
 | `/branch [name]` | Show or switch the bound project's local branch |
 | `/pull` | Fetch remotes and pull the current branch |
 | `/rebase [branch]` | Rebase and fast-forward a completed branch into `main` or `master` |
-| `/pr [branch]` | Create a GitHub PR from a succeeded Job branch with `gh` |
+| `/pr [branch]` | Create a GitHub PR from a committed succeeded Job branch with `gh` |
 | `/fix ...` | Rework a previous job's commit message or source |
 | `/monitor ...` | Inspect model, memory, branch, worktree, code, or project status |
 | `/clear ...` | Clean managed branches, worktrees, or conversation memory |
 | `/stop [job_id]` | Cancel a queued or running job |
 | `/init` | Reset chat-local model and pending confirmations |
 
-Calling `/pr` without a branch lists only remote branches produced by succeeded Jobs in the current project and Telegram chat. Direct `/pr <branch>` calls enforce the same ownership check and verify that the branch still exists on the configured Git remote. Install the [GitHub CLI](https://cli.github.com/) and run `gh auth login` before using this command.
+Calling `/pr` without a branch lists only remote branches produced by committed succeeded Jobs in the current project and Telegram chat. Direct `/pr <branch>` calls enforce the same ownership check and verify that the branch still exists on the configured Git remote. Install the [GitHub CLI](https://cli.github.com/) and run `gh auth login` before using this command.
 
 Natural-language examples:
 

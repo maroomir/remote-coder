@@ -32,7 +32,7 @@ alwaysApply: true
 - Failure messages should summarize the root cause and point to the log location instead of sending long logs.
 - Keep command help available through `/help`; `/help` and `/help <topic>` must remain text-only and must not attach functional inline buttons.
 - Commands with selectable options (`/model`, `/status`, `/branch`, `/rebase`, `/stop`, `/pr`, `/clear`, `/monitor`) should show inline buttons when called without arguments.
-- `/pr` choices and direct arguments are scoped to succeeded Jobs from the current bot project and Telegram chat; do not expose or accept branches owned by another project or chat.
+- `/pr` choices and direct arguments are scoped to committed, non-validation-failed succeeded Jobs from the current bot project and Telegram chat; do not expose or accept branches owned by another project or chat.
 - Inline button callback data must reuse the existing slash-command execution path after callback authentication.
 - `/init` resets the chat's default model override and pending confirmation state. It must not alter SQLite conversation memory or Git repositories.
 - There is no `/project` command: the Telegram bot is bound to one registered project; webhook URL uses the first **16 hex characters** of the SHA-256 digest of the bot token as the path segment (not the raw token, not the full digest).

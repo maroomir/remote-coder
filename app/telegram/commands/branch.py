@@ -15,6 +15,7 @@ from app.telegram.commands.base import (
     format_usage,
 )
 from app.jobs.pr_content import build_pr_body
+from app.jobs.schemas import Job
 from app.telegram.i18n import ui_message
 
 
@@ -229,6 +230,10 @@ def _ascii_pr_text(text: str, fallback: str) -> str:
     return fallback
 
 
+def _is_pr_eligible_job(job: Job | None) -> bool:
+    return job is not None and bool(job.commit_hash) and not job.validation_failed
+
+
 class PullCommand(TelegramCommand):
     name = "/pull"
     menu_text = "Pull all remote branch updates"
@@ -271,7 +276,7 @@ class PrCommand(TelegramCommand):
             if not branches:
                 return ui_message(
                     "pr.no_candidates",
-                    "No succeeded Job branch from this project and chat remains "
+                    "No committed succeeded Job branch from this project and chat remains "
                     "on `{remote}`.",
                     remote=effective_git_remote_name(ctx),
                 )
@@ -291,13 +296,19 @@ class PrCommand(TelegramCommand):
         if not entry or not entry.enabled:
             return f"Project not found or disabled: {project_name}"
 
-        succeeded_branches = ctx.job_store.list_succeeded_branches_for_project_chat(
-            project_name, message.chat_id
+        pr_job = ctx.job_store.get_latest_succeeded_job_for_branch(
+            project_name, message.chat_id, branch
         )
-        if branch not in succeeded_branches:
+        if pr_job is None:
             return ui_message(
                 "pr.not_job_branch",
                 "`{branch}` is not a succeeded Job branch for this project and chat.",
+                branch=branch,
+            )
+        if not _is_pr_eligible_job(pr_job):
+            return ui_message(
+                "pr.not_committed_job_branch",
+                "`{branch}` is not a committed succeeded Job branch for this project and chat.",
                 branch=branch,
             )
 
@@ -379,6 +390,11 @@ class PrCommand(TelegramCommand):
             if branch in remote_branches
             and branch not in {"main", "master"}
             and GitWorktreeService.validate_branch_token(branch) is None
+            and _is_pr_eligible_job(
+                ctx.job_store.get_latest_succeeded_job_for_branch(
+                    project_name, message.chat_id, branch
+                )
+            )
         ]
 
     def _build_pr_content(
