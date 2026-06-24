@@ -185,6 +185,126 @@ class CommandParser:
             raise CommandParseError(command_parse_error_empty_instruction_fix(lang))
         return FixModeParseResult(instruction=remainder)
 
+    def _resolve_model(
+        self,
+        entry,
+        project_name: str,
+        chat_id: int,
+        model: ModelName | None,
+    ) -> tuple[ModelName, str | None]:
+        if model is not None:
+            return model, None
+        if self._model_preferences is not None:
+            selection = self._model_preferences.get_explicit_selection(project_name, chat_id)
+            if selection is None:
+                selection = ModelPreference(entry.default_model)
+            return selection.provider, selection.model_id
+        return entry.default_model, None
+
+    def _resolve_bound_branch(
+        self,
+        mode: JobMode | str,
+        branch: str | None,
+        project_name: str,
+        chat_id: int,
+        reply_to_message_id: int | None,
+    ) -> str | None:
+        if (
+            mode == JobMode.AGENT
+            and branch is None
+            and reply_to_message_id is not None
+            and self._conversation_store is not None
+        ):
+            return self._conversation_store.get_bound_branch(
+                project_name,
+                chat_id,
+                reply_to_message_id,
+            )
+        return branch
+
+    def _build_reply_prefix(
+        self,
+        project_name: str,
+        chat_id: int,
+        reply_to_message_id: int | None,
+        reply_to_text: str | None,
+        lang,
+        snippet_limit: int,
+    ) -> str:
+        reply_prefix = ""
+        if reply_to_message_id is not None and self._conversation_store is not None:
+            reply_prefix = self._conversation_store.format_reply_context(
+                project_name,
+                chat_id,
+                reply_to_message_id,
+                lang,
+            ).strip()
+        if not reply_prefix and reply_to_message_id is not None and reply_to_text:
+            frame = instruction_frame_labels(lang)
+            if self._conversation_store is not None:
+                extracted_reply_job_id = _extract_reply_job_id(reply_to_text)
+                if extracted_reply_job_id:
+                    reply_prefix = self._conversation_store.format_job_context(
+                        project_name,
+                        chat_id,
+                        extracted_reply_job_id,
+                        lang,
+                    ).strip()
+            if not reply_prefix:
+                reply_prefix = "\n".join(
+                    [
+                        frame.reply_message_open,
+                        f"message_id={reply_to_message_id}:",
+                        f"  text: {truncate_snippet(reply_to_text, snippet_limit)}",
+                        frame.reply_message_close,
+                    ]
+                )
+        return reply_prefix
+
+    def _assemble_instruction(
+        self,
+        instruction_body: str,
+        reply_prefix: str,
+        project_name: str,
+        chat_id: int,
+        reply_to_message_id: int | None,
+        lang,
+        snippet_limit: int,
+    ) -> str:
+        chain_message_ids: set[int] = set()
+        if reply_to_message_id is not None and self._conversation_store is not None:
+            chain_message_ids = self._conversation_store.collect_reply_chain_message_ids(
+                project_name,
+                chat_id,
+                reply_to_message_id,
+            )
+
+        if is_ambiguous_followup(instruction_body) and self._conversation_store is not None:
+            entries = self._conversation_store.list_recent(
+                project_name,
+                chat_id,
+                self._effective_conversation_recent_limit(),
+            )
+            filtered = [
+                e
+                for e in entries
+                if e.message_id is None or e.message_id not in chain_message_ids
+            ]
+            if not filtered:
+                if not reply_prefix:
+                    raise CommandParseError(command_parse_error_no_previous_job_context(lang))
+                return f"{reply_prefix}\n\n{instruction_body}".strip()
+            inner = ConversationContextBuilder.build(
+                filtered,
+                instruction_body,
+                lang,
+                snippet_limit,
+            )
+            return f"{reply_prefix}\n\n{inner}".strip() if reply_prefix else inner
+        if reply_prefix:
+            return f"{reply_prefix}\n\n{instruction_body}".strip()
+        return instruction_body
+
     def parse_natural(
         self,
         text: str,
@@ -218,31 +338,9 @@ class CommandParser:
         if not entry.enabled:
             raise CommandParseError(command_parse_error_disabled_project(project_name, lang))
 
-        selected_model: ModelName
-        selected_model_id: str | None = None
-        if model is not None:
-            selected_model = model
-        elif self._model_preferences is not None:
-            selection = self._model_preferences.get_explicit_selection(project_name, chat_id)
-            if selection is None:
-                selection = ModelPreference(entry.default_model)
-            selected_model = selection.provider
-            selected_model_id = selection.model_id
-        else:
-            selected_model = entry.default_model
+        selected_model, selected_model_id = self._resolve_model(entry, project_name, chat_id, model)
 
-        if (
-            mode == JobMode.AGENT
-            and branch is None
-            and reply_to_message_id is not None
-            and self._conversation_store is not None
-        ):
-            branch = self._conversation_store.get_bound_branch(
-                project_name,
-                chat_id,
-                reply_to_message_id,
-            )
-
+        branch = self._resolve_bound_branch(mode, branch, project_name, chat_id, reply_to_message_id)
         if branch is not None:
             branch_err = GitWorktreeService.validate_branch_token(branch)
             if branch_err:
@@ -250,70 +348,23 @@ class CommandParser:
 
         instruction_body = remaining.strip()
         snippet_limit = self._effective_reply_snippet_max_chars()
-        reply_prefix = ""
-        if reply_to_message_id is not None and self._conversation_store is not None:
-            reply_prefix = self._conversation_store.format_reply_context(
-                project_name,
-                chat_id,
-                reply_to_message_id,
-                lang,
-            ).strip()
-        if not reply_prefix and reply_to_message_id is not None and reply_to_text:
-            frame = instruction_frame_labels(lang)
-            if self._conversation_store is not None:
-                extracted_reply_job_id = _extract_reply_job_id(reply_to_text)
-                if extracted_reply_job_id:
-                    reply_prefix = self._conversation_store.format_job_context(
-                        project_name,
-                        chat_id,
-                        extracted_reply_job_id,
-                        lang,
-                    ).strip()
-            if not reply_prefix:
-                reply_prefix = "\n".join(
-                    [
-                        frame.reply_message_open,
-                        f"message_id={reply_to_message_id}:",
-                        f"  text: {truncate_snippet(reply_to_text, snippet_limit)}",
-                        frame.reply_message_close,
-                    ]
-                )
-
-        chain_message_ids: set[int] = set()
-        if reply_to_message_id is not None and self._conversation_store is not None:
-            chain_message_ids = self._conversation_store.collect_reply_chain_message_ids(
-                project_name,
-                chat_id,
-                reply_to_message_id,
-            )
-
-        if is_ambiguous_followup(instruction_body) and self._conversation_store is not None:
-            entries = self._conversation_store.list_recent(
-                project_name,
-                chat_id,
-                self._effective_conversation_recent_limit(),
-            )
-            filtered = [
-                e
-                for e in entries
-                if e.message_id is None or e.message_id not in chain_message_ids
-            ]
-            if not filtered:
-                if not reply_prefix:
-                    raise CommandParseError(command_parse_error_no_previous_job_context(lang))
-                instruction = f"{reply_prefix}\n\n{instruction_body}".strip()
-            else:
-                inner = ConversationContextBuilder.build(
-                    filtered,
-                    instruction_body,
-                    lang,
-                    snippet_limit,
-                )
-                instruction = f"{reply_prefix}\n\n{inner}".strip() if reply_prefix else inner
-        elif reply_prefix:
-            instruction = f"{reply_prefix}\n\n{instruction_body}".strip()
-        else:
-            instruction = instruction_body
+        reply_prefix = self._build_reply_prefix(
+            project_name,
+            chat_id,
+            reply_to_message_id,
+            reply_to_text,
+            lang,
+            snippet_limit,
+        )
+        instruction = self._assemble_instruction(
+            instruction_body,
+            reply_prefix,
+            project_name,
+            chat_id,
+            reply_to_message_id,
+            lang,
+            snippet_limit,
+        )
 
         effective_commit = False if is_read_only_job_mode(mode) else (True if commit is None else commit)
 

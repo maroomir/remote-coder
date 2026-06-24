@@ -10,7 +10,7 @@ from app.jobs.mode_registry import get_mode_registry
 from app.jobs.schemas import JobMode
 from app.monitoring.events import EventLogger
 from app.projects.registry import normalize_webhook_token_hash_path_segment
-from app.telegram.bot_instances import BotInstanceManager
+from app.telegram.bot_instances import BotInstance, BotInstanceManager
 from app.telegram.confirmations import PendingConfirmation
 from app.telegram.handlers.callback_dispatcher import telegram_text_preview
 from app.telegram.handlers.fix_flow import FixFlow
@@ -77,26 +77,25 @@ class WebhookUpdateHandler:
         self._natural_flow_factory = natural_flow_factory
         self._fix_flow_factory = fix_flow_factory
 
-    def handle(
-        self,
-        token_hash: str,
-        update: TelegramUpdate,
-        background_tasks: BackgroundTasks,
-        webhook_secret_header: str | None,
-    ) -> dict[str, str]:
+    def _resolve_bot_instance(self, token_hash: str) -> BotInstance:
         route_key = normalize_webhook_token_hash_path_segment(token_hash)
         if route_key is None:
             raise HTTPException(status_code=404, detail="bot instance not found")
         bot_instance = self._bot_instance_manager.get(route_key)
         if bot_instance is None:
             raise HTTPException(status_code=404, detail="bot instance not found")
-        auth_service = bot_instance.auth_service
-        notifier = bot_instance.notifier
-        command_context = replace(bot_instance.command_context, project_name=bot_instance.project_name)
-        scope_project = bot_instance.project_name
-        webhook_secret = bot_instance.webhook_secret
+        return bot_instance
 
-        _inbound.info("update received id=%s", update.update_id)
+    def _reject_before_callback(
+        self,
+        route_key: str | None,
+        update: TelegramUpdate,
+        background_tasks: BackgroundTasks,
+        notifier: Notifier,
+        webhook_secret: str | None,
+        webhook_secret_header: str | None,
+    ) -> dict[str, str] | None:
+        # Guards that run before the callback-query branch: returns "ignored" or None to continue.
         if webhook_secret and not hmac.compare_digest(webhook_secret_header or "", webhook_secret):
             _authlog.warning("webhook secret mismatch update_id=%s", update.update_id)
             return {"status": "ignored"}
@@ -106,18 +105,14 @@ class WebhookUpdateHandler:
             if update.callback_query:
                 background_tasks.add_task(notifier.answer_callback_query, update.callback_query.id)
             return {"status": "ignored"}
+        return None
 
-        if update.callback_query:
-            return self._handle_callback_query(
-                update,
-                update.callback_query,
-                notifier,
-                auth_service,
-                command_context,
-                scope_project,
-                background_tasks,
-            )
-
+    def _reject_message(
+        self,
+        update: TelegramUpdate,
+        auth_service: AllowlistAuthService,
+    ) -> dict[str, str] | None:
+        # Message-level guards (presence, text, authorization): returns "ignored" or None.
         if not update.message:
             _inbound.info("update without message skipped update_id=%s", update.update_id)
             return {"status": "ignored"}
@@ -159,10 +154,21 @@ class WebhookUpdateHandler:
                 user_id=user_id,
             )
             return {"status": "ignored"}
+        return None
 
+    def _build_webhook_request(
+        self,
+        update: TelegramUpdate,
+        background_tasks: BackgroundTasks,
+        notifier: Notifier,
+        command_context: CommandContext,
+        scope_project: str | None,
+        message_tokens: list[str],
+        message_head_lower: str,
+    ) -> WebhookRequest:
+        chat_id = update.message.chat.id
+        user_id = update.message.from_user.id if update.message.from_user else None
         message = TelegramMessage(chat_id=chat_id, user_id=user_id, text=update.message.text)
-        message_tokens = message.text.strip().split(maxsplit=1)
-        message_head_lower = (message_tokens[0] if message_tokens else "").lower()
         reply_mid = (
             update.message.reply_to_message.message_id
             if update.message.reply_to_message is not None
@@ -173,7 +179,7 @@ class WebhookUpdateHandler:
             if update.message.reply_to_message is not None
             else None
         )
-        req = WebhookRequest(
+        return WebhookRequest(
             update=update,
             background_tasks=background_tasks,
             notifier=notifier,
@@ -187,17 +193,12 @@ class WebhookUpdateHandler:
             reply_txt=reply_txt,
         )
 
-        if self._plan_decision_store.pop(scope_project, chat_id) is not None:
-            # A typed message abandons an in-progress decision prompt (button-only flow).
-            background_tasks.add_task(
-                notifier.send_text, chat_id, "Cancelled the pending plan decision."
-            )
-
-        pending = command_context.confirmation_store.get(scope_project, chat_id)
-        pending_result = self._handle_pending(req, pending)
-        if pending_result is not None:
-            return pending_result
-
+    def _dispatch_message(
+        self,
+        req: WebhookRequest,
+        message_tokens: list[str],
+        message_head_lower: str,
+    ) -> dict[str, str]:
         if len(message_tokens) == 1:
             mode = _read_only_mode_for_slash(message_head_lower)
             if mode is not None:
@@ -215,3 +216,71 @@ class WebhookUpdateHandler:
             return command_result
 
         return self._handle_natural(req)
+
+    def handle(
+        self,
+        token_hash: str,
+        update: TelegramUpdate,
+        background_tasks: BackgroundTasks,
+        webhook_secret_header: str | None,
+    ) -> dict[str, str]:
+        route_key = normalize_webhook_token_hash_path_segment(token_hash)
+        bot_instance = self._resolve_bot_instance(token_hash)
+        auth_service = bot_instance.auth_service
+        notifier = bot_instance.notifier
+        command_context = replace(bot_instance.command_context, project_name=bot_instance.project_name)
+        scope_project = bot_instance.project_name
+        webhook_secret = bot_instance.webhook_secret
+
+        _inbound.info("update received id=%s", update.update_id)
+        pre_callback_rejection = self._reject_before_callback(
+            route_key,
+            update,
+            background_tasks,
+            notifier,
+            webhook_secret,
+            webhook_secret_header,
+        )
+        if pre_callback_rejection is not None:
+            return pre_callback_rejection
+
+        if update.callback_query:
+            return self._handle_callback_query(
+                update,
+                update.callback_query,
+                notifier,
+                auth_service,
+                command_context,
+                scope_project,
+                background_tasks,
+            )
+
+        message_rejection = self._reject_message(update, auth_service)
+        if message_rejection is not None:
+            return message_rejection
+
+        chat_id = update.message.chat.id
+        message_tokens = update.message.text.strip().split(maxsplit=1)
+        message_head_lower = (message_tokens[0] if message_tokens else "").lower()
+        req = self._build_webhook_request(
+            update,
+            background_tasks,
+            notifier,
+            command_context,
+            scope_project,
+            message_tokens,
+            message_head_lower,
+        )
+
+        if self._plan_decision_store.pop(scope_project, chat_id) is not None:
+            # A typed message abandons an in-progress decision prompt (button-only flow).
+            background_tasks.add_task(
+                notifier.send_text, chat_id, "Cancelled the pending plan decision."
+            )
+
+        pending = command_context.confirmation_store.get(scope_project, chat_id)
+        pending_result = self._handle_pending(req, pending)
+        if pending_result is not None:
+            return pending_result
+
+        return self._dispatch_message(req, message_tokens, message_head_lower)

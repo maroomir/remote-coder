@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import count
 from threading import Lock
-from typing import Any, Final
+from typing import Any, Callable, Final
 
 _LEVEL_ORDER: Final[dict[str, int]] = {
     "DEBUG": logging.DEBUG,
@@ -62,6 +62,28 @@ def _coerce_str(value: Any) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _matches_min_level(min_no: int) -> Callable[["BufferedLogLine"], bool]:
+    def predicate(line: "BufferedLogLine") -> bool:
+        ln = _level_no(line.level)
+        return ln is not None and ln >= min_no
+
+    return predicate
+
+
+def _matches_logger_sub(needle: str) -> Callable[["BufferedLogLine"], bool]:
+    def predicate(line: "BufferedLogLine") -> bool:
+        return needle in line.logger.lower()
+
+    return predicate
+
+
+def _matches_text(needle: str) -> Callable[["BufferedLogLine"], bool]:
+    def predicate(line: "BufferedLogLine") -> bool:
+        return needle in line.message.lower() or needle in (line.exception or "").lower()
+
+    return predicate
 
 
 @dataclass(frozen=True)
@@ -165,34 +187,29 @@ class InMemoryLogBuffer:
             if min_no is None:
                 raise ValueError(f"unknown level: {min_level}")
 
-        def passes(line: BufferedLogLine) -> bool:
-            if after_id is not None and line.id <= after_id:
-                return False
-            if min_no is not None:
-                ln = _level_no(line.level)
-                if ln is None or ln < min_no:
-                    return False
-            if logger_sub and logger_sub.lower() not in line.logger.lower():
-                return False
-            if q:
-                qq = q.lower()
-                hay = line.message.lower()
-                ex = (line.exception or "").lower()
-                if qq not in hay and qq not in ex:
-                    return False
-            if chat_id is not None and line.chat_id != chat_id:
-                return False
-            if user_id is not None and line.user_id != user_id:
-                return False
-            if job_id is not None and (line.job_id is None or line.job_id != job_id):
-                return False
-            if project is not None and (line.project is None or line.project != project):
-                return False
-            if category is not None and (line.category is None or line.category != category):
-                return False
-            return True
+        # 활성화된 기준(criterion)별 술어(predicate)만 모은 뒤 모두 만족하는 줄을 통과시킵니다.
+        predicates: list[Callable[[BufferedLogLine], bool]] = []
 
-        filtered = [line for line in raw if passes(line)]
+        if after_id is not None:
+            predicates.append(lambda line: line.id > after_id)
+        if min_no is not None:
+            predicates.append(_matches_min_level(min_no))
+        if logger_sub:
+            predicates.append(_matches_logger_sub(logger_sub.lower()))
+        if q:
+            predicates.append(_matches_text(q.lower()))
+        if chat_id is not None:
+            predicates.append(lambda line: line.chat_id == chat_id)
+        if user_id is not None:
+            predicates.append(lambda line: line.user_id == user_id)
+        if job_id is not None:
+            predicates.append(lambda line: line.job_id is not None and line.job_id == job_id)
+        if project is not None:
+            predicates.append(lambda line: line.project is not None and line.project == project)
+        if category is not None:
+            predicates.append(lambda line: line.category is not None and line.category == category)
+
+        filtered = [line for line in raw if all(p(line) for p in predicates)]
         if after_id is None:
             window = filtered[-limit:] if len(filtered) > limit else filtered
         else:

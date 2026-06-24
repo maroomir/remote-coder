@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from app.ai.model_catalog import format_model_selection
 from app.ai.usage import format_token_usage
@@ -17,6 +18,9 @@ from app.telegram.commands.base import (
     format_usage,
     with_nav_row,
 )
+
+if TYPE_CHECKING:
+    from app.telegram.conversation.models import ConversationReport
 
 _STATUS_EMOJI: dict[str, str] = {
     "queued": "⏳",
@@ -71,10 +75,20 @@ class StatusCommand(TelegramCommand):
 
     @classmethod
     def _format_job_detail(cls, job: Job) -> str:
-        lines: list[str] = []
+        lines = cls._header_lines(job)
+        lines += cls._timing_lines(job, datetime.now(UTC))
+        if job.status.value == "succeeded":
+            lines += cls._succeeded_lines(job)
+        elif job.status.value == "failed":
+            lines += cls._failed_lines(job)
+        elif job.status.value == "running":
+            lines += cls._running_lines(job)
+        return "\n".join(lines)
+
+    @staticmethod
+    def _header_lines(job: Job) -> list[str]:
         emoji = _STATUS_EMOJI.get(job.status.value, "")
-        lines.append(f"Job {job.id}")
-        lines.append("")
+        lines: list[str] = [f"Job {job.id}", ""]
         if job.request.session_id:
             lines.append(f"- Session ID: {job.request.session_id}")
         lines.append(f"- Status: {job.status.value} {emoji}")
@@ -88,63 +102,66 @@ class StatusCommand(TelegramCommand):
         if len(instr) > 80:
             instr = instr[:80].rstrip() + "..."
         lines.append(f"- Instruction: {instr}")
+        return lines
 
-        now = datetime.now(UTC)
+    @classmethod
+    def _timing_lines(cls, job: Job, now: datetime) -> list[str]:
         started = job.started_at
         finished = job.finished_at
-        if started:
-            if finished:
-                elapsed = int((finished - started).total_seconds())
-                lines.append(
-                    f"- Started: {cls._fmt_time(started)} → Finished: {cls._fmt_time(finished)}"
-                    f" (duration: {cls._duration_str(elapsed)})"
-                )
-            else:
-                elapsed = int((now - started).total_seconds())
-                lines.append(
-                    f"- Started: {cls._fmt_time(started)} (elapsed: {cls._duration_str(elapsed)})"
-                )
-        else:
-            lines.append(f"- Created: {cls._fmt_time(job.created_at)}")
+        if not started:
+            return [f"- Created: {cls._fmt_time(job.created_at)}"]
+        if finished:
+            elapsed = int((finished - started).total_seconds())
+            return [
+                f"- Started: {cls._fmt_time(started)} → Finished: {cls._fmt_time(finished)}"
+                f" (duration: {cls._duration_str(elapsed)})"
+            ]
+        elapsed = int((now - started).total_seconds())
+        return [f"- Started: {cls._fmt_time(started)} (elapsed: {cls._duration_str(elapsed)})"]
 
-        if job.status.value == "succeeded":
-            if job.branch:
-                lines.append(f"- Branch: {job.branch}")
-            if job.commit_hash:
-                lines.append(f"- Commit: {job.commit_hash[:8]}")
-            if job.changed_files:
-                lines.append("")
-                lines.append(f"Changed files ({len(job.changed_files)} files)")
-                for f in job.changed_files[:_MAX_CHANGED_FILES]:
-                    lines.append(f"- {f}")
-                if len(job.changed_files) > _MAX_CHANGED_FILES:
-                    lines.append(f"- ... and {len(job.changed_files) - _MAX_CHANGED_FILES} more")
-            else:
-                lines.append("- Changed files: none (no-op)")
-            if job.runner_stdout_summary:
-                lines.append("")
-                lines.append("[AI output summary]")
-                summary = job.runner_stdout_summary
-                if len(summary) > _STDOUT_TAIL:
-                    summary = "...(truncated)\n" + summary[-_STDOUT_TAIL:]
-                lines.append(summary)
-
-        elif job.status.value == "failed":
-            if job.error_stage:
-                lines.append(f"- Error stage: {job.error_stage}")
-            if job.error:
-                lines.append(f"- Error: {job.error[:300]}")
-            if job.runner_stderr_summary:
-                lines.append("")
-                lines.append("[stderr]")
-                lines.append(job.runner_stderr_summary[-_STDERR_TAIL:])
-
-        elif job.status.value == "running" and job.runner_stdout_summary:
+    @staticmethod
+    def _succeeded_lines(job: Job) -> list[str]:
+        lines: list[str] = []
+        if job.branch:
+            lines.append(f"- Branch: {job.branch}")
+        if job.commit_hash:
+            lines.append(f"- Commit: {job.commit_hash[:8]}")
+        if job.changed_files:
             lines.append("")
-            lines.append("[Current output]")
-            lines.append(job.runner_stdout_summary[-_STDOUT_TAIL:])
+            lines.append(f"Changed files ({len(job.changed_files)} files)")
+            for f in job.changed_files[:_MAX_CHANGED_FILES]:
+                lines.append(f"- {f}")
+            if len(job.changed_files) > _MAX_CHANGED_FILES:
+                lines.append(f"- ... and {len(job.changed_files) - _MAX_CHANGED_FILES} more")
+        else:
+            lines.append("- Changed files: none (no-op)")
+        if job.runner_stdout_summary:
+            lines.append("")
+            lines.append("[AI output summary]")
+            summary = job.runner_stdout_summary
+            if len(summary) > _STDOUT_TAIL:
+                summary = "...(truncated)\n" + summary[-_STDOUT_TAIL:]
+            lines.append(summary)
+        return lines
 
-        return "\n".join(lines)
+    @staticmethod
+    def _failed_lines(job: Job) -> list[str]:
+        lines: list[str] = []
+        if job.error_stage:
+            lines.append(f"- Error stage: {job.error_stage}")
+        if job.error:
+            lines.append(f"- Error: {job.error[:300]}")
+        if job.runner_stderr_summary:
+            lines.append("")
+            lines.append("[stderr]")
+            lines.append(job.runner_stderr_summary[-_STDERR_TAIL:])
+        return lines
+
+    @staticmethod
+    def _running_lines(job: Job) -> list[str]:
+        if not job.runner_stdout_summary:
+            return []
+        return ["", "[Current output]", job.runner_stdout_summary[-_STDOUT_TAIL:]]
 
     @staticmethod
     def _job_limit(ctx: CommandContext) -> int:
@@ -276,6 +293,15 @@ class ReportsCommand(TelegramCommand):
     _MAX_RECENT_LIMIT = 10
 
     def execute(self, message: TelegramMessage, ctx: CommandContext) -> str:
+        resolved = self._resolve_report_target(message, ctx)
+        if isinstance(resolved, str):
+            return resolved
+        project_name, report = resolved
+        return "\n".join(self._render_report(project_name, report, ctx))
+
+    def _resolve_report_target(
+        self, message: TelegramMessage, ctx: CommandContext
+    ) -> tuple[str, ConversationReport] | str:
         tokens = message.text.strip().split()
         if len(tokens) > 2:
             return "Usage: /reports or /reports <recent_limit>"
@@ -308,7 +334,11 @@ class ReportsCommand(TelegramCommand):
         report = ctx.conversation_store.generate_report(project_name, message.chat_id, recent_limit)
         if report is None:
             return f"No conversation memory is stored. (project={project_name})"
+        return project_name, report
 
+    def _render_report(
+        self, project_name: str, report: ConversationReport, ctx: CommandContext
+    ) -> list[str]:
         lines = [
             "Memory report",
             f"Project: {project_name}",
@@ -334,7 +364,7 @@ class ReportsCommand(TelegramCommand):
                 if item.job_id:
                     label = f"{label}:{item.job_id}"
                 lines.append(f"- [{label}] {self._truncate(item.text, limit=90)}")
-        return "\n".join(lines)
+        return lines
 
     @staticmethod
     def _truncate(text: str, limit: int = 120) -> str:

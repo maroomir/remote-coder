@@ -179,92 +179,105 @@ def _ui_session_line(job: Job) -> str:
     return ui_message("job.session_line", "\n- Session ID: {session_id}", session_id=session_id)
 
 
-def build_job_result_message(job: Job) -> str:
-    mode_prefix = ""
+def _ui_mode_prefix(job: Job) -> str:
     if job.request.mode is JobMode.PLAN:
-        mode_prefix = "[plan] "
-    elif job.request.mode is JobMode.ASK:
-        mode_prefix = "[ask] "
-    elif job.request.mode is JobMode.RESEARCH:
-        mode_prefix = "[research] "
+        return "[plan] "
+    if job.request.mode is JobMode.ASK:
+        return "[ask] "
+    if job.request.mode is JobMode.RESEARCH:
+        return "[research] "
+    return ""
 
-    if job.status.value == "cancelled":
+
+def _ui_model_used(job: Job) -> str:
+    return job.runner_actual_model or format_model_selection(
+        job.request.model,
+        job.request.model_id,
+    )
+
+
+def _cancelled_message(job: Job) -> str:
+    return ui_message(
+        "job.cancelled",
+        "{mode_prefix}⛔ Job cancelled\n\n- Job ID: {job_id}{session_line}\n- Project: {project}",
+        mode_prefix=_ui_mode_prefix(job),
+        job_id=job.id,
+        session_line=_ui_session_line(job),
+        project=job.request.project,
+    )
+
+
+def _readonly_succeeded_message(job: Job) -> str:
+    return ui_message(
+        "job.readonly_completed",
+        "[{mode}] Completed\n\n"
+        "- Job ID: {job_id}{session_line}\n"
+        "- Project: {project}\n"
+        "- Model used: {model}\n"
+        "- Token usage: {token_usage}{response_block}",
+        mode=job_mode_name(job.request.mode),
+        job_id=job.id,
+        session_line=_ui_session_line(job),
+        project=job.request.project,
+        model=_ui_model_used(job),
+        token_usage=_ui_token_usage(job),
+        response_block=_ui_response_block(job.runner_stdout_summary),
+    )
+
+
+def _ui_commit_line(job: Job) -> str:
+    if job.validation_failed:
         return ui_message(
-            "job.cancelled",
-            "{mode_prefix}⛔ Job cancelled\n\n- Job ID: {job_id}{session_line}\n- Project: {project}",
-            mode_prefix=mode_prefix,
-            job_id=job.id,
-            session_line=_ui_session_line(job),
-            project=job.request.project,
+            "job.validation_failed_uncommitted",
+            "(validation failed - changes kept, not committed)",
         )
+    if job.changed_files and not job.request.commit:
+        return ui_message("job.no_commit_skipped", "(no commit - commit/push skipped)")
+    if job.changed_files and job.request.commit and not job.commit_hash:
+        return ui_message("job.nothing_staged_skipped", "(nothing staged - push skipped)")
+    return job.commit_hash or "-"
 
-    if job.status.value == "succeeded":
-        if is_read_only_job_mode(job.request.mode):
-            model_label = job.runner_actual_model or format_model_selection(
-                job.request.model,
-                job.request.model_id,
-            )
-            return ui_message(
-                "job.readonly_completed",
-                "[{mode}] Completed\n\n"
-                "- Job ID: {job_id}{session_line}\n"
-                "- Project: {project}\n"
-                "- Model used: {model}\n"
-                "- Token usage: {token_usage}{response_block}",
-                mode=job_mode_name(job.request.mode),
-                job_id=job.id,
-                session_line=_ui_session_line(job),
-                project=job.request.project,
-                model=model_label,
-                token_usage=_ui_token_usage(job),
-                response_block=_ui_response_block(job.runner_stdout_summary),
-            )
 
-        changed = ", ".join(job.changed_files) if job.changed_files else ui_message(
-            "job.no_changes",
-            "No changes",
-        )
-        branch_line = job.branch if job.branch else ui_message(
-            "job.branch_none_no_changes",
-            "(none - no branch; no changes)",
-        )
-        commit_line = job.commit_hash or "-"
-        if job.validation_failed:
-            commit_line = ui_message(
-                "job.validation_failed_uncommitted",
-                "(validation failed - changes kept, not committed)",
-            )
-        elif job.changed_files and not job.request.commit:
-            commit_line = ui_message("job.no_commit_skipped", "(no commit - commit/push skipped)")
-        elif job.changed_files and job.request.commit and not job.commit_hash:
-            commit_line = ui_message("job.nothing_staged_skipped", "(nothing staged - push skipped)")
-        model_label = job.runner_actual_model or format_model_selection(
-            job.request.model,
-            job.request.model_id,
-        )
-        return ui_message(
-            "job.completed",
-            "✅ Job completed\n\n"
-            "- Job ID: {job_id}{session_line}\n"
-            "- Project: {project}\n"
-            "- Branch: {branch}\n"
-            "- Commit: {commit}\n"
-            "- Changed files: {changed}\n"
-            "- Model used: {model}\n"
-            "- Token usage: {token_usage}{review_card}{validation_block}{response_block}",
-            job_id=job.id,
-            session_line=_ui_session_line(job),
-            project=job.request.project,
-            branch=branch_line,
-            commit=commit_line,
-            changed=changed,
-            model=model_label,
-            token_usage=_ui_token_usage(job),
-            review_card=_ui_review_card(job.diff_review),
-            validation_block=_ui_validation_block(job),
-            response_block=_ui_response_block(job.runner_stdout_summary),
-        )
+def _write_succeeded_message(job: Job) -> str:
+    changed = ", ".join(job.changed_files) if job.changed_files else ui_message(
+        "job.no_changes",
+        "No changes",
+    )
+    branch_line = job.branch if job.branch else ui_message(
+        "job.branch_none_no_changes",
+        "(none - no branch; no changes)",
+    )
+    return ui_message(
+        "job.completed",
+        "✅ Job completed\n\n"
+        "- Job ID: {job_id}{session_line}\n"
+        "- Project: {project}\n"
+        "- Branch: {branch}\n"
+        "- Commit: {commit}\n"
+        "- Changed files: {changed}\n"
+        "- Model used: {model}\n"
+        "- Token usage: {token_usage}{review_card}{validation_block}{response_block}",
+        job_id=job.id,
+        session_line=_ui_session_line(job),
+        project=job.request.project,
+        branch=branch_line,
+        commit=_ui_commit_line(job),
+        changed=changed,
+        model=_ui_model_used(job),
+        token_usage=_ui_token_usage(job),
+        review_card=_ui_review_card(job.diff_review),
+        validation_block=_ui_validation_block(job),
+        response_block=_ui_response_block(job.runner_stdout_summary),
+    )
 
+
+def _succeeded_message(job: Job) -> str:
+    if is_read_only_job_mode(job.request.mode):
+        return _readonly_succeeded_message(job)
+    return _write_succeeded_message(job)
+
+
+def _failed_message(job: Job) -> str:
     failure_summary = job.runner_stderr_summary or job.runner_stdout_summary
     return ui_message(
         "job.failed",
@@ -272,7 +285,7 @@ def build_job_result_message(job: Job) -> str:
         "- Job ID: {job_id}{session_line}\n"
         "- Project: {project}\n"
         "- Error: {error}{details}{failure_block}",
-        mode_prefix=mode_prefix,
+        mode_prefix=_ui_mode_prefix(job),
         job_id=job.id,
         session_line=_ui_session_line(job),
         project=job.request.project,
@@ -280,3 +293,11 @@ def build_job_result_message(job: Job) -> str:
         details=_ui_failure_details(job),
         failure_block=_ui_failure_block(failure_summary),
     )
+
+
+def build_job_result_message(job: Job) -> str:
+    if job.status.value == "cancelled":
+        return _cancelled_message(job)
+    if job.status.value == "succeeded":
+        return _succeeded_message(job)
+    return _failed_message(job)
