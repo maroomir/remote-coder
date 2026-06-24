@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.ai.base import RunnerInput
@@ -10,6 +11,22 @@ from app.jobs.schemas import Job, JobMode, is_read_only_job_mode, job_mode_name
 from app.monitoring.events import EventLogger
 
 _joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
+
+
+@dataclass
+class _RunContext:
+    """Mutable state shared across pipeline stages of a single job run.
+
+    `failed_stage` mirrors the stage about to execute so the exception handler can
+    report the exact stage at the moment any exception propagates.
+    """
+
+    failed_stage: str | None = None
+    worktree_path: Path | None = None
+    created_worktree_for_job: bool = False
+    worktree_on_branch: bool = False
+    commit_to_requested_branch: bool = False
+    plan_decision_questions: list[PlanDecisionQuestion] | None = None
 
 
 def run_job(manager, job_id: str) -> Job:
@@ -46,245 +63,284 @@ def run_job(manager, job_id: str) -> Job:
         worktree_base.name,
         **manager._job_ctx(job),
     )
-    worktree_path: Path | None = None
-    created_worktree_for_job = False
-    failed_stage: str | None = None
     remote = manager._effective_git_remote_name()
     read_only_job = is_read_only_job_mode(job.request.mode)
-    plan_decision_questions: list[PlanDecisionQuestion] | None = None
+    ctx = _RunContext()
     try:
         job.mark_running()
         manager._job_store.update(job)
         _joblog.info("running", **manager._job_ctx(job))
 
-        failed_stage = "git_worktree"
-        _joblog.info("stage=git_worktree", **manager._job_ctx(job))
-        plan = manager._prepare_worktree_plan(job, project_path, worktree_base)
-        worktree_path = plan.path
-        created_worktree_for_job = plan.created_for_job
-        worktree_on_branch = plan.on_branch
-        commit_to_requested_branch = plan.commit_to_requested_branch
-        manager._git_service.ensure_worktree_writable(worktree_path)
-        _joblog.info("worktree writable", **manager._job_ctx(job))
-
-        failed_stage = "runner"
-        _joblog.info(
-            "stage=runner model=%s model_id=%s",
-            job.request.model.value,
-            job.request.model_id or "-",
-            **manager._job_ctx(job),
-        )
-        runner = manager._runner_factory.create(job.request.model)
-        timeout_seconds = manager._effective_job_timeout_seconds()
-        _joblog.info(
-            "runner created name=%s timeout=%d instruction_len=%d",
-            getattr(runner, "name", job.request.model.value),
-            timeout_seconds,
-            len(job.request.instruction),
-            **manager._job_ctx(job),
-        )
-        runner_log = manager._start_incremental_runner_log(job, worktree_base)
-        heartbeat = manager._start_heartbeat(job)
-        try:
-            runner_result = runner.run(
-                RunnerInput(
-                    instruction=job.request.instruction,
-                    cwd=worktree_path,
-                    timeout_seconds=timeout_seconds,
-                    model_id=job.request.model_id,
-                    env=None,
-                    cancel_event=cancel_event,
-                    mode=job.request.mode,
-                    session_id=job.request.session_id,
-                    resume_token=job.request.resume_session_token,
-                    native_resume_cwd_stable=not created_worktree_for_job,
-                    output_callback=runner_log.output_callback,
-                )
-            )
-        finally:
-            heartbeat.set()
-            runner_log.flush()
-        manager._save_runner_log(job, runner_result, worktree_base)
-        _joblog.info(
-            "runner exit=%d stdout_len=%d stderr_len=%d",
-            runner_result.exit_code,
-            len(runner_result.stdout),
-            len(runner_result.stderr),
-            **manager._job_ctx(job),
-        )
-
-        if runner_result.exit_code != 0:
-            raise RuntimeError(runner_result.stderr.strip() or "runner failed")
+        _run_worktree_stage(manager, job, ctx, project_path, worktree_base)
+        runner_result = _run_runner_stage(manager, job, ctx, worktree_base, cancel_event)
 
         if read_only_job:
-            job.branch = None
-            job.commit_hash = None
-            job.changed_files = []
-            job.mark_succeeded()
-            manager._job_store.update(job)
-            _joblog.info(
-                "succeeded read_only mode=%s", job_mode_name(job.request.mode), **manager._job_ctx(job)
+            _finish_read_only(manager, job, ctx, runner_result)
+        else:
+            _finish_write(
+                manager, job, ctx, entry, project_path, worktree_base, remote, runner_result
             )
-            if job.request.mode is JobMode.PLAN and not job.request.plan_decisions_resolved:
-                plan_decision_questions = parse_plan_decisions(runner_result.stdout)
-        else:
-            failed_stage = "git_commit"
-            _joblog.info("stage=git_commit", **manager._job_ctx(job))
-            job.changed_files = manager._git_service.collect_changes(worktree_path)
-            _joblog.info("changes=%d", len(job.changed_files), **manager._job_ctx(job))
-
-            if not job.changed_files:
-                job.branch = None
-                job.commit_hash = None
-                job.mark_succeeded()
-                manager._job_store.update(job)
-                _joblog.info("succeeded branch=%s commit=%s", "-", "-", **manager._job_ctx(job))
-            else:
-                job.branch = (
-                    job.request.branch
-                    if commit_to_requested_branch
-                    else manager._branch_strategy.make_branch_name(job.request.instruction)
-                )
-                manager._job_store.update(job)
-                _joblog.info(
-                    "branch selected branch=%s requested=%s",
-                    job.branch,
-                    commit_to_requested_branch,
-                    **manager._job_ctx(job),
-                )
-                if not worktree_on_branch:
-                    manager._git_service.create_branch_in_worktree(worktree_path, job.branch)
-                    worktree_on_branch = True
-                    _joblog.info(
-                        "branch created in worktree branch=%s", job.branch, **manager._job_ctx(job)
-                    )
-                job.changed_files = manager._git_service.collect_changes(worktree_path)
-                job.diff_review = manager._build_diff_review(job, worktree_path)
-
-                # The gate only matters when a commit would actually happen; running it for a
-                # no-commit request would waste time and could spuriously flag validation_failed.
-                validation_passed = (
-                    manager._run_validation_gate(job, entry, worktree_path)
-                    if job.request.commit
-                    else True
-                )
-
-                if job.request.commit and validation_passed:
-                    ai_title = None
-                    ai_body = None
-                    if manager._ai_commit_body_generator is not None:
-                        ai_title, ai_body = manager._ai_commit_body_generator.generate(
-                            instruction=job.request.instruction,
-                            changed_files=job.changed_files,
-                            model_name=job.request.model,
-                        )
-                    commit_message = CommitMessageFormatter.format(
-                        job_id=job.id,
-                        instruction=job.request.instruction,
-                        changed_files=job.changed_files,
-                        ai_body=ai_body,
-                        ai_title=ai_title,
-                    )
-                    _joblog.info(
-                        "commit message ready changed_files=%d ai_title=%s ai_body=%s",
-                        len(job.changed_files),
-                        ai_title is not None,
-                        ai_body is not None,
-                        **manager._job_ctx(job),
-                    )
-                    job.commit_hash = manager._git_service.commit_all(worktree_path, commit_message)
-                    _joblog.info(
-                        "commit result hash=%s", job.commit_hash or "-", **manager._job_ctx(job)
-                    )
-                else:
-                    job.commit_hash = None
-                    if job.request.commit and not validation_passed:
-                        _joblog.info(
-                            "commit skipped by validation gate (changes preserved)",
-                            **manager._job_ctx(job),
-                        )
-                    else:
-                        _joblog.info("commit skipped by request", **manager._job_ctx(job))
-
-                if job.request.commit and job.commit_hash:
-                    failed_stage = "git_push"
-                    _joblog.info("stage=git_push", **manager._job_ctx(job))
-                    manager._git_service.push_branch(project_path, remote, job.branch)
-
-                if (
-                    manager._advanced_settings_store is not None
-                    and manager._advanced_settings_store.get().auto_merge_to_main_enabled
-                    and job.request.commit
-                    and job.commit_hash
-                    and job.branch
-                ):
-                    failed_stage = "git_integrate_main"
-                    _joblog.info("stage=git_integrate_main", **manager._job_ctx(job))
-                    ops_base = worktree_base / "_rebase_ops"
-                    manager._git_service.rebase_branch_onto_main_and_merge(
-                        project_path,
-                        job.branch,
-                        remote,
-                        ops_base,
-                    )
-
-                job.mark_succeeded()
-                manager._job_store.update(job)
-                _joblog.info(
-                    "succeeded branch=%s commit=%s",
-                    job.branch or "-",
-                    job.commit_hash or "-",
-                    **manager._job_ctx(job),
-                )
     except Exception as exc:  # pylint: disable=broad-except
-        manager._preserve_partial_output(job, exc, worktree_base)
-        if job_id in manager._cancelled_job_ids:
-            _joblog.info("runner stopped by cancellation", **manager._job_ctx(job))
-            if job.status.value != "cancelled":
-                job.mark_cancelled()
-                manager._job_store.update(job)
+        _handle_run_exception(manager, job, job_id, ctx, exc, worktree_base)
+    finally:
+        _finalize_job(manager, job, job_id, ctx, project_path)
+    return job
+
+
+def _run_worktree_stage(manager, job, ctx: _RunContext, project_path, worktree_base) -> None:
+    ctx.failed_stage = "git_worktree"
+    _joblog.info("stage=git_worktree", **manager._job_ctx(job))
+    plan = manager._prepare_worktree_plan(job, project_path, worktree_base)
+    ctx.worktree_path = plan.path
+    ctx.created_worktree_for_job = plan.created_for_job
+    ctx.worktree_on_branch = plan.on_branch
+    ctx.commit_to_requested_branch = plan.commit_to_requested_branch
+    manager._git_service.ensure_worktree_writable(ctx.worktree_path)
+    _joblog.info("worktree writable", **manager._job_ctx(job))
+
+
+def _run_runner_stage(manager, job, ctx: _RunContext, worktree_base, cancel_event):
+    ctx.failed_stage = "runner"
+    _joblog.info(
+        "stage=runner model=%s model_id=%s",
+        job.request.model.value,
+        job.request.model_id or "-",
+        **manager._job_ctx(job),
+    )
+    runner = manager._runner_factory.create(job.request.model)
+    timeout_seconds = manager._effective_job_timeout_seconds()
+    _joblog.info(
+        "runner created name=%s timeout=%d instruction_len=%d",
+        getattr(runner, "name", job.request.model.value),
+        timeout_seconds,
+        len(job.request.instruction),
+        **manager._job_ctx(job),
+    )
+    runner_log = manager._start_incremental_runner_log(job, worktree_base)
+    heartbeat = manager._start_heartbeat(job)
+    try:
+        runner_result = runner.run(
+            RunnerInput(
+                instruction=job.request.instruction,
+                cwd=ctx.worktree_path,
+                timeout_seconds=timeout_seconds,
+                model_id=job.request.model_id,
+                env=None,
+                cancel_event=cancel_event,
+                mode=job.request.mode,
+                session_id=job.request.session_id,
+                resume_token=job.request.resume_session_token,
+                native_resume_cwd_stable=not ctx.created_worktree_for_job,
+                output_callback=runner_log.output_callback,
+            )
+        )
+    finally:
+        heartbeat.set()
+        runner_log.flush()
+    manager._save_runner_log(job, runner_result, worktree_base)
+    _joblog.info(
+        "runner exit=%d stdout_len=%d stderr_len=%d",
+        runner_result.exit_code,
+        len(runner_result.stdout),
+        len(runner_result.stderr),
+        **manager._job_ctx(job),
+    )
+
+    if runner_result.exit_code != 0:
+        raise RuntimeError(runner_result.stderr.strip() or "runner failed")
+    return runner_result
+
+
+def _finish_read_only(manager, job, ctx: _RunContext, runner_result) -> None:
+    job.branch = None
+    job.commit_hash = None
+    job.changed_files = []
+    job.mark_succeeded()
+    manager._job_store.update(job)
+    _joblog.info(
+        "succeeded read_only mode=%s", job_mode_name(job.request.mode), **manager._job_ctx(job)
+    )
+    if job.request.mode is JobMode.PLAN and not job.request.plan_decisions_resolved:
+        ctx.plan_decision_questions = parse_plan_decisions(runner_result.stdout)
+
+
+def _finish_write(
+    manager, job, ctx: _RunContext, entry, project_path, worktree_base, remote, runner_result
+) -> None:
+    ctx.failed_stage = "git_commit"
+    _joblog.info("stage=git_commit", **manager._job_ctx(job))
+    job.changed_files = manager._git_service.collect_changes(ctx.worktree_path)
+    _joblog.info("changes=%d", len(job.changed_files), **manager._job_ctx(job))
+
+    if not job.changed_files:
+        job.branch = None
+        job.commit_hash = None
+        job.mark_succeeded()
+        manager._job_store.update(job)
+        _joblog.info("succeeded branch=%s commit=%s", "-", "-", **manager._job_ctx(job))
+        return
+
+    _select_branch(manager, job, ctx)
+    job.changed_files = manager._git_service.collect_changes(ctx.worktree_path)
+    job.diff_review = manager._build_diff_review(job, ctx.worktree_path)
+
+    # The gate only matters when a commit would actually happen; running it for a
+    # no-commit request would waste time and could spuriously flag validation_failed.
+    validation_passed = (
+        manager._run_validation_gate(job, entry, ctx.worktree_path)
+        if job.request.commit
+        else True
+    )
+
+    _commit_changes(manager, job, ctx, validation_passed)
+    _push_and_integrate(manager, job, ctx, project_path, worktree_base, remote)
+
+    job.mark_succeeded()
+    manager._job_store.update(job)
+    _joblog.info(
+        "succeeded branch=%s commit=%s",
+        job.branch or "-",
+        job.commit_hash or "-",
+        **manager._job_ctx(job),
+    )
+
+
+def _select_branch(manager, job, ctx: _RunContext) -> None:
+    job.branch = (
+        job.request.branch
+        if ctx.commit_to_requested_branch
+        else manager._branch_strategy.make_branch_name(job.request.instruction)
+    )
+    manager._job_store.update(job)
+    _joblog.info(
+        "branch selected branch=%s requested=%s",
+        job.branch,
+        ctx.commit_to_requested_branch,
+        **manager._job_ctx(job),
+    )
+    if not ctx.worktree_on_branch:
+        manager._git_service.create_branch_in_worktree(ctx.worktree_path, job.branch)
+        ctx.worktree_on_branch = True
+        _joblog.info(
+            "branch created in worktree branch=%s", job.branch, **manager._job_ctx(job)
+        )
+
+
+def _commit_changes(manager, job, ctx: _RunContext, validation_passed: bool) -> None:
+    if job.request.commit and validation_passed:
+        ai_title = None
+        ai_body = None
+        if manager._ai_commit_body_generator is not None:
+            ai_title, ai_body = manager._ai_commit_body_generator.generate(
+                instruction=job.request.instruction,
+                changed_files=job.changed_files,
+                model_name=job.request.model,
+            )
+        commit_message = CommitMessageFormatter.format(
+            job_id=job.id,
+            instruction=job.request.instruction,
+            changed_files=job.changed_files,
+            ai_body=ai_body,
+            ai_title=ai_title,
+        )
+        _joblog.info(
+            "commit message ready changed_files=%d ai_title=%s ai_body=%s",
+            len(job.changed_files),
+            ai_title is not None,
+            ai_body is not None,
+            **manager._job_ctx(job),
+        )
+        job.commit_hash = manager._git_service.commit_all(ctx.worktree_path, commit_message)
+        _joblog.info(
+            "commit result hash=%s", job.commit_hash or "-", **manager._job_ctx(job)
+        )
+    else:
+        job.commit_hash = None
+        if job.request.commit and not validation_passed:
+            _joblog.info(
+                "commit skipped by validation gate (changes preserved)",
+                **manager._job_ctx(job),
+            )
         else:
-            _joblog.exception(
-                "failed stage=%s: %s",
-                failed_stage or "unknown",
+            _joblog.info("commit skipped by request", **manager._job_ctx(job))
+
+
+def _push_and_integrate(
+    manager, job, ctx: _RunContext, project_path, worktree_base, remote
+) -> None:
+    if job.request.commit and job.commit_hash:
+        ctx.failed_stage = "git_push"
+        _joblog.info("stage=git_push", **manager._job_ctx(job))
+        manager._git_service.push_branch(project_path, remote, job.branch)
+
+    if (
+        manager._advanced_settings_store is not None
+        and manager._advanced_settings_store.get().auto_merge_to_main_enabled
+        and job.request.commit
+        and job.commit_hash
+        and job.branch
+    ):
+        ctx.failed_stage = "git_integrate_main"
+        _joblog.info("stage=git_integrate_main", **manager._job_ctx(job))
+        ops_base = worktree_base / "_rebase_ops"
+        manager._git_service.rebase_branch_onto_main_and_merge(
+            project_path,
+            job.branch,
+            remote,
+            ops_base,
+        )
+
+
+def _handle_run_exception(manager, job, job_id, ctx: _RunContext, exc, worktree_base) -> None:
+    manager._preserve_partial_output(job, exc, worktree_base)
+    if job_id in manager._cancelled_job_ids:
+        _joblog.info("runner stopped by cancellation", **manager._job_ctx(job))
+        if job.status.value != "cancelled":
+            job.mark_cancelled()
+            manager._job_store.update(job)
+    else:
+        _joblog.exception(
+            "failed stage=%s: %s",
+            ctx.failed_stage or "unknown",
+            exc,
+            **manager._job_ctx(job),
+        )
+        job.mark_failed(str(exc))
+        job.error_stage = ctx.failed_stage or "unknown"
+        manager._job_store.update(job)
+
+
+def _finalize_job(manager, job, job_id, ctx: _RunContext, project_path) -> None:
+    manager._cancel_events.pop(job_id, None)
+    manager._cancelled_job_ids.discard(job_id)
+    read_only_succeeded = is_read_only_job_mode(job.request.mode) and job.status.value == "succeeded"
+    cleanup_on_success = read_only_succeeded or not manager._effective_keep_worktree_on_success()
+    # Validation gate failed: keep the worktree so the uncommitted changes survive for the user
+    # to inspect, fix, or commit manually, regardless of the keep-on-success setting.
+    if job.validation_failed:
+        cleanup_on_success = False
+    _joblog.info(
+        "job finalizing status=%s created_worktree=%s cleanup_on_success=%s",
+        job.status.value,
+        ctx.created_worktree_for_job,
+        cleanup_on_success,
+        **manager._job_ctx(job),
+    )
+    if (
+        ctx.worktree_path
+        and ctx.created_worktree_for_job
+        and job.status.value == "succeeded"
+        and cleanup_on_success
+    ):
+        try:
+            manager._git_service.cleanup_worktree(project_path, ctx.worktree_path)
+            _joblog.info("worktree cleanup done", **manager._job_ctx(job))
+        except RuntimeError as exc:
+            # cleanup 실패로 성공 Job 알림이 누락되지 않도록 삼킵니다.
+            _joblog.warning(
+                "worktree cleanup failed but result notification continues: %s",
                 exc,
                 **manager._job_ctx(job),
             )
-            job.mark_failed(str(exc))
-            job.error_stage = failed_stage or "unknown"
-            manager._job_store.update(job)
-    finally:
-        manager._cancel_events.pop(job_id, None)
-        manager._cancelled_job_ids.discard(job_id)
-        read_only_succeeded = is_read_only_job_mode(job.request.mode) and job.status.value == "succeeded"
-        cleanup_on_success = read_only_succeeded or not manager._effective_keep_worktree_on_success()
-        # Validation gate failed: keep the worktree so the uncommitted changes survive for the user
-        # to inspect, fix, or commit manually, regardless of the keep-on-success setting.
-        if job.validation_failed:
-            cleanup_on_success = False
-        _joblog.info(
-            "job finalizing status=%s created_worktree=%s cleanup_on_success=%s",
-            job.status.value,
-            created_worktree_for_job,
-            cleanup_on_success,
-            **manager._job_ctx(job),
-        )
-        if (
-            worktree_path
-            and created_worktree_for_job
-            and job.status.value == "succeeded"
-            and cleanup_on_success
-        ):
-            try:
-                manager._git_service.cleanup_worktree(project_path, worktree_path)
-                _joblog.info("worktree cleanup done", **manager._job_ctx(job))
-            except RuntimeError as exc:
-                # cleanup 실패로 성공 Job 알림이 누락되지 않도록 삼킵니다.
-                _joblog.warning(
-                    "worktree cleanup failed but result notification continues: %s",
-                    exc,
-                    **manager._job_ctx(job),
-                )
-        if not manager._route_plan_decisions(job, plan_decision_questions):
-            manager._send_result(job)
-    return job
+    if not manager._route_plan_decisions(job, ctx.plan_decision_questions):
+        manager._send_result(job)
