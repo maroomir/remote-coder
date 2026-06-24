@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.ai.base import RunnerInput
@@ -9,6 +10,19 @@ from app.jobs.schemas import Job, JobMode
 from app.monitoring.events import EventLogger
 
 _joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
+
+
+@dataclass
+class _FixRunContext:
+    """Mutable state shared across the fix-pipeline stages of a single job run.
+
+    `failed_stage` mirrors the stage about to execute so the exception handler can
+    report the exact stage at the moment any exception propagates.
+    """
+
+    failed_stage: str | None = None
+    worktree_path: Path | None = None
+    created_worktree_for_job: bool = False
 
 
 def run_fix_job(manager, job_id: str) -> Job:
@@ -40,165 +54,202 @@ def run_fix_job(manager, job_id: str) -> Job:
     project_path = entry.root_path
     worktree_base = entry.worktree_base_dir
     remote = manager._effective_git_remote_name()
-    worktree_path: Path | None = None
-    created_worktree_for_job = False
-    failed_stage: str | None = None
+    ctx = _FixRunContext()
 
     try:
         job.mark_running()
         manager._job_store.update(job)
 
-        failed_stage = "fix_resolve_target"
-        parent_job = manager.resolve_fix_target_job(
-            job.request.parent_job_id or "",
-            job.request.project,
-            job.request.chat_id,
+        parent_job = _resolve_fix_target(manager, job, ctx)
+        _run_fix_worktree_stage(manager, job, ctx, project_path, worktree_base, parent_job)
+        runner_result = _run_fix_runner_stage(
+            manager, job, ctx, worktree_base, cancel_event, parent_job
         )
-        if parent_job is None:
-            raise RuntimeError("Fix target job was not found or can no longer be fixed.")
-        assert parent_job.branch is not None
-        assert parent_job.commit_hash is not None
-
-        failed_stage = "fix_worktree"
-        existing = manager._git_service.find_linked_worktree_for_branch(
-            project_path, parent_job.branch
+        _apply_fix_outcome(
+            manager, job, ctx, entry, project_path, worktree_base, remote, parent_job, runner_result
         )
-        if existing is not None:
-            worktree_path = existing
-        else:
-            worktree_path = manager._git_service.prepare_branch_worktree(
-                project_path,
-                parent_job.branch,
-                job.id,
-                worktree_base_dir=worktree_base,
-            )
-            created_worktree_for_job = True
-        manager._git_service.ensure_worktree_writable(worktree_path)
-
-        failed_stage = "fix_runner"
-        runner = manager._runner_factory.create(job.request.model)
-        timeout_seconds = manager._effective_job_timeout_seconds()
-        fix_prompt = manager.compose_fix_source_prompt(parent_job, job.request.instruction)
-        runner_log = manager._start_incremental_runner_log(job, worktree_base)
-        heartbeat = manager._start_heartbeat(job)
-        try:
-            runner_result = runner.run(
-                RunnerInput(
-                    instruction=fix_prompt,
-                    cwd=worktree_path,
-                    timeout_seconds=timeout_seconds,
-                    model_id=job.request.model_id,
-                    env=None,
-                    cancel_event=cancel_event,
-                    mode=JobMode.AGENT,
-                    session_id=job.request.session_id,
-                    resume_token=job.request.resume_session_token,
-                    native_resume_cwd_stable=not created_worktree_for_job,
-                    output_callback=runner_log.output_callback,
-                )
-            )
-        finally:
-            heartbeat.set()
-            runner_log.flush()
-        manager._save_runner_log(job, runner_result, worktree_base)
-        if runner_result.exit_code != 0:
-            raise RuntimeError(runner_result.stderr.strip() or "runner failed")
-
-        failed_stage = "fix_collect_changes"
-        new_changed = manager._git_service.collect_changes(worktree_path)
-        merged = list(dict.fromkeys([*parent_job.changed_files, *new_changed]))
-        job.changed_files = merged
-
-        if not new_changed:
-            job.branch = parent_job.branch
-            job.commit_hash = parent_job.commit_hash
-            job.mark_succeeded()
-            manager._job_store.update(job)
-            _joblog.info(
-                "fix source produced no changes parent=%s",
-                parent_job.id,
-                **manager._job_ctx(job),
-            )
-        elif not manager._run_validation_gate(job, entry, worktree_path):
-            # Build the review card first so it renders whether the gate passes or fails, matching
-            # execution_pipeline. Validation gate failed: keep the parent commit intact and preserve
-            # the new changes in the worktree for the user to inspect, rather than amending a broken
-            # state.
-            job.diff_review = manager._build_diff_review(job, worktree_path)
-            job.branch = parent_job.branch
-            job.commit_hash = parent_job.commit_hash
-            job.mark_succeeded()
-            manager._job_store.update(job)
-            _joblog.info(
-                "fix validation failed; parent commit kept, changes preserved parent=%s",
-                parent_job.id,
-                **manager._job_ctx(job),
-            )
-        else:
-            job.diff_review = manager._build_diff_review(job, worktree_path)
-            failed_stage = "fix_message"
-            ai_title = None
-            ai_body = None
-            if manager._ai_commit_body_generator is not None:
-                ai_title, ai_body = manager._ai_commit_body_generator.generate(
-                    instruction=manager.compose_fix_source_prompt(
-                        parent_job, job.request.instruction
-                    ),
-                    changed_files=merged,
-                    model_name=job.request.model,
-                )
-            commit_message = CommitMessageFormatter.format(
-                job_id=parent_job.id,
-                instruction=parent_job.request.instruction,
-                changed_files=merged,
-                ai_body=ai_body,
-                ai_title=ai_title,
-            )
-
-            failed_stage = "fix_amend"
-            job.commit_hash = manager._git_service.amend_commit(worktree_path, commit_message)
-            job.branch = parent_job.branch
-
-            failed_stage = "fix_push"
-            manager._git_service.push_branch_force_with_lease(
-                project_path, remote, parent_job.branch
-            )
-
-            parent_job.commit_hash = job.commit_hash
-            parent_job.changed_files = merged
-            manager._job_store.update(parent_job)
-
-            job.mark_succeeded()
-            manager._job_store.update(job)
     except Exception as exc:  # pylint: disable=broad-except
-        manager._preserve_partial_output(job, exc, worktree_base)
-        _joblog.exception(
-            "fix failed stage=%s parent=%s: %s",
-            failed_stage or "unknown",
-            job.request.parent_job_id or "-",
-            exc,
+        _handle_fix_exception(manager, job, ctx, exc, worktree_base)
+    finally:
+        _finalize_fix_job(manager, job, job_id, ctx, project_path)
+    return job
+
+
+def _resolve_fix_target(manager, job, ctx: _FixRunContext):
+    ctx.failed_stage = "fix_resolve_target"
+    parent_job = manager.resolve_fix_target_job(
+        job.request.parent_job_id or "",
+        job.request.project,
+        job.request.chat_id,
+    )
+    if parent_job is None:
+        raise RuntimeError("Fix target job was not found or can no longer be fixed.")
+    assert parent_job.branch is not None
+    assert parent_job.commit_hash is not None
+    return parent_job
+
+
+def _run_fix_worktree_stage(
+    manager, job, ctx: _FixRunContext, project_path, worktree_base, parent_job
+) -> None:
+    ctx.failed_stage = "fix_worktree"
+    existing = manager._git_service.find_linked_worktree_for_branch(
+        project_path, parent_job.branch
+    )
+    if existing is not None:
+        ctx.worktree_path = existing
+    else:
+        ctx.worktree_path = manager._git_service.prepare_branch_worktree(
+            project_path,
+            parent_job.branch,
+            job.id,
+            worktree_base_dir=worktree_base,
+        )
+        ctx.created_worktree_for_job = True
+    manager._git_service.ensure_worktree_writable(ctx.worktree_path)
+
+
+def _run_fix_runner_stage(
+    manager, job, ctx: _FixRunContext, worktree_base, cancel_event, parent_job
+):
+    ctx.failed_stage = "fix_runner"
+    runner = manager._runner_factory.create(job.request.model)
+    timeout_seconds = manager._effective_job_timeout_seconds()
+    fix_prompt = manager.compose_fix_source_prompt(parent_job, job.request.instruction)
+    runner_log = manager._start_incremental_runner_log(job, worktree_base)
+    heartbeat = manager._start_heartbeat(job)
+    try:
+        runner_result = runner.run(
+            RunnerInput(
+                instruction=fix_prompt,
+                cwd=ctx.worktree_path,
+                timeout_seconds=timeout_seconds,
+                model_id=job.request.model_id,
+                env=None,
+                cancel_event=cancel_event,
+                mode=JobMode.AGENT,
+                session_id=job.request.session_id,
+                resume_token=job.request.resume_session_token,
+                native_resume_cwd_stable=not ctx.created_worktree_for_job,
+                output_callback=runner_log.output_callback,
+            )
+        )
+    finally:
+        heartbeat.set()
+        runner_log.flush()
+    manager._save_runner_log(job, runner_result, worktree_base)
+    if runner_result.exit_code != 0:
+        raise RuntimeError(runner_result.stderr.strip() or "runner failed")
+    return runner_result
+
+
+def _apply_fix_outcome(
+    manager, job, ctx: _FixRunContext, entry, project_path, worktree_base, remote, parent_job, runner_result
+) -> None:
+    ctx.failed_stage = "fix_collect_changes"
+    new_changed = manager._git_service.collect_changes(ctx.worktree_path)
+    merged = list(dict.fromkeys([*parent_job.changed_files, *new_changed]))
+    job.changed_files = merged
+
+    if not new_changed:
+        job.branch = parent_job.branch
+        job.commit_hash = parent_job.commit_hash
+        job.mark_succeeded()
+        manager._job_store.update(job)
+        _joblog.info(
+            "fix source produced no changes parent=%s",
+            parent_job.id,
             **manager._job_ctx(job),
         )
-        if job.status.value != "failed":
-            job.mark_failed(str(exc))
-        job.error_stage = failed_stage or "unknown"
+    elif not manager._run_validation_gate(job, entry, ctx.worktree_path):
+        # Build the review card first so it renders whether the gate passes or fails, matching
+        # execution_pipeline. Validation gate failed: keep the parent commit intact and preserve
+        # the new changes in the worktree for the user to inspect, rather than amending a broken
+        # state.
+        job.diff_review = manager._build_diff_review(job, ctx.worktree_path)
+        job.branch = parent_job.branch
+        job.commit_hash = parent_job.commit_hash
+        job.mark_succeeded()
         manager._job_store.update(job)
-    finally:
-        manager._cancel_events.pop(job_id, None)
-        if (
-            worktree_path is not None
-            and created_worktree_for_job
-            and job.status.value == "succeeded"
-            and not job.validation_failed
-            and not manager._effective_keep_worktree_on_success()
-        ):
-            try:
-                manager._git_service.cleanup_worktree(project_path, worktree_path)
-            except RuntimeError as cleanup_exc:
-                _joblog.warning(
-                    "fix worktree cleanup failed: %s",
-                    cleanup_exc,
-                    **manager._job_ctx(job),
-                )
-        manager._send_result(job)
-    return job
+        _joblog.info(
+            "fix validation failed; parent commit kept, changes preserved parent=%s",
+            parent_job.id,
+            **manager._job_ctx(job),
+        )
+    else:
+        _commit_fix(manager, job, ctx, project_path, remote, parent_job, merged)
+
+
+def _commit_fix(
+    manager, job, ctx: _FixRunContext, project_path, remote, parent_job, merged
+) -> None:
+    job.diff_review = manager._build_diff_review(job, ctx.worktree_path)
+    ctx.failed_stage = "fix_message"
+    ai_title = None
+    ai_body = None
+    if manager._ai_commit_body_generator is not None:
+        ai_title, ai_body = manager._ai_commit_body_generator.generate(
+            instruction=manager.compose_fix_source_prompt(
+                parent_job, job.request.instruction
+            ),
+            changed_files=merged,
+            model_name=job.request.model,
+        )
+    commit_message = CommitMessageFormatter.format(
+        job_id=parent_job.id,
+        instruction=parent_job.request.instruction,
+        changed_files=merged,
+        ai_body=ai_body,
+        ai_title=ai_title,
+    )
+
+    ctx.failed_stage = "fix_amend"
+    job.commit_hash = manager._git_service.amend_commit(ctx.worktree_path, commit_message)
+    job.branch = parent_job.branch
+
+    ctx.failed_stage = "fix_push"
+    manager._git_service.push_branch_force_with_lease(
+        project_path, remote, parent_job.branch
+    )
+
+    parent_job.commit_hash = job.commit_hash
+    parent_job.changed_files = merged
+    manager._job_store.update(parent_job)
+
+    job.mark_succeeded()
+    manager._job_store.update(job)
+
+
+def _handle_fix_exception(manager, job, ctx: _FixRunContext, exc, worktree_base) -> None:
+    manager._preserve_partial_output(job, exc, worktree_base)
+    _joblog.exception(
+        "fix failed stage=%s parent=%s: %s",
+        ctx.failed_stage or "unknown",
+        job.request.parent_job_id or "-",
+        exc,
+        **manager._job_ctx(job),
+    )
+    if job.status.value != "failed":
+        job.mark_failed(str(exc))
+    job.error_stage = ctx.failed_stage or "unknown"
+    manager._job_store.update(job)
+
+
+def _finalize_fix_job(manager, job, job_id, ctx: _FixRunContext, project_path) -> None:
+    manager._cancel_events.pop(job_id, None)
+    if (
+        ctx.worktree_path is not None
+        and ctx.created_worktree_for_job
+        and job.status.value == "succeeded"
+        and not job.validation_failed
+        and not manager._effective_keep_worktree_on_success()
+    ):
+        try:
+            manager._git_service.cleanup_worktree(project_path, ctx.worktree_path)
+        except RuntimeError as cleanup_exc:
+            _joblog.warning(
+                "fix worktree cleanup failed: %s",
+                cleanup_exc,
+                **manager._job_ctx(job),
+            )
+    manager._send_result(job)
