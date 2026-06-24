@@ -6,6 +6,11 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 
+from app.git.branch_query import BranchQuery
+from app.git.change_collector import ChangeCollector
+from app.git.remote_ops import RemoteOps
+from app.git.worktree_lifecycle import WorktreeLifecycle
+from app.git.worktree_listing import WorktreeListing
 from app.monitoring.events import EventLogger
 
 _SAFE_BRANCH_TOKEN = re.compile(r"^[A-Za-z0-9/._-]+$")
@@ -19,6 +24,27 @@ class GitWorktreeService:
     def __init__(self, base_dir: Path) -> None:
         self._base_dir = base_dir
         self._base_dir.mkdir(parents=True, exist_ok=True)
+        self._branch_query = BranchQuery(self._run_git)
+        self._worktree_listing = WorktreeListing(
+            self._run_git, self._parse_worktree_list_porcelain
+        )
+        self._change_collector = ChangeCollector(self._run_git)
+        self._worktree_lifecycle = WorktreeLifecycle(
+            self._base_dir,
+            self._run_git,
+            self._parse_worktree_list_porcelain,
+            self._is_within,
+        )
+        self._remote_ops = RemoteOps(
+            self._run_git,
+            self._run_git_checked,
+            self._run_gh,
+            self._remote_branch_ref,
+            self._new_rebase_operation_id,
+            self._branch_query,
+            self._worktree_listing,
+            self._worktree_lifecycle,
+        )
 
     def _run_git(self, cwd: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -43,13 +69,7 @@ class GitWorktreeService:
         return f"{remote}/{branch}"
 
     def resolve_integrate_branch(self, project_path: Path) -> str:
-        for candidate in ("main", "master"):
-            result = self._run_git(project_path, ["rev-parse", "--verify", candidate])
-            if result.returncode == 0:
-                return candidate
-        raise RuntimeError(
-            "No integration branch (main or master). The repository needs main or master."
-        )
+        return self._branch_query.resolve_integrate_branch(project_path)
 
     def _add_worktree(
         self,
@@ -62,22 +82,15 @@ class GitWorktreeService:
         error_label: str,
         worktree_base_dir: Path | None,
     ) -> Path:
-        base = worktree_base_dir if worktree_base_dir is not None else self._base_dir
-        base.mkdir(parents=True, exist_ok=True)
-        worktree_path = base / job_id
-        _gitlog.info("%s start %s", log_label, log_detail, job_id=job_id)
-        result = self._run_git(project_path, build_args(worktree_path))
-        if result.returncode != 0:
-            _gitlog.warning(
-                "%s failed %s stderr_len=%d",
-                log_label,
-                log_detail,
-                len(result.stderr),
-                job_id=job_id,
-            )
-            raise RuntimeError(f"{error_label}: {result.stderr.strip()}")
-        _gitlog.info("%s ok %s", log_label, log_detail, job_id=job_id)
-        return worktree_path
+        return self._worktree_lifecycle._add_worktree(
+            project_path,
+            job_id,
+            build_args,
+            log_label=log_label,
+            log_detail=log_detail,
+            error_label=error_label,
+            worktree_base_dir=worktree_base_dir,
+        )
 
     def prepare_worktree(
         self,
@@ -86,14 +99,8 @@ class GitWorktreeService:
         job_id: str,
         worktree_base_dir: Path | None = None,
     ) -> Path:
-        return self._add_worktree(
-            project_path,
-            job_id,
-            lambda worktree_path: ["worktree", "add", "-b", branch_name, str(worktree_path)],
-            log_label="prepare_worktree",
-            log_detail=f"branch={branch_name}",
-            error_label="failed to create worktree",
-            worktree_base_dir=worktree_base_dir,
+        return self._worktree_lifecycle.prepare_worktree(
+            project_path, branch_name, job_id, worktree_base_dir
         )
 
     def prepare_detached_worktree(
@@ -103,15 +110,8 @@ class GitWorktreeService:
         worktree_base_dir: Path | None = None,
         base_branch: str | None = None,
     ) -> Path:
-        ref = base_branch if base_branch is not None else "HEAD"
-        return self._add_worktree(
-            project_path,
-            job_id,
-            lambda worktree_path: ["worktree", "add", "--detach", str(worktree_path), ref],
-            log_label="prepare_detached_worktree",
-            log_detail=f"ref={ref}",
-            error_label="failed to create detached worktree",
-            worktree_base_dir=worktree_base_dir,
+        return self._worktree_lifecycle.prepare_detached_worktree(
+            project_path, job_id, worktree_base_dir, base_branch
         )
 
     def prepare_branch_worktree(
@@ -121,14 +121,8 @@ class GitWorktreeService:
         job_id: str,
         worktree_base_dir: Path | None = None,
     ) -> Path:
-        return self._add_worktree(
-            project_path,
-            job_id,
-            lambda worktree_path: ["worktree", "add", str(worktree_path), branch_name],
-            log_label="prepare_branch_worktree",
-            log_detail=f"branch={branch_name}",
-            error_label="failed to create branch worktree",
-            worktree_base_dir=worktree_base_dir,
+        return self._worktree_lifecycle.prepare_branch_worktree(
+            project_path, branch_name, job_id, worktree_base_dir
         )
 
     @staticmethod
@@ -152,306 +146,71 @@ class GitWorktreeService:
 
     def get_current_branch(self, project_path: Path) -> str:
         """Return the checked-out local branch name, or a detached HEAD label."""
-        result = self._run_git(project_path, ["branch", "--show-current"])
-        if result.returncode != 0:
-            raise RuntimeError(f"failed to read current branch: {result.stderr.strip()}")
-        name = result.stdout.strip()
-        if name:
-            return name
-        return "(detached HEAD - no branch name)"
+        return self._branch_query.get_current_branch(project_path)
 
     def local_branch_exists(self, project_path: Path, branch: str) -> bool:
-        result = self._run_git(project_path, ["show-ref", "--verify", f"refs/heads/{branch}"])
-        _gitlog.info("local_branch_exists branch=%s exists=%s", branch, result.returncode == 0)
-        return result.returncode == 0
+        return self._branch_query.local_branch_exists(project_path, branch)
 
     def switch_branch(self, project_path: Path, branch: str) -> None:
-        if not self.local_branch_exists(project_path, branch):
-            raise RuntimeError(f"No local branch: {branch}")
-        result = self._run_git(project_path, ["switch", branch])
-        if result.returncode != 0:
-            raise RuntimeError(f"git switch failed: {result.stderr.strip()}")
+        self._remote_ops.switch_branch(project_path, branch)
 
     def create_branch_in_worktree(self, worktree_path: Path, branch_name: str) -> None:
-        _gitlog.info("create_branch_in_worktree start branch=%s", branch_name)
-        result = self._run_git(worktree_path, ["switch", "-c", branch_name])
-        if result.returncode != 0:
-            _gitlog.warning("create_branch_in_worktree failed branch=%s stderr_len=%d", branch_name, len(result.stderr))
-            raise RuntimeError(f"failed to create branch in worktree: {result.stderr.strip()}")
-        _gitlog.info("create_branch_in_worktree ok branch=%s", branch_name)
+        self._remote_ops.create_branch_in_worktree(worktree_path, branch_name)
 
     def find_linked_worktree_for_branch(self, project_path: Path, branch_name: str) -> Path | None:
-        _gitlog.info("find_linked_worktree_for_branch start branch=%s", branch_name)
-        result = self._run_git(project_path, ["worktree", "list", "--porcelain"])
-        if result.returncode != 0:
-            _gitlog.warning(
-                "find_linked_worktree_for_branch failed branch=%s stderr_len=%d",
-                branch_name,
-                len(result.stderr),
-            )
-            raise RuntimeError(f"failed to list worktrees: {result.stderr.strip()}")
-        root = project_path.resolve()
-        for worktree_path, branch in self._parse_worktree_list_porcelain(result.stdout):
-            if branch != branch_name:
-                continue
-            if worktree_path.resolve() == root:
-                continue
-            _gitlog.info("find_linked_worktree_for_branch hit branch=%s", branch_name)
-            return worktree_path
-        _gitlog.info("find_linked_worktree_for_branch miss branch=%s", branch_name)
-        return None
+        return self._worktree_listing.find_linked_worktree_for_branch(project_path, branch_name)
 
     def branch_is_checked_out(self, project_path: Path, branch_name: str) -> bool:
-        _gitlog.info("branch_is_checked_out start branch=%s", branch_name)
-        result = self._run_git(project_path, ["worktree", "list", "--porcelain"])
-        if result.returncode != 0:
-            _gitlog.warning(
-                "branch_is_checked_out failed branch=%s stderr_len=%d",
-                branch_name,
-                len(result.stderr),
-            )
-            raise RuntimeError(f"failed to list worktrees: {result.stderr.strip()}")
-        checked_out = any(branch == branch_name for _, branch in self._parse_worktree_list_porcelain(result.stdout))
-        _gitlog.info("branch_is_checked_out branch=%s checked_out=%s", branch_name, checked_out)
-        return checked_out
+        return self._worktree_listing.branch_is_checked_out(project_path, branch_name)
 
     def collect_diff_numstat(self, worktree_path: Path) -> list[tuple[str, int | None, int | None]]:
-        """Return per-file (path, added, deleted) line counts for the job's changes against HEAD.
-
-        Uses `git add -N` (intent-to-add) first so brand-new untracked files show up in the diff
-        with their real line counts, then diffs the working tree against HEAD. This captures the
-        job's edits whether or not they have been committed yet, and must be called before the
-        worktree is cleaned up. Binary files report `--` in numstat, which we surface as None so
-        callers can label them instead of pretending they had zero line edits.
-        """
-        intent = self._run_git(worktree_path, ["add", "-N", "."])
-        if intent.returncode != 0:
-            _gitlog.warning("collect_diff_numstat intent-to-add failed stderr_len=%d", len(intent.stderr))
-            raise RuntimeError(f"failed to stage diff stats: {intent.stderr.strip()}")
-        result = self._run_git(worktree_path, ["diff", "HEAD", "--numstat", "-z"])
-        if result.returncode != 0:
-            _gitlog.warning("collect_diff_numstat failed stderr_len=%d", len(result.stderr))
-            raise RuntimeError(f"failed to collect diff stats: {result.stderr.strip()}")
-        # `-z` NUL-terminates each record. For renames numstat emits the old and new paths as two
-        # extra NUL fields after the counts, so we consume those follow-up fields when present.
-        stats: list[tuple[str, int | None, int | None]] = []
-        fields = [field for field in result.stdout.split("\0") if field]
-        index = 0
-        while index < len(fields):
-            record = fields[index]
-            index += 1
-            parts = record.split("\t")
-            if len(parts) < 3:
-                continue
-            # Rejoin any trailing fragments so a (legal) tab inside a filename is preserved
-            # instead of silently truncating the path at the first tab.
-            added_token, deleted_token, path = parts[0], parts[1], "\t".join(parts[2:])
-            if not path:
-                # Rename/copy: the path is empty in the count record and the real old/new paths
-                # follow as the next two NUL fields. Keep the new (destination) path.
-                if index + 1 < len(fields):
-                    path = fields[index + 1]
-                    index += 2
-                else:
-                    continue
-            added = int(added_token) if added_token.isdigit() else None
-            deleted = int(deleted_token) if deleted_token.isdigit() else None
-            stats.append((path, added, deleted))
-        _gitlog.info("collect_diff_numstat count=%d", len(stats))
-        return stats
+        return self._change_collector.collect_diff_numstat(worktree_path)
 
     def collect_changes(self, worktree_path: Path) -> list[str]:
-        result = self._run_git(worktree_path, ["status", "--porcelain", "-z"])
-        if result.returncode != 0:
-            _gitlog.warning("collect_changes failed stderr_len=%d", len(result.stderr))
-            raise RuntimeError(f"failed to collect changes: {result.stderr.strip()}")
-        # `-z` splits entries on NUL and leaves paths unquoted. A rename or copy emits
-        # the destination path right after its status code, followed by a separate NUL
-        # field for the origin path, so we keep the destination and skip the origin.
-        files: list[str] = []
-        entries = result.stdout.split("\0")
-        index = 0
-        while index < len(entries):
-            entry = entries[index]
-            index += 1
-            if len(entry) <= 3:
-                continue
-            files.append(entry[3:])
-            if entry[0] in ("R", "C"):
-                index += 1
-        _gitlog.info("collect_changes count=%d", len(files))
-        return files
+        return self._change_collector.collect_changes(worktree_path)
 
     def commit_all(self, worktree_path: Path, message: str) -> str | None:
-        _gitlog.info("commit_all start message_len=%d", len(message))
-        add_result = self._run_git(worktree_path, ["add", "."])
-        if add_result.returncode != 0:
-            _gitlog.warning("commit_all stage failed stderr_len=%d", len(add_result.stderr))
-            raise RuntimeError(f"failed to stage changes: {add_result.stderr.strip()}")
-        diff_result = self._run_git(worktree_path, ["diff", "--cached", "--name-only"])
-        if diff_result.returncode != 0:
-            _gitlog.warning("commit_all inspect staged failed stderr_len=%d", len(diff_result.stderr))
-            raise RuntimeError(f"failed to inspect staged files: {diff_result.stderr.strip()}")
-        if not diff_result.stdout.strip():
-            _gitlog.info("commit_all skipped no staged files")
-            return None
-        staged_count = len([ln for ln in diff_result.stdout.splitlines() if ln.strip()])
-        _gitlog.info("commit_all staged_count=%d", staged_count)
-        commit_result = self._run_git(worktree_path, ["commit", "-m", message])
-        if commit_result.returncode != 0:
-            _gitlog.warning("commit_all commit failed stderr_len=%d", len(commit_result.stderr))
-            raise RuntimeError(f"failed to commit: {commit_result.stderr.strip()}")
-        hash_result = self._run_git(worktree_path, ["rev-parse", "--short", "HEAD"])
-        if hash_result.returncode != 0:
-            _gitlog.warning("commit_all hash failed stderr_len=%d", len(hash_result.stderr))
-            raise RuntimeError(f"failed to resolve commit hash: {hash_result.stderr.strip()}")
-        short_hash = hash_result.stdout.strip()
-        _gitlog.info("commit_all ok hash=%s", short_hash)
-        return short_hash
+        return self._change_collector.commit_all(worktree_path, message)
 
     def push_branch(self, project_path: Path, remote: str, branch: str) -> None:
-        _gitlog.info("push_branch start remote=%s branch=%s", remote, branch)
-        result = self._run_git(project_path, ["push", "-u", remote, branch])
-        if result.returncode != 0:
-            _gitlog.warning("push_branch failed remote=%s branch=%s stderr_len=%d", remote, branch, len(result.stderr))
-            raise RuntimeError(f"git push failed: {result.stderr.strip()}")
-        _gitlog.info("push_branch ok remote=%s branch=%s", remote, branch)
+        self._remote_ops.push_branch(project_path, remote, branch)
 
     def amend_commit(self, worktree_path: Path, message: str) -> str:
-        _gitlog.info("amend_commit start message_len=%d", len(message))
-        add_result = self._run_git(worktree_path, ["add", "."])
-        if add_result.returncode != 0:
-            _gitlog.warning("amend_commit stage failed stderr_len=%d", len(add_result.stderr))
-            raise RuntimeError(f"failed to stage changes: {add_result.stderr.strip()}")
-        commit_result = self._run_git(
-            worktree_path,
-            ["commit", "--amend", "--allow-empty", "-m", message],
-        )
-        if commit_result.returncode != 0:
-            _gitlog.warning("amend_commit failed stderr_len=%d", len(commit_result.stderr))
-            raise RuntimeError(f"failed to amend commit: {commit_result.stderr.strip()}")
-        hash_result = self._run_git(worktree_path, ["rev-parse", "--short", "HEAD"])
-        if hash_result.returncode != 0:
-            _gitlog.warning("amend_commit hash failed stderr_len=%d", len(hash_result.stderr))
-            raise RuntimeError(f"failed to resolve commit hash: {hash_result.stderr.strip()}")
-        short_hash = hash_result.stdout.strip()
-        _gitlog.info("amend_commit ok hash=%s", short_hash)
-        return short_hash
+        return self._change_collector.amend_commit(worktree_path, message)
 
     def push_branch_force_with_lease(self, project_path: Path, remote: str, branch: str) -> None:
-        _gitlog.info("push_branch_force_with_lease start remote=%s branch=%s", remote, branch)
-        result = self._run_git(
-            project_path,
-            ["push", "--force-with-lease", remote, branch],
-        )
-        if result.returncode != 0:
-            _gitlog.warning(
-                "push_branch_force_with_lease failed remote=%s branch=%s stderr_len=%d",
-                remote,
-                branch,
-                len(result.stderr),
-            )
-            raise RuntimeError(f"git push --force-with-lease failed: {result.stderr.strip()}")
-        _gitlog.info("push_branch_force_with_lease ok remote=%s branch=%s", remote, branch)
+        self._remote_ops.push_branch_force_with_lease(project_path, remote, branch)
 
     def cleanup_worktree(self, project_path: Path, worktree_path: Path) -> None:
-        _gitlog.info("cleanup_worktree start worktree=%s", worktree_path.name)
-        result = self._run_git(project_path, ["worktree", "remove", "--force", str(worktree_path)])
-        if result.returncode != 0:
-            _gitlog.warning("cleanup_worktree failed worktree=%s stderr_len=%d", worktree_path.name, len(result.stderr))
-            raise RuntimeError(f"failed to cleanup worktree: {result.stderr.strip()}")
-        _gitlog.info("cleanup_worktree ok worktree=%s", worktree_path.name)
+        self._worktree_lifecycle.cleanup_worktree(project_path, worktree_path)
 
     def checkout_integrate_branch(self, project_path: Path) -> str:
-        name = self.resolve_integrate_branch(project_path)
-        result = self._run_git(project_path, ["checkout", name])
-        if result.returncode != 0:
-            raise RuntimeError(f"checkout {name} failed: {result.stderr.strip()}")
-        return name
+        return self._remote_ops.checkout_integrate_branch(project_path)
 
     def format_local_branches(self, project_path: Path) -> str:
-        result = self._run_git(project_path, ["branch", "--sort=refname"])
-        if result.returncode != 0:
-            raise RuntimeError(f"failed to list local branches: {result.stderr.strip()}")
-        text = result.stdout.strip()
-        return text if text else "(no local branches)"
+        return self._branch_query.format_local_branches(project_path)
 
     def list_local_branches(self, project_path: Path) -> list[str]:
-        result = self._run_git(project_path, ["branch", "--sort=refname"])
-        if result.returncode != 0:
-            raise RuntimeError(f"failed to list local branches: {result.stderr.strip()}")
-        branches: list[str] = []
-        for line in result.stdout.splitlines():
-            name = self._branch_name_from_git_branch_output_line(line)
-            if name:
-                branches.append(name)
-        return sorted(set(branches))
+        return self._branch_query.list_local_branches(project_path)
 
     def format_remote_branches_for_remote(self, project_path: Path, remote: str) -> str:
-        result = self._run_git(project_path, ["branch", "-r", "--sort=refname"])
-        if result.returncode != 0:
-            raise RuntimeError(f"failed to list remote branches: {result.stderr.strip()}")
-        prefix = f"{remote}/"
-        lines: list[str] = []
-        for raw in result.stdout.splitlines():
-            line = raw.strip()
-            if not line or "->" in line:
-                continue
-            if line.startswith(prefix):
-                rest = line[len(prefix) :]
-                if rest == "HEAD":
-                    continue
-                lines.append(line)
-        return "\n".join(lines) if lines else f"(no remote branches on {remote})"
+        return self._branch_query.format_remote_branches_for_remote(project_path, remote)
 
     def count_local_branches(self, project_path: Path) -> int:
-        result = self._run_git(project_path, ["branch", "--format=%(refname:short)"])
-        if result.returncode != 0:
-            raise RuntimeError(f"failed to count local branches: {result.stderr.strip()}")
-        return len([ln for ln in result.stdout.splitlines() if ln.strip()])
+        return self._branch_query.count_local_branches(project_path)
 
     def count_remote_branches_for_remote(self, project_path: Path, remote: str) -> int:
-        result = self._run_git(project_path, ["branch", "-r", "--sort=refname"])
-        if result.returncode != 0:
-            raise RuntimeError(f"failed to count remote branches: {result.stderr.strip()}")
-        prefix = f"{remote}/"
-        n = 0
-        for raw in result.stdout.splitlines():
-            line = raw.strip()
-            if not line or "->" in line:
-                continue
-            if line.startswith(prefix):
-                rest = line[len(prefix) :]
-                if rest == "HEAD":
-                    continue
-                n += 1
-        return n
+        return self._branch_query.count_remote_branches_for_remote(project_path, remote)
 
     def list_worktree_entries(self, project_path: Path) -> list[tuple[Path, str | None]]:
-        result = self._run_git(project_path, ["worktree", "list", "--porcelain"])
-        if result.returncode != 0:
-            raise RuntimeError(f"failed to list worktrees: {result.stderr.strip()}")
-        return self._parse_worktree_list_porcelain(result.stdout)
+        return self._worktree_listing.list_worktree_entries(project_path)
 
-    @staticmethod
-    def _branch_name_from_git_branch_output_line(line: str) -> str:
-        name = line.strip()
-        while name and name[0] in "+*":
-            name = name[1:].lstrip()
-        return name
+    _branch_name_from_git_branch_output_line = staticmethod(
+        BranchQuery._branch_name_from_git_branch_output_line
+    )
 
     def list_local_branches_matching(self, project_path: Path, prefix: str) -> list[str]:
-        result = self._run_git(project_path, ["branch", "--list", f"{prefix}*"])
-        if result.returncode != 0:
-            raise RuntimeError(f"failed to list branches: {result.stderr.strip()}")
-        branches: list[str] = []
-        for line in result.stdout.splitlines():
-            name = self._branch_name_from_git_branch_output_line(line)
-            if not name:
-                continue
-            if name.startswith(prefix):
-                branches.append(name)
-        return sorted(set(branches))
+        return self._branch_query.list_local_branches_matching(project_path, prefix)
 
     @staticmethod
     def _parse_worktree_list_porcelain(stdout: str) -> list[tuple[Path, str | None]]:
@@ -475,19 +234,7 @@ class GitWorktreeService:
         return entries
 
     def remove_linked_worktrees_for_branches(self, project_path: Path, branch_names: list[str]) -> None:
-        if not branch_names:
-            return
-        want = set(branch_names)
-        root = project_path.resolve()
-        result = self._run_git(project_path, ["worktree", "list", "--porcelain"])
-        if result.returncode != 0:
-            raise RuntimeError(f"failed to list worktrees: {result.stderr.strip()}")
-        for wt_path, branch in self._parse_worktree_list_porcelain(result.stdout):
-            if branch is None or branch not in want:
-                continue
-            if wt_path.resolve() == root:
-                continue
-            self.cleanup_worktree(project_path, wt_path)
+        self._worktree_lifecycle.remove_linked_worktrees_for_branches(project_path, branch_names)
 
     @staticmethod
     def _is_within(path: Path, base: Path) -> bool:
@@ -503,109 +250,21 @@ class GitWorktreeService:
         worktree_base_dir: Path,
         branch_prefix: str = "remote-",
     ) -> int:
-        root = project_path.resolve()
-        managed_base = worktree_base_dir.resolve()
-        rebase_ops_base = (worktree_base_dir / "_rebase_ops").resolve()
-
-        listed = self._run_git(project_path, ["worktree", "list", "--porcelain"])
-        if listed.returncode != 0:
-            raise RuntimeError(f"failed to list worktrees: {listed.stderr.strip()}")
-
-        cleanup_targets: list[Path] = []
-        for wt_path, branch in self._parse_worktree_list_porcelain(listed.stdout):
-            resolved = wt_path.resolve()
-            if resolved == root:
-                continue
-            branch_matches = branch is not None and branch.startswith(branch_prefix)
-            under_managed_base = self._is_within(resolved, managed_base)
-            under_rebase_ops = self._is_within(resolved, rebase_ops_base)
-            if branch_matches or under_managed_base or under_rebase_ops:
-                cleanup_targets.append(resolved)
-
-        removed = 0
-        for target in sorted(set(cleanup_targets), key=lambda p: str(p)):
-            self.cleanup_worktree(project_path, target)
-            removed += 1
-
-        pruned = self._run_git(project_path, ["worktree", "prune"])
-        if pruned.returncode != 0:
-            raise RuntimeError(f"failed to prune worktrees: {pruned.stderr.strip()}")
-        return removed
+        return self._worktree_lifecycle.cleanup_managed_worktrees(
+            project_path, worktree_base_dir, branch_prefix
+        )
 
     def list_remote_branches_matching(self, project_path: Path, remote: str, prefix: str) -> list[str]:
-        result = self._run_git(project_path, ["ls-remote", "--heads", remote])
-        if result.returncode != 0:
-            raise RuntimeError(f"failed to list remote branches: {result.stderr.strip()}")
-        heads_prefix = "refs/heads/"
-        branches: list[str] = []
-        for raw in result.stdout.splitlines():
-            line = raw.strip()
-            if not line:
-                continue
-            parts = line.split()
-            if len(parts) < 2:
-                continue
-            ref = parts[1]
-            if not ref.startswith(heads_prefix):
-                continue
-            short = ref[len(heads_prefix) :]
-            if short == "HEAD" or not short.startswith(prefix):
-                continue
-            branches.append(short)
-        return sorted(set(branches))
+        return self._branch_query.list_remote_branches_matching(project_path, remote, prefix)
 
     def delete_local_branches(self, project_path: Path, branches: list[str]) -> None:
-        for name in branches:
-            result = self._run_git(project_path, ["branch", "-D", name])
-            if result.returncode != 0:
-                raise RuntimeError(f"failed to delete local branch {name}: {result.stderr.strip()}")
+        self._remote_ops.delete_local_branches(project_path, branches)
 
     def delete_remote_branches(self, project_path: Path, remote: str, branches: list[str]) -> None:
-        for name in branches:
-            result = self._run_git(project_path, ["push", remote, "--delete", name])
-            if result.returncode != 0:
-                raise RuntimeError(f"failed to delete remote branch {name}: {result.stderr.strip()}")
+        self._remote_ops.delete_remote_branches(project_path, remote, branches)
 
     def pull_repository(self, project_path: Path, remote: str) -> str:
-        _gitlog.info("pull_repository start remote=%s", remote)
-
-        fetch_res = self._run_git(project_path, ["fetch", remote, "--prune"])
-        if fetch_res.returncode != 0:
-            raise RuntimeError(f"git fetch {remote} failed: {fetch_res.stderr.strip()}")
-
-        current = self.get_current_branch(project_path)
-        if not current.startswith("("):
-            pull_res = self._run_git(project_path, ["pull", remote, current])
-            if pull_res.returncode != 0:
-                self._run_git(project_path, ["merge", "--abort"])
-                raise RuntimeError(f"git pull {remote} {current} failed (possible conflict): {pull_res.stderr.strip()}")
-        else:
-            _gitlog.info("pull_repository: detached HEAD, skipping pull for current branch")
-
-        wt_entries = self.list_worktree_entries(project_path)
-        local_branches = self.list_local_branches(project_path)
-
-        updated_count = 0
-        for branch in local_branches:
-            if branch == current:
-                continue
-
-            if any(b == branch for _, b in wt_entries):
-                continue
-
-            # `fetch remote b:b`는 로컬이 원격의 조상일 때만 성공하므로, 비-FF 분기는 자연스럽게 건너뜁니다.
-            ff_res = self._run_git(project_path, ["fetch", remote, f"{branch}:{branch}"])
-            if ff_res.returncode == 0:
-                updated_count += 1
-
-        summary = f"Fetched updates from remote {remote}."
-        if not current.startswith("("):
-            summary += f" Updated current branch ({current})."
-        if updated_count > 0:
-            summary += f" Fast-forward updated {updated_count} additional local branch(es)."
-
-        _gitlog.info("pull_repository done: %s", summary)
-        return summary
+        return self._remote_ops.pull_repository(project_path, remote)
 
     def _new_rebase_operation_id(self) -> str:
         return f"_rebase_{uuid.uuid4().hex[:8]}"
@@ -617,76 +276,9 @@ class GitWorktreeService:
         remote: str,
         worktree_ops_base: Path,
     ) -> str:
-        _gitlog.info("rebase_branch_onto_main_and_merge start branch=%s", branch)
-        main_branch = self.resolve_integrate_branch(project_path)
-        self._run_git_checked(
-            project_path, ["fetch", remote, main_branch], f"git fetch {remote} {main_branch} failed"
+        return self._remote_ops.rebase_branch_onto_main_and_merge(
+            project_path, branch, remote, worktree_ops_base
         )
-        self._run_git_checked(
-            project_path, ["fetch", remote, branch], f"git fetch {remote} {branch} failed"
-        )
-
-        self.remove_linked_worktrees_for_branches(project_path, [branch])
-
-        worktree_ops_base.mkdir(parents=True, exist_ok=True)
-        op_id = self._new_rebase_operation_id()
-        op_path = worktree_ops_base / op_id
-
-        self._run_git_checked(
-            project_path,
-            [
-                "worktree",
-                "add",
-                "-f",
-                "-B",
-                branch,
-                str(op_path),
-                self._remote_branch_ref(remote, branch),
-                "--track",
-            ],
-            "worktree add for rebase failed",
-        )
-
-        try:
-            rb = self._run_git(op_path, ["rebase", self._remote_branch_ref(remote, main_branch)])
-            if rb.returncode != 0:
-                self._run_git(op_path, ["rebase", "--abort"])
-                raise RuntimeError(f"git rebase failed: {rb.stderr.strip()}")
-
-            self._run_git_checked(
-                op_path,
-                ["push", "--force-with-lease", remote, branch],
-                "git push feature after rebase failed",
-            )
-            self._run_git_checked(
-                project_path, ["checkout", main_branch], f"checkout {main_branch} failed"
-            )
-            self._run_git_checked(
-                project_path,
-                ["pull", "--ff-only", remote, main_branch],
-                f"git pull --ff-only {remote} {main_branch} failed",
-            )
-            self._run_git_checked(
-                project_path,
-                ["merge", "--ff-only", branch],
-                f"fast-forward merge into {main_branch} failed (non-ff?)",
-            )
-            self._run_git_checked(
-                project_path, ["push", remote, main_branch], f"git push {remote} {main_branch} failed"
-            )
-        finally:
-            self._run_git_checked(
-                project_path,
-                ["worktree", "remove", "--force", str(op_path)],
-                "failed to remove rebase worktree",
-            )
-
-        summary = (
-            f"Rebase complete: rebased `{branch}` onto `{remote}/{main_branch}`, "
-            f"fast-forward merged into `{main_branch}`, pushed to `{remote}`."
-        )
-        _gitlog.info("rebase_branch_onto_main_and_merge done branch=%s", branch)
-        return summary
 
     def cherry_pick_branch_onto_main(
         self,
@@ -695,71 +287,9 @@ class GitWorktreeService:
         remote: str,
         worktree_ops_base: Path,
     ) -> str:
-        """Cherry-pick the branch tip's commit onto main and push, in an isolated worktree.
-
-        Operates on a fresh worktree checked out from the up-to-date integration branch so the
-        project's main checkout is never disturbed. Aborts and cleans up on any conflict.
-        """
-        _gitlog.info("cherry_pick_branch_onto_main start branch=%s", branch)
-        main_branch = self.resolve_integrate_branch(project_path)
-        self._run_git_checked(
-            project_path, ["fetch", remote, main_branch], f"git fetch {remote} {main_branch} failed"
+        return self._remote_ops.cherry_pick_branch_onto_main(
+            project_path, branch, remote, worktree_ops_base
         )
-        self._run_git_checked(
-            project_path, ["fetch", remote, branch], f"git fetch {remote} {branch} failed"
-        )
-
-        commit_result = self._run_git(
-            project_path, ["rev-parse", self._remote_branch_ref(remote, branch)]
-        )
-        if commit_result.returncode != 0:
-            raise RuntimeError(
-                f"failed to resolve {remote}/{branch}: {commit_result.stderr.strip()}"
-            )
-        commit_sha = commit_result.stdout.strip()
-
-        worktree_ops_base.mkdir(parents=True, exist_ok=True)
-        op_id = self._new_rebase_operation_id()
-        op_path = worktree_ops_base / op_id
-
-        self._run_git_checked(
-            project_path,
-            [
-                "worktree",
-                "add",
-                "--detach",
-                str(op_path),
-                self._remote_branch_ref(remote, main_branch),
-            ],
-            "worktree add for cherry-pick failed",
-        )
-
-        try:
-            cp = self._run_git(op_path, ["cherry-pick", commit_sha])
-            if cp.returncode != 0:
-                self._run_git(op_path, ["cherry-pick", "--abort"])
-                raise RuntimeError(f"git cherry-pick failed (conflict?): {cp.stderr.strip()}")
-
-            self._run_git_checked(
-                op_path,
-                ["push", remote, f"HEAD:{main_branch}"],
-                f"git push cherry-pick to {remote}/{main_branch} failed",
-            )
-        finally:
-            # Best-effort cleanup: never let a removal failure mask the cherry-pick error above.
-            cleanup = self._run_git(project_path, ["worktree", "remove", "--force", str(op_path)])
-            if cleanup.returncode != 0:
-                _gitlog.warning(
-                    "failed to remove cherry-pick worktree stderr_len=%d", len(cleanup.stderr)
-                )
-
-        short_sha = commit_sha[:7]
-        summary = (
-            f"Cherry-pick complete: applied `{short_sha}` from `{branch}` "
-            f"onto `{main_branch}` and pushed to `{remote}`."
-        )
-        _gitlog.info("cherry_pick_branch_onto_main done branch=%s", branch)
-        return summary
 
     def create_github_pr(
         self,
@@ -769,35 +299,8 @@ class GitWorktreeService:
         title: str,
         body: str,
     ) -> str:
-        _gitlog.info("create_github_pr branch=%s base=%s", branch, base_branch)
-        result = self._run_gh(
-            project_path,
-            ["gh", "pr", "create", "--base", base_branch, "--head", branch,
-             "--title", title, "--body", body],
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            url = result.stdout.strip()
-            _gitlog.info("create_github_pr created url=%s", url)
-            return url
-        stderr = result.stderr.strip()
-        stdout = result.stdout.strip()
-        combined = (stderr + stdout).lower()
-        if "already exists" in combined:
-            view = self._run_gh(
-                project_path,
-                ["gh", "pr", "view", branch, "--json", "url", "--jq", ".url"],
-            )
-            if view.returncode == 0 and view.stdout.strip():
-                existing_url = view.stdout.strip()
-                _gitlog.info("create_github_pr already exists url=%s", existing_url)
-                return existing_url
-            detail = view.stderr.strip() or view.stdout.strip() or "existing PR URL was not returned"
-            raise RuntimeError(
-                f"gh pr view failed: {detail}. Check `gh auth status` and repository access."
-            )
-        detail = stderr or stdout or "no output"
-        raise RuntimeError(
-            f"gh pr create failed: {detail}. Check `gh auth status` and repository access."
+        return self._remote_ops.create_github_pr(
+            project_path, branch, base_branch, title, body
         )
 
     def _run_gh(
