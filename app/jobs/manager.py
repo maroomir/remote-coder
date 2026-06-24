@@ -13,6 +13,7 @@ from app.git.ai_commit import AiCommitBodyGenerator
 from app.git.branch_naming import BranchNamingStrategy
 from app.git.service import GitWorktreeService
 from app.jobs.diff_review import DiffReviewSummary, build_diff_review_summary
+from app.jobs.effective_config import EffectiveConfig
 from app.jobs.execution_pipeline import run_job
 from app.jobs.fix_pipeline import run_fix_job
 from app.jobs.fix_support import (
@@ -21,8 +22,9 @@ from app.jobs.fix_support import (
     list_fix_candidates,
     resolve_fix_target_job,
 )
-from app.jobs.heartbeat import HeartbeatHandle, start_heartbeat
+from app.jobs.heartbeat import HeartbeatHandle
 from app.jobs.plan_decisions import PlanDecisionQuestion
+from app.jobs.result_notifier import REACTION_QUEUED, ResultNotifier
 from app.jobs.result_writer import (
     make_output_summary,
     preserve_partial_output,
@@ -39,19 +41,6 @@ from app.projects.registry import ProjectRecord, ProjectRegistry
 from app.telegram.notifier import Notifier
 
 _joblog = EventLogger("app.jobs.lifecycle", "job.lifecycle")
-
-# Telegram only allows reactions from a fixed allow-list of emoji, so map the job
-# lifecycle onto values from https://core.telegram.org/bots/api#reactiontypeemoji.
-_REACTION_QUEUED = "👀"
-_REACTION_SUCCEEDED = "🎉"
-_REACTION_FAILED = "💔"
-_REACTION_CANCELLED = "🤝"
-
-_TERMINAL_REACTION_BY_STATUS = {
-    "succeeded": _REACTION_SUCCEEDED,
-    "failed": _REACTION_FAILED,
-    "cancelled": _REACTION_CANCELLED,
-}
 
 
 class JobManager:
@@ -78,23 +67,23 @@ class JobManager:
         self._notifier_resolver = notifier_resolver
         self._project_registry = project_registry
         self._advanced_settings_store = advanced_settings_store
+        self._effective_config = EffectiveConfig(advanced_settings_store)
         self._ai_commit_body_generator = ai_commit_body_generator
         # Set post-construction by the Telegram layer (mirrors command_context.job_manager).
         self.plan_decision_router = plan_decision_router
+        self._result_notifier = ResultNotifier(
+            notifier_resolver, job_store, heartbeat_interval_seconds
+        )
         self._cancel_events: dict[str, threading.Event] = {}
         self._cancelled_job_ids: set[str] = set()
         self._project_locks: dict[str, threading.Lock] = {}
         self._project_locks_guard = threading.Lock()
 
     def _notifier_for(self, project: str) -> Notifier:
-        return self._notifier_resolver(project)
+        return self._result_notifier.notifier_for(project)
 
     def _start_heartbeat(self, job: Job) -> HeartbeatHandle:
-        return start_heartbeat(
-            job=job,
-            notifier_resolver=self._notifier_for,
-            interval_seconds=self._heartbeat_interval_seconds,
-        )
+        return self._result_notifier.start_heartbeat(job)
 
     @staticmethod
     def _job_ctx(job: Job) -> dict[str, object]:
@@ -107,34 +96,17 @@ class JobManager:
 
     @staticmethod
     def _message_id_or_none(value: object) -> int | None:
-        return value if isinstance(value, int) else None
+        return ResultNotifier.message_id_or_none(value)
 
     @staticmethod
     def _message_ids_or_empty(value: object) -> list[int]:
-        if not isinstance(value, list):
-            return []
-        return [item for item in value if isinstance(item, int)]
+        return ResultNotifier.message_ids_or_empty(value)
 
     def _send_result(self, job: Job) -> None:
-        job.result_message_ids = self._message_ids_or_empty(
-            self._notifier_for(job.request.project).send_job_result(job)
-        )
-        self._job_store.update(job)
-        self._react(job.request, _TERMINAL_REACTION_BY_STATUS.get(job.status.value))
+        self._result_notifier.send_result(job)
 
     def _react(self, request: JobRequest, emoji: str | None) -> None:
-        if request.message_id is None or emoji is None:
-            return
-        try:
-            self._notifier_for(request.project).set_reaction(
-                request.chat_id, request.message_id, emoji
-            )
-        except Exception:  # pylint: disable=broad-except
-            _joblog.exception(
-                "set_reaction failed",
-                chat_id=request.chat_id,
-                project=request.project,
-            )
+        self._result_notifier.react(request, emoji)
 
     def submit(self, request: JobRequest) -> Job:
         job = Job(id=request.job_id or self._make_job_id(), request=request)
@@ -151,7 +123,7 @@ class JobManager:
         if accepted_message_id is not None:
             job.accepted_message_id = accepted_message_id
             self._job_store.update(job)
-        self._react(request, _REACTION_QUEUED)
+        self._react(request, REACTION_QUEUED)
         return job
 
     def cancel(self, job_id: str) -> bool:
@@ -302,7 +274,7 @@ class JobManager:
         if accepted_message_id is not None:
             job.accepted_message_id = accepted_message_id
             self._job_store.update(job)
-        self._react(request, _REACTION_QUEUED)
+        self._react(request, REACTION_QUEUED)
         with self._project_lock(request.project):
             return self._run_fix(job.id)
 
@@ -315,19 +287,13 @@ class JobManager:
         return f"job_{ts}_{uuid4().hex[:6]}"
 
     def _effective_job_timeout_seconds(self) -> int:
-        if self._advanced_settings_store is None:
-            return 1800
-        return self._advanced_settings_store.get().job_timeout_seconds
+        return self._effective_config.job_timeout_seconds()
 
     def _effective_git_remote_name(self) -> str:
-        if self._advanced_settings_store is None:
-            return "origin"
-        return self._advanced_settings_store.get().git_remote_name
+        return self._effective_config.git_remote_name()
 
     def _effective_keep_worktree_on_success(self) -> bool:
-        if self._advanced_settings_store is None:
-            return True
-        return self._advanced_settings_store.get().keep_worktree_on_success
+        return self._effective_config.keep_worktree_on_success()
 
     def _preserve_partial_output(
         self, job: Job, exc: BaseException, worktree_base: Path
