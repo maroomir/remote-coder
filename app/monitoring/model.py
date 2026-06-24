@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -340,6 +340,57 @@ def _string_or_none(raw: object) -> str | None:
     return value or None
 
 
+@dataclass(frozen=True)
+class _NewestRecord:
+    path: Path
+    item: dict[str, Any]
+    observed: datetime | None
+    requests_today: int
+
+
+def _scan_newest_record(
+    root: Path,
+    accept: Callable[[dict[str, Any]], bool],
+    *,
+    count_today: bool = False,
+) -> _NewestRecord | None:
+    today = datetime.now().astimezone().date()
+    requests_today = 0
+    newest: tuple[Path, dict[str, Any], datetime | None] | None = None
+    for path in _iter_recent_files(root, "*.jsonl"):
+        for item in _read_jsonl_objects(path):
+            if not accept(item):
+                continue
+            observed = _parse_datetime(item.get("timestamp"))
+            if count_today and observed and observed.astimezone().date() == today:
+                requests_today += 1
+            if _is_newer(observed, newest[2] if newest else None):
+                newest = (path, item, observed)
+    if newest is None:
+        return None
+    return _NewestRecord(
+        path=newest[0], item=newest[1], observed=newest[2], requests_today=requests_today
+    )
+
+
+def _run_cli_version(cmd: str, timeout_seconds: int) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [cmd, "--version"],
+        capture_output=True,
+        text=True,
+        timeout=timeout_seconds,
+        shell=False,
+    )
+
+
+def _format_cli_version_line(proc: subprocess.CompletedProcess[str]) -> str:
+    ver = (proc.stdout or proc.stderr or "").strip()
+    if ver:
+        snippet = ver if len(ver) <= 500 else ver[:500] + "..."
+        return f"CLI version:\n{snippet}"
+    return f"Version check failed (exit {proc.returncode})."
+
+
 class ModelUsageProvider(ABC):
     @abstractmethod
     def format_monitor(self, timeout_seconds: int) -> str:
@@ -427,22 +478,20 @@ class ClaudeUsageProvider(ModelUsageProvider):
     def read_local_usage(self) -> LocalUsageSnapshot | None:
         root = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
         projects = root / "projects"
-        newest: tuple[Path, dict[str, Any], dict[str, Any], datetime | None] | None = None
-        for path in _iter_recent_files(projects, "*.jsonl"):
-            for item in _read_jsonl_objects(path):
-                message = item.get("message") if isinstance(item.get("message"), dict) else {}
-                usage = message.get("usage") if isinstance(message.get("usage"), dict) else {}
-                if usage:
-                    observed = _parse_datetime(item.get("timestamp"))
-                    if _is_newer(observed, newest[3] if newest else None):
-                        newest = (path, item, message, observed)
+
+        def accept(item: dict[str, Any]) -> bool:
+            message = item.get("message") if isinstance(item.get("message"), dict) else {}
+            usage = message.get("usage") if isinstance(message.get("usage"), dict) else {}
+            return bool(usage)
+
+        newest = _scan_newest_record(projects, accept)
         if newest is None:
             return None
 
-        path, _item, message, observed = newest
+        message = newest.item.get("message") if isinstance(newest.item.get("message"), dict) else {}
         return LocalUsageSnapshot(
-            source=_compact_home(path),
-            observed_at=observed,
+            source=_compact_home(newest.path),
+            observed_at=newest.observed,
             actual_model=_string_or_none(message.get("model")),
             token_metrics=_normalize_token_dict(message.get("usage")) or None,
             remaining_note="Claude local transcripts include session tokens but not account remaining quota snapshots.",
@@ -453,13 +502,7 @@ class CodexUsageProvider(ModelUsageProvider):
     def format_monitor(self, timeout_seconds: int) -> str:
         lines: list[str] = ["[Codex]"]
         try:
-            proc = subprocess.run(
-                ["codex", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-                shell=False,
-            )
+            proc = _run_cli_version("codex", timeout_seconds)
         except FileNotFoundError:
             lines.append("CLI: `codex` command not found. Check Codex CLI installation and PATH.")
             return "\n".join(lines)
@@ -467,39 +510,31 @@ class CodexUsageProvider(ModelUsageProvider):
             lines.append("`codex --version` timed out.")
             return "\n".join(lines)
 
-        ver = (proc.stdout or proc.stderr or "").strip()
-        if ver:
-            snippet = ver if len(ver) <= 500 else ver[:500] + "..."
-            lines.append(f"CLI version:\n{snippet}")
-        else:
-            lines.append(f"Version check failed (exit {proc.returncode}).")
+        lines.append(_format_cli_version_line(proc))
         return "\n".join(lines)
 
     def read_local_usage(self) -> LocalUsageSnapshot | None:
         root = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
         sessions = root / "sessions"
-        newest: tuple[Path, dict[str, Any], datetime | None] | None = None
-        for path in _iter_recent_files(sessions, "*.jsonl"):
-            for item in _read_jsonl_objects(path):
-                payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
-                if not isinstance(payload, dict):
-                    continue
-                if "rate_limits" not in payload and "info" not in payload:
-                    continue
-                observed = _parse_datetime(item.get("timestamp"))
-                if _is_newer(observed, newest[2] if newest else None):
-                    newest = (path, item, observed)
+
+        def accept(item: dict[str, Any]) -> bool:
+            payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+            if not isinstance(payload, dict):
+                return False
+            return "rate_limits" in payload or "info" in payload
+
+        newest = _scan_newest_record(sessions, accept)
         if newest is None:
             return None
 
-        path, item, observed = newest
+        item, observed = newest.item, newest.observed
         payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
         info = payload.get("info") if isinstance(payload.get("info"), dict) else {}
         rate_limits = payload.get("rate_limits") if isinstance(payload.get("rate_limits"), dict) else {}
         token_usage = _normalize_token_dict(info.get("total_token_usage"))
         windows = self._quota_windows(rate_limits)
         return LocalUsageSnapshot(
-            source=_compact_home(path),
+            source=_compact_home(newest.path),
             observed_at=observed,
             token_metrics=token_usage or None,
             quota_windows=tuple(windows),
@@ -534,13 +569,7 @@ class GeminiUsageProvider(ModelUsageProvider):
     def format_monitor(self, timeout_seconds: int) -> str:
         lines: list[str] = ["[Gemini]"]
         try:
-            proc = subprocess.run(
-                ["gemini", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-                shell=False,
-            )
+            proc = _run_cli_version("gemini", timeout_seconds)
         except FileNotFoundError:
             lines.append("CLI: `gemini` command not found. Check Gemini CLI installation and PATH.")
             lines.extend(self._footer())
@@ -550,12 +579,7 @@ class GeminiUsageProvider(ModelUsageProvider):
             lines.extend(self._footer())
             return "\n".join(lines)
 
-        ver = (proc.stdout or proc.stderr or "").strip()
-        if ver:
-            snippet = ver if len(ver) <= 500 else ver[:500] + "..."
-            lines.append(f"CLI version:\n{snippet}")
-        else:
-            lines.append(f"Version check failed (exit {proc.returncode}).")
+        lines.append(_format_cli_version_line(proc))
 
         lines.extend(self._model_probe(timeout_seconds))
         return "\n".join(lines)
@@ -612,28 +636,21 @@ class GeminiUsageProvider(ModelUsageProvider):
 
     def read_local_usage(self) -> LocalUsageSnapshot | None:
         root = Path(os.environ.get("GEMINI_HOME", Path.home() / ".gemini"))
-        newest: tuple[Path, dict[str, Any], datetime | None] | None = None
-        today = datetime.now().astimezone().date()
-        requests_today = 0
-        for path in _iter_recent_files(root, "*.jsonl"):
-            for item in _read_jsonl_objects(path):
-                if item.get("type") != "gemini" or not isinstance(item.get("tokens"), dict):
-                    continue
-                observed = _parse_datetime(item.get("timestamp"))
-                if observed and observed.astimezone().date() == today:
-                    requests_today += 1
-                if _is_newer(observed, newest[2] if newest else None):
-                    newest = (path, item, observed)
+
+        def accept(item: dict[str, Any]) -> bool:
+            return item.get("type") == "gemini" and isinstance(item.get("tokens"), dict)
+
+        newest = _scan_newest_record(root, accept, count_today=True)
         if newest is None:
             return None
 
-        path, item, observed = newest
+        item = newest.item
         return LocalUsageSnapshot(
-            source=_compact_home(path),
-            observed_at=observed,
+            source=_compact_home(newest.path),
+            observed_at=newest.observed,
             actual_model=_string_or_none(item.get("model")),
             token_metrics=_normalize_token_dict(item.get("tokens")) or None,
-            requests_today=requests_today,
+            requests_today=newest.requests_today,
             remaining_note="Gemini local chat logs include requests/tokens but not account remaining quota snapshots.",
         )
 
@@ -655,25 +672,14 @@ class OllamaUsageProvider(ModelUsageProvider):
     def format_monitor(self, timeout_seconds: int) -> str:
         lines: list[str] = ["[Ollama]"]
         try:
-            proc = subprocess.run(
-                ["ollama", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-                shell=False,
-            )
+            proc = _run_cli_version("ollama", timeout_seconds)
         except FileNotFoundError:
             lines.append("CLI: `ollama` command not found. Check Ollama installation and PATH.")
             return "\n".join(lines)
         except subprocess.TimeoutExpired:
             lines.append("`ollama --version` timed out.")
         else:
-            ver = (proc.stdout or proc.stderr or "").strip()
-            if ver:
-                snippet = ver if len(ver) <= 500 else ver[:500] + "..."
-                lines.append(f"CLI version:\n{snippet}")
-            else:
-                lines.append(f"Version check failed (exit {proc.returncode}).")
+            lines.append(_format_cli_version_line(proc))
 
         models = list_ollama_model_names(timeout_seconds=timeout_seconds)
         if models:
@@ -712,30 +718,21 @@ class OllamaUsageProvider(ModelUsageProvider):
 
     def read_local_usage(self) -> LocalUsageSnapshot | None:
         root = ollama_session_dir()
-        newest: tuple[Path, dict[str, Any], datetime | None] | None = None
-        today = datetime.now().astimezone().date()
-        requests_today = 0
-        for path in _iter_recent_files(root, "*.jsonl"):
-            for item in _read_jsonl_objects(path):
-                if item.get("role") != "assistant" or not isinstance(
-                    item.get("token_usage"), dict
-                ):
-                    continue
-                observed = _parse_datetime(item.get("timestamp"))
-                if observed and observed.astimezone().date() == today:
-                    requests_today += 1
-                if _is_newer(observed, newest[2] if newest else None):
-                    newest = (path, item, observed)
+
+        def accept(item: dict[str, Any]) -> bool:
+            return item.get("role") == "assistant" and isinstance(item.get("token_usage"), dict)
+
+        newest = _scan_newest_record(root, accept, count_today=True)
         if newest is None:
             return None
 
-        path, item, observed = newest
+        item = newest.item
         return LocalUsageSnapshot(
-            source=_compact_home(path),
-            observed_at=observed,
+            source=_compact_home(newest.path),
+            observed_at=newest.observed,
             actual_model=_string_or_none(item.get("model")),
             token_metrics=_normalize_token_dict(item.get("token_usage")) or None,
-            requests_today=requests_today,
+            requests_today=newest.requests_today,
             remaining_note="Ollama local runs do not expose a provider quota; usage is local tokens only.",
         )
 
